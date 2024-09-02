@@ -1,0 +1,103 @@
+program lmain;
+
+	#include ("samp.hhf")
+
+
+	static
+		one: int32 := 200+400;
+		b:pointer to int32 := &one;
+		str0: string := "hello world";	
+
+	storage
+		two: int32;
+		i64:	uns64;
+		next:	int64;
+
+	readonly
+		reado1	:string := "string in readonly";
+
+	const
+		thisconst :=14;		
+
+
+procedure callit;
+begin callit;
+	
+end callit;
+
+begin lmain;
+	#print( "lmain" )
+	some_identifier:
+	// implemented instrs
+/*
+		aaa;
+		aad;
+		aam;
+		aas;
+		bswap( ebx );
+		cbw;
+		cld;
+		cli;
+		clts;
+		cmc;
+		cmpsb;
+		cmpsd;
+		cmpsw;
+		cpuid;
+		cwd;
+		emms;
+		hlt;
+		insd;
+		insw;
+		int(3);
+		into;
+		invd;
+		iret;
+		iretd;
+		lahf;
+		leave;
+		lodsb;
+		lodsd;
+		lodsw;
+		movsd;
+		rep.movsd;
+		movsw;
+		nop;
+		outsb;
+		outsd;
+		outsw;
+		popa;
+		popad;
+		popf;
+		popfd;
+		pusha;
+		pushad;
+		pushf;
+		pushfd;
+		rdmsr;
+		rdpmc;
+		rdtsc;
+		ret;
+		ret( 100 );
+		rsm;
+		sahf;
+		scasb;
+		scasd;
+		scasw;
+		std;
+		sti;
+		stosb;
+		stosd;
+		stosw;
+		sysenter;
+		sysexit;
+		ud2;
+*/
+//		wait;
+//		xlat;
+		
+
+		
+	
+end lmain;
+

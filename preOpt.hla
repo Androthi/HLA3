@@ -1,0 +1,349 @@
+unit preOptUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// emitString-
+//
+//	This procedure outputs a object to the consts segment list and it also
+// creates a dummy symbol that the COFF file can use to refer to that string.
+
+procedure emitString( var attr:attr_t ); @use eax;
+begin emitString;
+
+	push( eax );
+	push( ecx );
+	push( edx );
+	push( esi );
+
+	mov( attr, ecx );
+	mov( NULL, attrECX.stringData_vt );		// Initialization, in case of error.
+	if( attrECX.string_vt <> NULL ) then
+
+
+		// Allocate a "dummy" symbol table entry we can use
+		// to act as a "symbol" for this string constant.
+
+		malloc( @size( symNode_t ));
+		mov( eax, attrECX.stringData_vt );
+		mov( eax, edx );
+		makeLabel( "@stringConst" );
+		mov( eax, symEDX.trueName );
+		mov( eax, symEDX.lcName );
+
+		mov( 0, symEDX.offset );
+		mov( constSegment, eax );
+		mov( eax, symEDX.owner );
+		mov( 0, symEDX.lexLevel );
+		mov( 0, symEDX.va.numElements );
+
+		mov( attrECX.string_vt, eax );
+		mov( eax, symEDX.va.string_vt );
+
+		mov( &string_ste, symEDX.symType );
+		mov( String_pt, symEDX.pType );
+
+		mov( Constant_ct, symEDX.va.symClass );
+		mov( String_pt, symEDX.va.pType );
+		mov( &string_ste, symEDX.va.symType );
+
+		str.length( eax );
+		inc( eax );		// Include zero-terminating byte
+		if( attrECX.pType = Utf8_pt ) then
+
+			// UTF-8 and Unicode strings have an extra 
+			// dword that specifies the number of characters
+			// in the string (versus the length field,
+			// which specifies the number of bytes )
+
+			add( 4, eax );
+			mov( Utf8_pt, symEDX.va.pType );
+			mov( &utf8_ste, symEDX.va.symType );
+			mov( Utf8_pt, symEDX.pType );
+			mov( &utf8_ste, symEDX.symType );
+
+		elseif( attrECX.pType = UString_pt  ) then 
+
+			// Unicode strings end with a zero-terminating
+			// word. So bump up the length by 1 to allow
+			// for the extra byte. Also, like UTF-8, we have
+			// an extra "character" count dword in front of
+			// the string, so add four for that.
+
+			add( 5, eax );
+			mov( UString_pt, symEDX.va.pType );
+			mov( &ustring_ste, symEDX.va.symType );
+			mov( UString_pt, symEDX.pType );
+			mov( &ustring_ste, symEDX.symType );
+
+		endif;
+
+		// Add 8 to handle the length and maxlength fields, add
+		// 3 so we can round this to the next dword boundary:
+
+		add( 11, eax );
+
+		// Round value down to the previous dword boundary:
+
+		and( $FFFF_FFFC, eax );
+
+		// Save as the size of this object:
+
+		mov( eax, symEDX.objectSize );
+
+		// Fill in other fields:
+		mov( Static_ct, symEDX.symClass );
+		mov( -1, symEDX.COFFSymIndex );
+		mov( 0, symEDX.sectionNum );	// Will have to change later
+
+		mov( false, symEDX.isExternal );
+		mov( false, symEDX.isPublic );
+		mov( false, symEDX.isForward );
+		mov( false, symEDX.isPrivate );
+		mov( true, symEDX.isReadOnly );
+		mov( _none, symEDX.inReg );
+		mov( notp_pc, symEDX.pClass );
+		mov( NULL, symEDX.externName );
+		mov( false, symEDX.isVolatile );
+		mov( false, symEDX.isNoStorage );
+		mov( true, symEDX.isInitialized );
+		mov( NULL, symEDX.inhType );
+		mov( 0, symEDX.fieldCnt );
+		mov( 0, symEDX.numElements );
+		mov( 0, symEDX.fieldIndex );
+		mov( NULL, symEDX.fwd );
+
+		// Before we add this dummy symbol to the constants list,
+		// we need to create a segItem 'firstEntry_c' object so that 
+		// the string is properly aligned on a dword boundary:
+
+		malloc( @size( segItem_t ));
+		mov( constSegment, ecx );
+		mov( symECX.endSegList, esi );
+		if( esi = NULL ) then
+
+			mov( eax, symECX.segList );
+			mov( eax, symECX.endSegList );
+
+		else
+
+			mov( eax, symECX.endSegList );
+			mov( eax, segESI.nextSegItem );
+
+		endif;
+		mov( NULL, segEAX.nextSegItem );
+		mov( firstEntry_c, segEAX.segItemType );
+		mov( 0, segEAX.offset );
+		mov( 4, segEAX.alignedOn.min );
+		mov( 4, segEAX.alignedOn.max );
+
+		// Now we need to create a second segItem_t object
+		// to point at our dummy symbol table entry. This
+		// will reference the symbol we created earlier.
+
+		malloc( @size( segItem_t ));
+		mov( symECX.endSegList, esi );
+		mov( eax, symECX.endSegList );
+		mov( eax, segESI.nextSegItem );
+		mov( NULL, segEAX.nextSegItem );
+		mov( symbolRecord_c, segEAX.segItemType );
+		mov( edx, segEAX.symPtr );
+
+	endif;
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+	pop( eax );
+
+end emitString;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// buildStringData-
+//
+//	This procedure searches through a segment to see if it can find any
+// string data. If it finds a string, then it constructs the string object
+// in the constants segment and builds a dummy symbol table entry to
+// represent that string object.
+
+//proc( "buildStringData" );
+procedure buildStringData( theSegment:symNodePtr_t );
+begin buildStringData;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	push( esi );
+
+	mov( theSegment, ebx );
+	canAccess( [ebx] );
+	assert( symEBX.pType = Segment_pt );
+
+	// Okay traverse the segList to find all the strings in this segment
+
+	mov( symEBX.segList, ebx );
+	while( ebx <> NULL ) do
+
+		mov( segEBX.segItemType, eax );
+		assert( eax <= codeRecord_c );
+
+		if( eax = symbolRecord_c ) then
+
+			mov( segEBX.symPtr, ecx );
+			canAccess( [ecx] );
+			mov( symECX.pType, al );
+			if
+			(
+					al = String_pt 
+				||	al = UString_pt 
+				||	al = Utf8_pt
+			) then
+
+				emitString( symECX.va );
+
+			endif;
+
+
+		elseif( eax = dataRecord_c ) then
+
+			mov( segEBX.valList.valPtr, ecx );
+			canAccess( [ecx] );
+			mov( attrECX.pType, al );
+
+			if
+			(
+					al = String_pt 
+				||	al = UString_pt 
+				||	al = Utf8_pt
+			) then
+
+				emitString( attrECX );
+
+			endif;
+
+
+		elseif( eax = codeRecord_c ) then
+
+			#print( "TODO: handle code records in buildStringData" )
+
+		endif;
+		mov( segEBX.nextSegItem, ebx );
+
+	endwhile;
+
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end buildStringData;
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// preOptimizer-
+//
+//	This procedure handles optimization and data generation processes that
+// take place before native code generation for the machine instructions.
+// Largely, this consist of assigning offsets to variables (so we know what
+// offsets to use when generating native code), as well as organization
+// of data declaration sections in memory.
+//proc( "preOptimizer" );
+procedure preOptimizer;
+var
+	userSegNumber	:uns32;
+
+begin preOptimizer;
+
+//bm=pre_optimizer
+
+	push( ebx );
+	#print( "TODO: Still need to handle code segment in preOptimizer" )
+	
+	// Build the list of "STATIC" declarations in this compilation:
+
+	xor( eax, eax );
+	if( dataSegment <> NULL ) then
+
+		buildStaticList( dataSegment, dataSegmentNumber );
+		buildStringData( dataSegment );
+		mov( dataSegment, ebx );
+		mov( eax, (type symNode_t [ebx]).segData );
+
+	endif;
+	mov( eax, dataSegmentList );
+
+	// Build the list of "STORAGE" declarations in this compilation:
+
+	xor( eax, eax );
+	if( bssSegment <> NULL ) then
+
+		buildStaticList( bssSegment, bssSegmentNumber );
+		mov( bssSegment, ebx );
+		mov( eax, (type symNode_t [ebx]).segData );
+
+	endif;
+	mov( eax, bssSegmentList );
+
+	// Build the list of "READONLY" declarations in this compilation:
+
+	xor( eax, eax );
+	if( readonlySegment <> NULL ) then
+
+		buildStaticList( readonlySegment, readonlySegmentNumber );
+		buildStringData( readonlySegment );
+		mov( readonlySegment, ebx );
+		mov( eax, symEBX.segData );
+
+	endif;
+	mov( eax, roSegmentList );
+
+	mov( userSegmentsList, ebx );
+	mov( userSegmentNumber, userSegNumber );
+	while( ebx <> NULL ) do
+
+		canAccess( [ebx] );
+		buildStaticList( userSegEBX.theSegment, userSegNumber );
+		buildStringData( userSegEBX.theSegment );
+		mov( userSegEBX.theSegment, edx );
+		mov( eax, symEDX.segData );
+		mov( eax, userSegEBX.segList );
+		mov( userSegEBX.next, ebx );
+		inc( userSegNumber );
+
+	endwhile;
+
+	// Build the list of constants (compiler-generated segment)
+	// in this compilation. Note: this segment must be constructed
+	// after all the others as the compiler may extend this segment
+	// while building the other segments.
+
+	xor( eax, eax );
+	if( constSegment <> NULL ) then
+
+		buildStaticList( constSegment, userSegNumber );
+		mov( constSegment, ebx );
+		mov( eax, (type symNode_t [ebx]).segData );
+
+	endif;
+	mov( eax, constSegmentList );
+
+	// Set userSegNumber to the total number of sections in this file:
+
+	inc( userSegNumber );
+	
+	pop( ebx );
+	mov( true, eax );		// Return success
+
+end preOptimizer;
+
+end preOptUnit;

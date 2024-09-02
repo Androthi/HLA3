@@ -1,0 +1,1265 @@
+// funcs.hla
+//
+// HLA v2.x reserved word scanner generator for compile-time functions.
+//
+// This program is similar in concept to the scanner generater for
+// HLA reserved words (see the comments in rw.hla for details).
+// However, this code generates a scanner that recognizes HLA compile-time
+// function names.
+//
+//	There are, however, many fundamental differences between this code
+// and the rw.hla code.  First of all, this code supports identifiers whose
+// length is up to 16 characters (vs. 12 for rw.hla).  Second, this code
+// does not generate an algorithm based on a hash table;  instead it uses
+// a binary search algorithm.  The choice of binary search rather than hash
+// table was made for several reasons-
+//
+//	(1) There are fewer than 256 function IDs (as this was written), so
+//		there will be at most eight comparisons (in fact, the largest number
+//		of strings of a given length is 20, so it will take no more than
+//		five comparisons to reject a string, and usually it will take only
+//		three or four).
+//
+//	(2)	Compile-time functions don't appear that often in a program (hence,
+//		no need to super-optimize these comparisons).
+//
+//	(3) The program will never compare normal (user) program identifiers
+//		against these strings, so we don't need to quickly reject strings
+//		(which always take the maximum number of comparisons).
+//
+//
+//	(4) Hash tables take up a lot of space.
+//
+//	The scanner this code generates *does* assume that there are actually
+//	16 different search trees, each based on the length of the compile-time
+//	function IDs.  
+
+
+
+
+program FuncsLexerGenerator;
+#include( "stdlib.hhf" )
+#include( "w32/win32.hhf" )
+const
+	// MaxLength is the maximum ID length this code supports.
+	// Note that changing this to a larger value is *not* the
+	// only change needed to support longer IDs.
+
+	MaxLength	:= 16;
+
+	// MaxNames is the maximum total number of IDs this program allows.
+	// As this is being written, there are less than 200 function names.
+	// Bump this number up if you decide to add more than 256.
+
+	MaxNames	:= 256;
+
+type
+	NameStr_t	:string[ MaxNames ];
+	NNptr_t		:pointer to NameNode_t;
+	NameNode_t	:record
+
+		left	:NNptr_t;
+		right	:NNptr_t;
+		fName	:string;
+		lbl		:uns32;
+
+	endrecord;
+	
+static
+
+	// InStrs-	This array holds all the names read from the file, in
+	//			the order they were read from the file.
+
+	InStrs		:NameStr_t;
+
+	
+	// "indexes" is the number of strings of each length read from the file.
+
+	indexes		:uns32[ MaxLength ];
+	
+	// fnames is an array of pointers.  The row index is the length
+	// of the string.  Each row holds however many strings there are that
+	// have the length specified by the row index.  Note that "indexes[i]"
+	// holds the number of strings of length "i" in this two-dimensional array.
+
+	fnames		:NameStr_t[ MaxLength ];
+
+	// NameTrees-
+	//
+	//	This is an array of binary trees, one for each name length.
+	// Each tree is a balanced binary search tree of identifiers.
+	// All the identifiers in a single tree have the same length.
+
+	NameTrees	:NNptr_t[ MaxLength ] := MaxLength dup [NULL];
+
+
+	// "f" is the input file (funcs.txt) and cmpCode is the file variable
+	// for the comparison code this program emits.
+
+	f			:file;
+	cmpFuncs	:file;
+	funcTokens	:file;
+
+
+	// myTrim-
+	//
+	//	Version of str.trim that works with the string types
+	// this code processes.  "Trims" all whitespace before
+	// and after the specified string.
+
+	procedure mytrim( s:string in eax ); @returns( "eax" );
+	begin mytrim;
+
+		push( ebx );
+		push( ecx );
+		mov( (type str.strRec [eax]).length, ebx );
+		forever
+
+			dec( ebx );
+			breakif((type int32 ebx) < 0 );
+			mov( [eax+ebx], ch );
+			breakif( ch not in { ' ', stdio.tab } );
+
+		endfor;
+		inc( ebx );
+		mov( ebx, (type str.strRec [eax]).length );
+		pop( ecx );
+		pop( ebx );
+
+	end mytrim;
+
+
+	// BinaryTraverse-
+	//
+	//	This iterator traverses an array of strings using a
+	// binary partitioning algorithm.  On the first yield, it
+	// returns the string in the middle of the array, partitioning
+	// the array in two pieces.  Then this algorithm repeats on the
+	// lower half, and finally on the upper half, in a recursive fashion.
+	//
+	//	Note: this iterator returns the string pointer in EAX
+	//	and it also wipes out EBX on each iteration.
+
+	iterator BinaryTraverse( var Names: NameStr_t; count:uns32 ); @nodisplay;
+	begin BinaryTraverse;
+
+		// Select the middle element of the array.
+		// Fail if there are no more elements left in the array.
+		// Middle := count div 2;
+
+		mov( count, eax );
+		if( eax <> 0 ) then
+
+			shr( 1, eax );		// Makes value even.
+			shl( 2, eax );
+			add( Names, eax );
+			mov( [eax], eax );
+			yield();
+
+			// Okay, recursively repeat this process for each string
+			// in the array *before* the element we just yielded.
+
+			mov( count, eax );	// Half as many elements in the lower
+			shr( 1, eax );		//  half of the array that we pass.
+			foreach BinaryTraverse( Names, eax ) do
+
+				// Just yield whatever string the recursive called
+				// yielded to us:
+
+				yield();
+
+			endfor;
+			
+			// Okay, now recursively repeat this process for each string
+			// in the array *after* the middle element we originally
+			// yielded above.
+			//
+			//	Note: if count was originally odd, then we need to
+			// call BinaryTraverse with the same value we used above.
+			// However, if count was originally even, then we need to
+			// call BinaryTraverse with one less than the value we used
+			// in the foreach loop above (otherwise we would send the
+			// original median value again and wind up in an infinite loop).
+			//
+			//	First, compute the starting location in the array for
+			// the new sub-array:
+
+			mov( count, eax );
+			shr( 1, eax );
+			inc( eax );			// Skip original string
+			mov( Names, ebx );
+			lea( ebx, [ ebx + eax*4 ] );
+
+			// Now compute the new count value:
+			
+			mov( count, eax );
+			dec( eax );			// Subtract one if originally even.
+			shr( 1, eax );
+
+			// Now yield the strings in the upper half of the array:
+
+			foreach BinaryTraverse( [ebx], eax ) do
+
+				yield();
+
+			endfor;
+
+		endif;
+
+	end BinaryTraverse;
+
+
+
+	// Insert-
+	//
+	//	Inserts a node into a binary tree.
+
+	procedure Insert( var tree: NNptr_t; fName:string; node:uns32 );
+		@nodisplay;
+
+		// LocateNode- Locates the pointer field (left or right) to
+		// which we must attach the new node containing the fName string.
+		//
+		// This procedure returns the address of the .left or .right
+		// field to which we must attach the new node in the EBX register.
+
+		procedure LocateNode( var tree: NameNode_t; fName:string ); @nodisplay;
+		begin LocateNode;
+
+			mov( tree, ebx );
+			if( str.gt( (type NameNode_t [ebx]).fName, fName )) then
+
+				if( (type NameNode_t [ebx]).left <> NULL ) then
+
+					LocateNode( (type NameNode_t [ebx]).left, fName );
+
+				else
+
+					lea( ebx, (type NameNode_t [ebx]).left );
+
+				endif;
+
+			else
+
+				if( (type NameNode_t [ebx]).right <> NULL ) then
+
+					LocateNode( (type NameNode_t [ebx]).right, fName );
+
+				else
+
+					lea( ebx, (type NameNode_t [ebx]).right );
+
+				endif;
+
+			endif;
+
+		end LocateNode;
+
+	begin Insert;
+
+		push( eax );
+		push( ebx );
+
+		mov( tree, ebx );
+		if( (type dword [ebx]) <> NULL ) then
+
+			mov( [ebx], ebx );
+			LocateNode( (type NameNode_t [ebx]), fName );
+
+		endif;
+
+		// At this point, EBX points at either the root node pointer
+		// or at the .left or .right field to which we must attach the
+		// new node.  Attach the new node here.
+
+
+		// Create a new here.
+
+		malloc( @size( NameNode_t ));	// Allocate storage for a node.
+		mov( eax, [ebx] );				// Store address into the link pointer.
+
+		// Fill in the fields of the new node.
+
+		mov( eax, ebx );
+		mov( fName, eax );
+		mov( eax, (type NameNode_t [ebx]).fName );
+		mov( node, eax );
+		mov( eax, (type NameNode_t [ebx]).lbl );
+		xor( eax, eax );
+		mov( eax, (type NameNode_t [ebx]).left );
+		mov( eax, (type NameNode_t [ebx]).right );
+
+		pop( ebx );
+		pop( eax );
+
+	end Insert;
+
+
+	procedure TreeTraverse( tree: NNptr_t; len:uns32 ); @nodisplay;
+
+		procedure JmpLeftRight( var nn:NameNode_t; len:uns32 ); @nodisplay;
+		begin JmpLeftRight;
+
+			push( eax );
+			push( ebx );
+			push( ecx );
+
+			mov( nn, ebx );
+			mov( (type NameNode_t [ebx]).left, ecx );
+			mov( (type NameNode_t [ebx]).right, eax );
+			if( ecx = NULL && eax = NULL) then
+
+				cmpFuncs.put( stdio.tab, "jne BadFuncID;" nl );
+
+			else
+
+				if( ecx = NULL ) then
+
+					cmpFuncs.put( stdio.tab, "jb BadFuncID;" nl );
+
+				else
+
+					cmpFuncs.put
+					( 
+						stdio.tab,
+						"jb cmpfuncs_", 
+						len, 
+						'_', 
+						(type NameNode_t [ecx]).lbl, 
+						";" nl
+					);
+					
+				endif; 
+
+				mov( nn, ebx );
+				mov( (type NameNode_t [ebx]).right, eax );
+				if( eax = NULL ) then
+
+					cmpFuncs.put( stdio.tab, "ja BadFuncID;" nl );
+
+				else
+
+					cmpFuncs.put
+					( 
+						stdio.tab,
+						"ja cmpfuncs_", 
+						len, 
+						'_', 
+						(type NameNode_t [eax]).lbl, 
+						";" nl
+					);
+					
+				endif;
+
+			endif;
+			pop( ecx );
+			pop( ebx );
+			pop( eax ); 
+
+		end JmpLeftRight;
+
+	begin TreeTraverse;
+
+		push( eax );
+		push( ebx );
+		mov( tree, ebx );
+		inc( len ); 
+		mov( len, eax );
+		switch( eax )
+
+			case( 1 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( al, '",
+					(type NameNode_t [ebx]).fName,
+					"' );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+			case( 2 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( ax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, ",
+					len,
+					") );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+			case( 3, 4 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, ",
+					len,
+					") );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 5 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( bl, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 1) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+			case( 6 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( bx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 2) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 7 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 3) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 8 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 9 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( cl, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 1) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 10 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( cx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 2) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 11 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ecx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 3) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 12 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ecx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 13 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ecx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( dl, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 12, 1) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+
+
+			case( 14 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ecx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( dx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 12, 2) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 15 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ecx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( edx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 12, 3) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+
+
+			case( 16 )
+
+				cmpFuncs.put
+				( 
+					"cmpfuncs_", 
+					len, 
+					'_', 
+					(type NameNode_t [ebx]).lbl,
+					":" nl,
+					stdio.tab,
+					"cmp( eax, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 0, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ebx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 4, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( ecx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 8, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				( 
+					stdio.tab,
+					"cmp( edx, funcstr( """,
+					(type NameNode_t [ebx]).fName,
+					""", 12, 4) );" nl
+				);
+				JmpLeftRight( (type NameNode_t [ebx]), len );
+
+				cmpFuncs.put
+				(
+					stdio.tab,
+					"mov( tkn_at_",
+					(type NameNode_t [ebx]).fName,
+					", eax );" nl,
+					stdio.tab,
+					"mov( func_tc, ebx );" nl,
+					stdio.tab,
+					"jmp funcsDone;" nl nl
+				);
+
+
+			default
+
+				stdout.put
+				( 
+					"No code generation for strings of length ", 
+					len, 
+					nl 
+				);
+
+		endswitch;
+
+		dec( len );
+		if( (type NameNode_t [ebx]).left <> NULL ) then
+		 
+			TreeTraverse( (type NameNode_t [ebx]).left, len );
+
+		endif;
+		if( (type NameNode_t [ebx]).right <> NULL ) then
+		 
+			TreeTraverse( (type NameNode_t [ebx]).right, len );
+
+		endif;
+		pop( ebx );
+		pop( eax );
+		 
+	end TreeTraverse;
+
+begin FuncsLexerGenerator;
+
+
+	f.create();
+	f.open( "rw\funcs.txt", fileio.r );
+	funcTokens.create();
+	funcTokens.openNew( "fTokens.hhf" );
+
+	funcTokens.put
+	(
+		"// fTokens.hhf-" nl
+		"//    This include file provides definitions for all the" nl
+		"//    compile-time function token constants."  nl
+		"//" nl
+		"// Note: This file is generated by machine.  Do not modify this" nl
+		"//       file by hand.  If you want to add or change HLA reserved" nl
+		"//       words, please see the documentation for the ""funcs""" nl
+		"//       program that accompanies the HLA v2.x source listings." nl
+		nl
+		"const" nl
+		nl	
+	);
+
+	// Quickly read all the input reserved words into the "s" array.
+	// While we're at it, generate the enum constants for the rwTokens.hhf file.
+
+	mov( 0, ebx );
+	mov( ebx, edx );
+	while( !f.eof() ) do
+
+		assert( ebx < MaxNames );
+		f.a_gets();
+		mytrim( (type string eax ));
+
+
+		// If the input line is not blank, then assume it has exactly one
+		// word on the line.  Extract and save this item.
+
+		if( (type str.strRec [eax]).length <> 0 ) then
+
+			mov( eax, InStrs[ ebx*4 ] );		// Save function names here.
+			inc( ebx );
+
+			// Emit the token value to the token file:
+
+			funcTokens.put
+			( 
+				stdio.tab, 
+				"tkn_at_", 
+				(type string eax):-16,
+				":= tkn_endCtlTknList + $",
+				edx,
+				";" nl
+			);
+			inc( edx );
+
+		endif;
+
+	endwhile;
+
+	// Finish up the fTokens.hhf file:
+
+	funcTokens.put
+	( 
+		stdio.tab, 
+		"tkn_endFTknList        := tkn_endCtlTknList + $", 
+		edx, 
+		";" nl nl
+		"// End of fTokens.hhf include file." nl
+	);
+	funcTokens.close(); 
+
+
+	// Initialize an array holding the number of strings for each function
+	// name length:
+
+	cld();
+	lea( edi, indexes );
+	mov( MaxLength, ecx );
+	mov( 0, eax );
+	rep.stosd();
+
+	// Okay, separate the strings by length and place them in the "fnames" 
+	// array. Each row of fnames contains all the strings read from funcs.txt 
+	// of that particular length (i.e., the row index).
+
+	mov( 0, ecx );
+	for( mov( 0, ecx ); ecx < ebx; inc( ecx )) do
+
+		mov( InStrs[ ecx*4 ], edx );
+		mov( (type str.strRec [edx]).length, eax );
+		assert( eax in 1..MaxLength );
+
+		// We'll assume that there are no zero length strings.
+		//
+		//	Use 0..15 as the index for lengths 1..16:
+
+		dec( eax );
+
+		// "indexes" is counting the number of strings with the length
+		// specified by the index into "indexes".  Bump the corresponding
+		// index up by one.
+
+		mov( indexes[ eax*4 ], esi );	// Save index for this word in ESI.
+		inc( indexes[ eax*4 ] );		// Bump up to the next ID.
+		intmul( MaxNames, eax );
+		add( eax, esi );
+		mov( edx, fnames[ esi*4 ] );	// Save a pointer to the string.
+
+	endfor;
+
+	// EBX = Length of string we're currently processing.
+
+	
+	for( mov( 0, ebx ); ebx<MaxLength; inc( ebx ) ) do
+
+		// Get the number of strings whose length is "EBX" and save in
+		// EDX for later use:
+
+		mov( indexes[ ebx*4 ], edx );
+		inc( ebx );
+		stdout.put
+		( 
+			"Length: ", 
+			(type uns32 ebx), 
+			" count: ", 
+			(type uns32 edx), 
+			nl
+		);
+		dec( ebx );
+		
+	endfor;
+
+
+	// Okay, now generate the code to recognize all these reserved words.
+
+	cmpFuncs.create();
+	cmpFuncs.openNew( "CmpFuncs.hla" );
+
+	cmpFuncs.put
+	(
+		"// CmpFuncs.hla (include file to scan HLA v2.x function names)" nl
+		nl
+		"// Note: The following code is emitted by machine. " nl
+		"//       Do not modify this code by hand.  Instead, see the" nl
+		"//       documentation for the ""func"" (function names) program" nl
+		"//       that accompanies the HLA v2.x source code to determine" nl
+		"//       how to add new function names to the HLA language." nl
+		nl
+	);
+
+	
+	// Repeat the following loop once for each function name length:
+
+	for( mov( 0, ecx ); ecx < MaxLength; inc( ecx )) do
+
+		intmul( MaxNames*4, ecx, eax );
+		lea( eax, fnames[ eax ] );
+
+		mov( 0, edx );
+		foreach BinaryTraverse( [eax], indexes[ecx*4] ) do
+
+			//stdout.put( "name: ", (type string eax), nl );
+			Insert( NameTrees[ ecx*4 ], (type string eax), edx );
+			inc( edx );
+
+		endfor;
+
+		// Okay, call the tree traversal code to emit the cmp sequence
+		// for each item in the tree.
+
+		if( NameTrees[ ecx*4 ] <> NULL ) then
+
+			TreeTraverse( NameTrees[ ecx*4 ], ecx );
+
+		endif;
+
+	endfor;
+
+
+	cmpFuncs.put
+	(
+		nl
+		nl
+		"// End of HLA function name scanner include file."
+		nl
+	);
+	cmpFuncs.close();
+
+end FuncsLexerGenerator;
+
+
+	
+		

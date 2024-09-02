@@ -1,0 +1,13 @@
+unit elfGenUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+procedure elfGen; @nodisplay; @noalignstack;
+begin elfGen;
+
+		  
+
+end elfGen;
+
+end elfGenUnit;
+

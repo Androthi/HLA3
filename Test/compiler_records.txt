@@ -1,0 +1,1217 @@
+	// Constants that specify the type of token the lexer is
+	// returning:
+
+	tokenClass_t:
+		enum
+		{
+			EOF_tc,		//0
+			ID_tc,		//1
+			instr_tc,	//2
+			rw_tc,		//3
+			func_tc,	//4
+			stmt_tc,	//5
+			ctStmt_tc,	//6
+			type_tc,	//7
+			notOp_tc,	//8		Operator token class must appear
+			mulOp_tc,	//9		 in this order
+			addOp_tc,	//10
+			relOp_tc,	//11
+			andOp_tc,	//12
+			orOp_tc,	//13
+			punct_tc,	//14
+			const_tc,	//15
+			regmmx_tc,	//16
+			regsse_tc,	//17
+			regfpu_tc,	//18
+			regseg_tc,	//19
+			regdbg_tc,	//20
+			regctrl_tc,	//21
+
+			// Note: reg8_tc, reg16_tc, and reg32_tc must be last
+			// in this list (to make checking for an integer register
+			// easier).
+
+			reg8_tc,	//22
+			reg16_tc,	//23
+			reg32_tc,	//24
+			reg64_tc	//25
+		};
+
+
+
+	// Symbol table related type declarations.
+	//
+	//	pType_t: Primitive type information found
+	// in the symbol table and used for variant
+	// type info.
+	//
+	//	Note: the numeric values for this enumerated
+	// type were chosen such that smaller values can
+	// be promoted to larger values within the same
+	// group and across selected groups (e.g., Byte_pt
+	// promotes all the way through Int128_pt).
+
+	pType_t : 
+		enum
+		{ 
+
+			Byte_pt,			//0
+			Word_pt,			//1
+			DWord_pt,			//2
+			QWord_pt,			//3
+			TByte_pt,			//4
+			LWord_pt,			//5
+
+			Uns8_pt,			//6
+			Uns16_pt,			//7
+			Uns32_pt,			//8
+			Uns64_pt,			//9
+			Uns128_pt,			//10
+
+			Int8_pt,			//11
+			Int16_pt,			//12
+			Int32_pt,			//13
+			Int64_pt,			//14
+			Int128_pt,			//15
+						
+			Real32_pt,			//16
+			Real64_pt, 			//17
+			Real80_pt,			//18
+			Real128_pt,			//19
+			 
+			Boolean_pt,			//20 
+			Enum_pt,			//21
+
+			Char_pt, 			//22
+			XChar_pt,			//23
+			Unicode_pt,			//24
+
+			Utf8_pt,			//25
+			String_pt,			//26
+			UString_pt,			//27
+			
+			Cset_pt,			//28
+			XCset_pt,			//29   Last scalar value for a primitive type!
+
+			Thunk_pt,			//30
+
+			Deferred_pt,		//31   Used to tell HLA to use symType as type.
+
+
+			Array_pt,			//32   These are the composite types and they
+			Record_pt,			//33   only appear in Type declarations.
+			Union_pt,			//34
+			Class_pt,			//35
+			Pointer_pt,			//36
+			Farptr_pt,			//37
+			Procptr_pt,			//38
+
+			AnonRec_pt,			//39	These mark the beginning and end
+			EndAnonRec_pt,		//40	of anonymous records and unions
+			AnonUnion_pt,		//41	in other records/unions.
+			EndAnonUnion_pt,	//42
+
+			Namespace_pt,		//43
+			Symboltbl_pt,		//44
+			Segment_pt,			//45
+			
+			Label_pt,			//46
+			Proc_pt,			//47
+			Method_pt,			//48
+			ClassProc_pt,		//49
+			ClassIter_pt,		//50
+			Iterator_pt,		//51
+			Program_pt,			//52
+			
+			Macro_pt,			//53
+			Text_pt,			//54
+			Variant_pt,			//55
+			Placeholder_pt,		//56
+			Undefined_pt,		//57	Temporary type for fwd/undefined syms.
+			Error_pt			//58	Used to denote a cascading error.
+		};
+
+
+
+	// Here are the identifier class types.
+	// Classification differentiates symbols on the basis of whether
+	// they are constants, values, types, vars, parameters, static objects,
+	// etc.
+
+type
+	classType_t:
+		enum 
+		{ 
+			None_ct,		//0
+			Constant_ct,	//1
+			Value_ct, 		//2
+			Type_ct, 		//3
+			Var_ct,			//4
+			Parm_ct,		//5
+			Static_ct,		//6
+			Label_ct,		//7
+			Proc_ct,		//8
+			Iterator_ct,	//9
+			ClassProc_ct,	//10
+			ClassIter_ct,	//11
+			Method_ct,		//12
+			Macro_ct,		//13
+			Keyword_ct,		//14
+			Terminator_ct,	//15
+			Program_ct, 	//16
+			Namespace_ct,	//17
+			Symboltbl_ct,	//18
+			Segment_ct,		//19
+			Register_ct,	//20
+			Memory_ct,		//21 - Used only for expr attributes.
+			Placeholder_ct	//22 - Used for proc, namespace, etc., placeholders.
+		};
+
+
+	// register_t
+	//
+	//	Specifies whether a parameter is passed in a register
+	// and, if so, what register.  This data type is also used
+	// throughout the assembler to represent register values.
+	
+	register_t:
+		enum
+		{
+			_none,			//0		(not a register)
+			_AL,			//1
+			_AH,			//2
+			_BL,			//3
+			_BH,			//4
+			_CL,			//5
+			_CH,			//6
+			_DL,			//7
+			_DH,			//8
+			_DIB,			//9
+			_SIB,			//10
+			_BPB,			//11
+			_SPB,			//12
+			_R8B,			//13
+			_R9B,			//14
+			_R10B,			//15
+			_R11B,			//16
+			_R12B,			//17
+			_R13B,			//18
+			_R14B,			//19
+			_R15B,			//20
+
+			_AX,			//21
+			_BX,			//22
+			_CX,			//23
+			_DX,			//24
+			_DI,			//25
+			_SI,			//26
+			_BP,			//27
+			_SP,			//28
+			_R8W,			//29
+			_R9W,			//30
+			_R10W,			//31
+			_R11W,			//32
+			_R12W,			//33
+			_R13W,			//34
+			_R14W,			//35
+			_R15W,			//36
+
+			_EAX,			//37
+			_EBX,			//38
+			_ECX,			//39
+			_EDX,			//40
+			_EDI,			//41
+			_ESI,			//42
+			_EBP,			//43
+			_ESP,			//44
+			_R8D,			//45
+			_R9D,			//46
+			_R10D,			//47
+			_R11D,			//48
+			_R12D,			//49
+			_R13D,			//50
+			_R14D,			//51
+			_R15D,			//52
+
+			_RAX,			//53
+			_RBX,			//54
+			_RCX,			//55
+			_RDX,			//56
+			_RDI,			//57
+			_RSI,			//58
+			_RBP,			//59
+			_RSP,			//60
+			_R8,			//61
+			_R9,			//62
+			_R10,			//63
+			_R11,			//64
+			_R12,			//65
+			_R13,			//66
+			_R14,			//67
+			_R15,			//68
+			_ST0,			//69
+			_ST1,			//70
+			_ST2,			//71
+			_ST3,			//72
+			_ST4,			//73
+			_ST5,			//74
+			_ST6,			//75
+			_ST7,			//76
+
+			_MM0,			//77
+			_MM1,			//78
+			_MM2,			//79
+			_MM3,			//80
+			_MM4,			//81
+			_MM5,			//82
+			_MM6,			//83
+			_MM7,			//84
+
+			_XMM0,			//85
+			_XMM1,			//86
+			_XMM2,			//87
+			_XMM3,			//88
+			_XMM4,			//89
+			_XMM5,			//90
+			_XMM6,			//91
+			_XMM7,			//92
+			_XMM8,			//93
+			_XMM9,			//94
+			_XMM10,			//95
+			_XMM11,			//96
+			_XMM12,			//97
+			_XMM13,			//98
+			_XMM14,			//99
+			_XMM15,			//100
+
+			_DR0,			//101
+			_DR1,			//102
+			_DR2,			//103
+			_DR3,			//104
+			_DR4,			//105
+			_DR5,			//106
+			_DR6,			//107
+			_DR7,			//108
+			_DR8,			//109
+			_DR9,			//110
+			_DR10,			//111
+			_DR11,			//112
+			_DR12,			//113
+			_DR13,			//114
+			_DR14,			//115
+			_DR15,			//116
+
+			_CR0,			//117
+			_CR1,			//118
+			_CR2,			//119
+			_CR3,			//120
+			_CR4,			//121
+			_CR5,			//122
+			_CR6,			//123
+			_CR7,			//124
+			_CR8,			//125
+			_CR9,			//126
+			_CR10,			//127
+			_CR11,			//128
+			_CR12,			//129
+			_CR13,			//130
+			_CR14,			//131
+			_CR15,			//132
+
+			_CSEG,			//133
+			_DSEG,			//134
+			_ESEG,			//135
+			_FSEG,			//136
+			_GSEG,			//137
+			_SSEG,			//138
+			_RIP			//139
+		};
+
+
+
+	// adrsMode_t-
+	//	Enumerated constant the specifies the generic addressing mode to use.
+	// Most of these values are generic to instruction operands. The proc_c,
+	// pgm_c, endp_c, optFlags_c, label_c, and alignment_c values are used to
+	// denote special intermediate code records; see the instrOperand_t type
+	// (in codegen.hhf) for details.
+
+	adrsMode_t:
+		enum
+		{
+			implied_c,			// implied_c must be item #0!
+			immediate_c,		// Constant-only (immediate) addressing mode
+			memoryMode_c,		// Memory variable addressing mode
+			register_c,			// Integer register (8, 16, 32, or 64 bits)
+			regfpu_c,			// FPU register
+			regmmx_c,			// MMX register
+			regsse_c,			// XMM register (including XMM8..XMM15)
+			regseg_c,			// Segment registers
+			regdr_c,			// DBG register (including DR8..DR15)
+			regcr_c,			// CTL register (including CR8..CR15)
+			label_c,			// Statement label
+			proc_c,				// Procedure/iterator/method label
+			pgm_c,				// Program label
+			endp_c,				// End of procedure/iterator/method/program
+			optFlags_c,			// Used to denote optimization flags 
+			alignment_c			// Alignment records in intermediate code
+		};
+
+
+	// memAdrsMode_t-
+	//		Enumerated constant that specifies the basic addressing
+	//		mode for a memory operand.
+	//
+	//		constOnly_c		(0)	if displacement-only expression,
+	//		base32_c		(1)	if [reg32 {+displacement}]
+	//		index32_c		(2)	if [reg32*scale {+displacement}]
+	//		baseindex32_c 	(3)	if [reg32+reg32*scale {+displacement}]
+	//
+	//		base64_c		(4)	if [reg64 {+displacement}]
+	//		index64_c		(5)	if [reg64*scale {+displacement}]
+	//		baseindex64_c	(6)	if [reg64+reg64*scale {+displacement}]
+
+
+	memAdrsMode_t:
+		enum
+		{
+			constOnly_c,
+
+			base32_c,
+			index32_c,
+			baseindex32_c,
+
+			base64_c,
+			index64_c,
+			baseindex64_c
+		};
+
+	// immOperand_t-
+	//
+	//	Data type used to represent an immediate operand for an instruction.
+	immOperand_t:
+		record
+
+			// An immediate value can take one of two forms:
+			//
+			//	1.  constant
+			//	2.  &basePtrConst - &minusThisAdrs + constant
+			//
+			// In the second form, the two symbols must both
+			// be defined and in the same segment.
+			//
+			// Case (1) is used if basePtrConst contains NULL
+			// (minusThisAdrs will also contain NULL).
+			//
+			// Case (2) is used if basePtrConst is not NULL
+			// (in which case minusThisAdrs will also be non-NULL)
+			dispBaseAdrs 	:staticExprPtr_t;
+			dispMinusAdrs	:staticExprPtr_t;
+			union
+				constant	:dword;
+				constant64	:qword;
+			endunion;
+		endrecord;
+
+	// memOperand_t-
+	//
+	//	Data type used to represent a memory address for an instruction
+	// operand.
+
+	memOperand_t:
+		record inherits( immOperand_t );
+
+			// Static base address in memory:
+
+			staticSym			:symNodePtr_t;
+
+			// Other addressing mode info
+
+			baseReg				:register_t;
+			indexReg			:register_t;
+			segReg				:register_t;
+			scale				:uns8;
+			align(4);
+
+		endrecord;
+
+	// value_t
+	//
+	//	This data type defines the data type that constants
+	// can take in an HLA source file.
+
+	value_t:
+		record // This is a record so we can inherit it.
+
+			union
+
+				byte_vt		:byte;
+				word_vt		:word;
+				dword_vt	:dword;
+				qword_vt	:qword;
+				tbyte_vt	:tbyte;
+				lword_vt	:lword;
+
+				int8_vt		:int8;
+				int16_vt	:int16;
+				int32_vt	:int32;
+				int64_vt	:qword;
+				int128_vt	:int128;
+				
+				uns8_vt		:uns8;
+				uns16_vt	:uns16;
+				uns32_vt	:uns32;
+				uns64_vt	:qword;
+				uns128_vt	:uns128;
+				
+				real32_vt	:real32;
+				real64_vt	:real64;
+				real80_vt	:real80;
+				real128_vt	:real128;
+				
+				boolean_vt	:boolean;
+				char_vt		:char;
+				xchar_vt	:byte;
+				unicode_vt	:word;
+				cset_vt		:cset;
+				xcset_vt	:cset[2];
+
+				arrayValues_vt	:attrPtr_t;
+
+				// Strings need some extra information.
+				// During compilation, the string_vt/ustring_vt fields
+				// point at the HLA-compatible string representing the
+				// string's data. When we build the object output,
+				// however, we will need a dummy symbol table entry that
+				// we can refer to symbolically (using an auto-generated
+				// name).  The stringData_vt and ustringData_vt fields
+				// serve this purpose.
+
+				record
+
+					string_vt		:string;
+					stringData_vt	:symNodePtr_t;
+
+				endrecord;
+
+				record
+					ustring_vt		:string;
+					ustringData_vt	:symNodePtr_t;
+
+				endrecord;
+
+				// For records, fieldValues_vt points at the list
+				// of field values. For unions, this pointer points
+				// at a single field value and curField_vt specifies
+				// which field is the current field in the union.
+				
+				record
+
+					fieldValues_vt	:attrPtr_t;
+					curField_vt		:symNodePtr_t;
+
+				endrecord;
+
+				// Pointer constants use the following fields to fully denote
+				// the constant.										  
+				//
+				//	Note: legal pointer constants take the following form:
+				//
+				//	&basePtrConst{[expr1]} { - &minusThisAdrs{[expr2]}}
+				//
+				//	(the braces surround optional items.)
+				//
+				// E.g.,
+				//
+				//	&basePtrConst[4] - &minusThisAdrs[2]
+				//
+
+				p	:immOperand_t;
+
+				// Memory references use the following fields:
+
+				m	:memOperand_t;
+							   
+			endunion;
+			align(4);
+
+		endrecord;
+
+
+	// attr_t: token attribute type.  Whenever the
+	// expression parser returns a value, the type and
+	// value information for that value has this type.
+
+	attr_t:
+		record inherits( value_t );
+
+			union
+
+				numElements	:uns32;
+				numFields	:uns32;
+				
+			endunion;
+
+
+			// SymType, pType, and symClass-
+			//
+			//	These fields maintain the type of the attribute value.
+
+
+			union
+			
+				symType		:symNodePtr_t;
+				
+				// The anon union record uses the following field to
+				// point at the "field" symbol table entry for the
+				// current field of the anon union.
+				
+				itsField	:symNodePtr_t;
+			
+			endunion;
+			
+			pType			:pType_t;
+			symClass		:classType_t;
+			// Note: the compiler assumes that @size( attr_t ) is
+			// evenly divisible by four.
+			
+			align(4);
+
+		endrecord;
+
+	
+	// The following type is used to store token attributes by the lexer:
+
+	tokenPtr_t	:pointer to token_t;
+	token_t:
+		record
+			
+			tknValue	:dword;
+			tknClass	:dword;
+			lexemeStart	:dword;
+			endLexeme	:dword;
+
+			// The following fields are only used as lexer attributes
+			// for identifiers that the lexer returns to the parser.
+			//
+			//	trueName-
+			//		Pointer to string with original ID.
+			//
+			//	lcName-
+			//		Pointer to string with lower case version of name.
+			//
+			//	symNode-
+			// 		Pointer to symbol table entry for this identifier.
+			//		NULL if the ID is undefined.
+			//
+			// attr-
+			//		Value associated with this token 
+			//		(if there is a constant value)
+			//
+			// Note: attr's usage is mutually exclusive with the symbol
+			// entries.  The selection is made by isID.
+			//
+			//	alloc-
+			//		True if storage for lcName and trueName has been
+			//		allocated on the heap just for this record.
+			//		False if trueName and lcName pointer values come
+			//		from a symbol table node.
+			//
+			//	isID-
+			//		If true, specifies that the trueName, lcName, and
+			//		symNode fields are active.  If false, then
+			//		the attr field is active.
+
+			alloc		:boolean;
+			isID		:boolean;
+			hasAttr		:boolean;
+			align( 4 );
+
+			union
+
+				// The following record is used if "isID" is true
+				// (meaning that the token is an identifier rather than
+				// a constant expression).
+				//
+				//	trueName/lcName - String representation of identifier
+				//
+				//	symNode		- Pointer to symbol table entry for identifier
+				//
+				//	hashValue	- lexer hash function result for identifier
+				//
+				//	undefSym	- For undefined symbols (symNode=NULL), this
+				//					field will contain a non-NULL value if
+				//					there is an entry in the "undefined
+				//					symbols" symbol table (used to track
+				//					forward references).
+				//
+				//	linkPtr		- Points at the "link" field where someone
+				//					can store the address of a symNode_t
+				//					object to link it into the undefSym list.
+				//					Valid only if symNode is NULL.
+
+				record
+
+					trueName	:string;
+					lcName		:string;
+					symNode		:symNodePtr_t;
+					hashValue	:dword;
+					undefSym	:symNodePtr_t;
+					linkPtr		:symNodePtr_t;
+
+				endrecord;
+
+				attr		:attr_t;
+
+			endunion;
+
+			align( 4 );
+			
+		endrecord;
+
+
+	//////////////////////////////////////////////////////////////////////////
+	//
+	// Actual symbol table entry is defined here.
+
+	
+	symNode_t:
+		record
+
+			// Pointers used to maintain the symbol table.
+			//
+			//	left, right 	- Pointers used to maintain a binary
+			//						search tree in a standard symbol table.
+			//
+			//	next			- Used to maintain a linear list of symbols
+			//						for various purposes, including sub-
+			//						symbol tables, records, unions, and
+			//						in the undefined symbols table.
+			//
+			//	prev			- Used to maintain a doubly-linked list
+			//						in the undefined symbols table.
+
+			left		:symNodePtr_t;
+			union
+				right		:symNodePtr_t;
+				prev		:symNodePtr_t;
+			endunion;
+
+			next		:symNodePtr_t;
+
+			// Pointers to the identifier string.
+			// Note that "name" is all lowercase for doing case-insensitive
+			// comparisons.
+
+			lcName		:string;
+			trueName	:string;
+
+
+			// The following entries hold the type & class information.
+			// Type is a pointer to a symbol table entry.  pType is an
+			// ordinal value that is useful for quickly and easily
+			// checking for predefined  types;  it isn't strictly
+			// necessary, but it does make certain operations more
+			// convenient.
+			//
+			// For scalar objects, symType points at the object's type.
+			//
+			// For array types, baseType points at the base type of the array.
+			// For pointer types, baseType points at the base type.
+			//
+			// For labels, that are equated to other labels, the equateLabel
+			//	field points back at the label to which the current symbol
+			//	is equated.  This field contains NULL if the current label
+			//	is not equated to another label.
+
+			union
+				
+				symType		:symNodePtr_t;	// pointer to symbol's type.
+				baseType	:symNodePtr_t;	// pointer to array element type.
+				equateLabel	:symNodePtr_t;	// pointer to equated label.
+				
+			endunion;
+
+			// For procedures, namespaces, and other objects that have a
+			// local symbol table associated with them, localHash points 
+			// at the root node of the local symbol table (binary tree)
+			// for the object.  For record/union/class types, this 
+			// field points at the local symbol table holding the fields 
+			// for this structure.
+
+			localHash	:hashTablePtr_t;	// pointer to local syms (tree).
+
+
+			// seg - pointer to the symbol table entry for the
+			// segment that owns this symbol.  NULL for VAR
+			// and non-variable objects.  Valid for static, readonly,
+			// storage, and segment variables.
+			//
+			// segList- for segments, this is a pointer to the
+			//			list of objects to be emitted in the segment.
+			//
+			// If this is an object with a local symbol table (e.g.,
+			// namespace, record, union, class, program, unit, procedure,
+			// iterator, or method), then linearSyms points at
+			// the first symbol in the linear list of symbols that make
+			// up the local symbols for that object.
+
+
+			seg			:symNodePtr_t;
+			segList		:segItemPtr_t;
+			linearSyms	:symNodePtr_t;
+
+
+
+			//	"offset" serves the following purposes:
+			//
+			//	For VAR objects, this field holds the offset into the
+			//		activation record for the variable.
+			//
+			//	For fields of UNIONs and RECORDs, this field holds the
+			//		offset of the field into the structure.
+			//
+			//	For VAR fields and METHODs/ITERATORs of CLASSes, this 
+			//		field holds the offset of the variable (or method/iterator
+			//		pointer) into the class structure.
+			//
+			//	For static objects, this is the offset into the
+			//		declaration section for that object.
+			//
+			// "address" serves the following purposes 
+			//
+			//	For LABELs, PROCEDUREs, and non-CLASS ITERATORS:
+			//
+			//		this field holds the address of the start of the inter-
+			//		mediate code associated with the function.
+			
+			union
+						
+				offset		:int32;
+				address		:dword;			// ptr to intermediate code, TBD.
+
+			endunion;
+
+			//
+			// equateList - forms a linear list of all labels that are
+			// equated to another label and that other label has yet to
+			// be defined.  HLA uses this list to resolve forward label
+			// references.
+			//
+			// endSegList-	this is only used by segments. It is a pointer
+			//				to the last entry in the segList (to make
+			//				adding items to the list easy).
+
+			union
+	
+				equateList	:symNodePtr_t;
+				endSegList	:segItemPtr_t;
+				
+			endunion;
+
+			// If this is an object with a local symbol table (e.g.,
+			// namespace, record, union, class, program, unit, procedure,
+			// iterator, or method), then lastLinear points at
+			// points at the last symbol in the object's
+			// local symbol table.
+
+			lastLinear	:symNodePtr_t;
+
+			// Pointer to the object whose sub-symbol table contains
+			// the current symbol table entry.
+
+			owner:		symNodePtr_t;
+
+			// LexLevel holds the current lex level at the time of the
+			// symbol's definition.  Negative lex levels are reserved
+			// for records, unions, and classes.
+
+			lexLevel	:int32;
+
+
+			//	ObjectSize holds the size of this item, in bytes.
+
+			objectSize	:int32;
+
+
+			// COFFSymIndex-
+			//	For COFF files, an index into the COFF symbol table
+			// for this symbol (-1 if it's not in the COFF symbol table)
+
+			COFFSymIndex	:int32;
+
+			// SectionNum-
+			//
+			//	For COFF files, this is the COFF file section number.
+
+			sectionNum		:int16;
+
+			// pType holds the "primitive type" enumeration value that lets
+			// 		us quickly check for built-in types.  
+			//
+			// SymClass determines the classification of this symbol.
+			//	Typical classifications include cConstant, cType, 
+			//	cVar, cMacro, cProc, cStatic, etc.
+			//
+			// isExternal contains true if this symbol is an external symbol.
+			//
+			// isPublic is true if this is a public symbol.
+			//
+			// isReferenced is true if this is an external symbol that has
+			// been referenced in the source file.
+			//
+			// isForward contains true if the symbol is forward declared and
+			//	has not yet been defined.
+			//
+			// isPrivate is true if this symbol is private to the subtable
+			//  it appears within an cannot be inherited.
+			//
+			// isReadOnly is used by segment declarations and variables
+			//  declared in those segments. It is set to true if this
+			//  is a readonly segment object, or is a variable within
+			//  a readonly segment.
+			//
+			// For parameter objects (SymClass=cParm), the pClass
+			//	field specifies how the parameter is passed.
+			//
+			// For parameter objects, inReg specifies which register (if any)
+			//	the parameter is passed in.
+			//
+			// For class types, the "thisReg" field specifies the register
+			//	(which must be a 32-bit register) that HLA will use for
+			//	the "THIS" pointer when invoking aclass method, iterator, 
+			//	or procedure.
+			//
+			// For class types, the "vmtReg" field specifies the register
+			//	(which must be a 32-bit register) that holds the VMT pointer
+			//	when invoking a class method or iterator. 
+
+			pType		:pType_t;		// Primitive type value.
+			symClass	:classType_t;
+			isExternal	:boolean;
+			isPublic	:boolean;
+			isReferenced:boolean;
+			isForward	:boolean;
+			isPrivate	:boolean;
+			isReadOnly	:boolean;
+			union
+				inReg		:register_t;
+				thisReg		:register_t;
+			endunion;
+			union
+				pClass		:parmClass_t;
+				vmtReg		:register_t;
+			endunion;
+
+			align(4);
+
+
+			// If the object has an external name (or we're emiting assembly
+			// code and the object has a name within the emitted assembly
+			// file), that external name is kept in the following string:
+
+			externName	:string;
+
+
+
+			//
+			// For segments-
+			//
+			// segData- this points at a segItemArray_t that specifies
+			//			the binary data for this segment.
+			//
+			// For static objects (SEGMENT/STATIC/READONLY/STORAGE vars):
+			//
+			//	"isVolatile" and "isNoStorage" serve the following purpose
+			//
+			//		isVolatile is true if the @volatile option was specified
+			//		isNoStorage is true if the @nostorage option was specified
+			//		isInitialized is true if the object has an initializer.
+
+			union
+
+				segData		:segItemArrayPtr_t;	// ptr to segment's binary data.
+				record
+					isVolatile		:boolean;
+					isNoStorage		:boolean;
+					isInitialized	:boolean;
+				endrecord;
+
+			endunion;
+			
+			// The fields contained within the following record are
+			// valid only for Type_ct objects.  Note that an object
+			// may only be a structure (record/class/union) or an
+			// array, it cannot be both.  However, we can't use
+			// a union here because we have to test numElements
+			// value to see if it's an array;  likewise, we need
+			// to test fields (for NULL) to see if we have a record.
+			// Therefore, these fields cannot overlay one another.
+			
+			// If this is a record, union, or class object, then
+			// "inhType" contains a pointer to structure from
+			// which this object inherits any fields (NULL if there
+			// are no inherited fields).  
+			//
+			// The "fieldCnt" field specifies the total
+			// number of fields  in the structure.
+
+			inhType			:symNodePtr_t;
+			fieldCnt		:int32;
+
+			// If this is an array object, the following
+			// entry specifies the number of elements in
+			// the array.  If this is a scalar object,
+			// then the following field will contain
+			// zero.  It contains a positive integer for
+			// any array object.
+
+			numElements		:uns32;
+
+			// If this symbol table entry is a field of a
+			// record or union, then the following entry
+			// provides a "field number" that specifies the
+			// index into some corresponding "va.fieldValues_vt" 
+			// (above) array of field items.
+
+			fieldIndex		:uns32;
+			
+			
+			// fwd holds a link to the next symbol table entry
+			// that references a fwd declaration.  This is a temporary
+			// field used to process forward pointer declarations.
+			
+			fwd			:symNodePtr_t;
+
+
+
+			// For procedures, methods, and iterators, the following
+			// fields contain important information about the program 
+			// unit (procedure, iterator, or method).
+
+			cproc:record
+
+				// returnsStr is the string to substitute for the
+				// call when instruction composition occurs.
+
+				returnsStr	:string;
+				
+				// If this is a class procedure, iterator, or method,
+				// then the following entry points at the class to
+				// which this program unit belongs:
+
+				baseClass	:symNodePtr_t;
+				
+				// parmSize holds the number of bytes of parameter
+				// data for this program unit.  Note that this value
+				// is always an even multiple of four.
+
+				parmSize	:uns32;
+				
+				// localSize holds the number of bytes of local
+				// variables for this program unit.
+				
+				localSize	:uns32;
+				
+				// preserves-
+				//
+				//	Lists the registers that this particular
+				// procedure promises to preserve (this is a
+				// bitmap of preserveReg_t values).
+				
+				preserves	:dword;
+				
+				// The following specifies the parameter order (calling
+				// sequence) for this program unit.
+
+				callSeq		:callSeq_t;
+
+
+				// hasFrame is true if this function emits code
+				// to generate a stack frame and the code to
+				// clean up the stack frame.
+
+				hasFrame	:boolean;
+
+				// hasDisplay is true if this function allocates
+				// storage for a display in the activation record
+				// (if hasFrame is also true, then the function
+				// actually emits the code to build the display).
+
+				hasDisplay	:boolean;
+
+				// alignsStack is true if this procedure will emit
+				// code to dword-align the stack upon entry.  Note
+				// that hasFrame must also be true for this to occur.
+
+				alignsStack	:boolean;
+
+				// useEnter is true if this procedure emits an ENTER
+				// instruction when building the stack frame. It
+				// contains false if the procedure entry code builds
+				// the stack frame manually;
+
+				useEnter	:boolean;
+
+				// useLeave is true if this procedure emits a LEAVE
+				// instruction when cleaning up the stack frame,
+				// it contains false if the procedure manually
+				// cleans up the stack frame.
+
+				useLeave	:boolean;
+
+				
+				// Uses- specifies a register that is available
+				// for processing parameters on a call.
+				
+				uses		:register_t;
+
+			endrecord;
+			
+			align( 4 );
+
+			// For macros, here is where the relevant information
+			// is kept so we can do a macro expansion.
+			
+			macro :record
+			
+				textStart		:dword;
+				textEnd			:dword;
+				macroParms		:symNodePtr_t;
+				locals			:symNodePtr_t;
+				keywords		:symNodePtr_t;
+				terminator		:symNodePtr_t;
+				macroSyms		:symNodePtr_t;
+				fullFileName	:string;
+				filename		:string;
+//				fileHandle		:dword;
+				fileMapHandle	:dword;
+				lineNumber		:uns32;
+			
+			endrecord;
+			// v holds the value of a constant symbol.  This is similar
+			// to an attr_t object except the type information is
+			// kept elsewhere in the symbol table entry rather than as
+			// part of v.
+			//
+			// This field also holds the initial value for symbols declared
+			// in the SEGMENT, STATIC, and READONLY sections.
+
+			va			:attr_t;
+
+			align( 4 );
+
+		endrecord;
+
+
+	instrOperand_t:
+		record
+
+			size		:uns8;			// Size of the operand (mem/reg)
+			length		:uns8;			// Length of operand's encoding
+			mode		:adrsMode_t;	// Particular mode this operand uses
+			align(4);
+
+			union
+
+				// If the operand is an immediate value, the following
+				// field holds its value:
+
+				immVal				:immOperand_t;
+
+				// If the operand is a memory location, then following
+				// field holds the associated address:
+
+				memAdrs				:binaryMemoryOperand_t; 
+
+				// If the operand is a register operand, the following
+				// field specifies which register:
+
+				register			:register_t;
+				
+				// The following is used by _label records:
+
+				labelEntry			:symNodePtr_t;
+
+				// The following is used by _setopt records:
+
+				optimizationFlags	:dword;
+
+				// The following is used by _proc and _endp records:
+
+				record
+
+					procPtr				:symNodePtr_t;
+					procAlign			:dword;
+
+				endrecord;
+
+				// The following is used by _pgm records:
+
+				pgmID					:string;
+
+				// The following is used by _align records:
+
+				alignment			:dword;
+					
+			endunion;
+
+		endrecord;
+
+
+	internalCode_t:
+		record
+		
+			next		:internalCodePtr_t;	// Ptr to next instr
+			prev		:internalCodePtr_t;	// Ptr to prev instr
+			nextVar		:internalCodePtr_t;	// Ptr to next var-length instr
+			varDist		:dword;				// Distance from last varlen instr
+
+			// Code segment offset (normal use):
+
+			offset		:dword;
+				
+			length		:dword;		// Instruction length, in bytes
+			prefixes	:word;		// Prefixes attached to this instruction.
+			instrTkn	:word;		// really instrTkns_t
+
+			// Here's where we describe the main operands:
+
+			srcOperand	:instrOperand_t;
+			destOperand	:instrOperand_t;
+
+			// cntOperand:
+			//
+			//	If 0..n, an 8 or 16-bit immediate value used as a count
+			// or other small immediate value for shifts, rotates, INT, RET,
+			// and so on.
+			//
+			// If -1, this signifies that this field is unused.
+			// If -2, this signifies the use of the CL register as a count.
+			// If -3, this signifies the use of the DX register as a ptr.
+
+			cntOperand	:int32;
+
+			// lineNumCnt is the number of line number entries
+			// at the end of this record:
+
+			lineNumCnt	:byte;
+
+
+			// x86 instructions can be up to 15 bytes long
+			// (this may need to be greater for 64-bit code).
+
+			instrCode	:byte[maxInstrSize_c];
+
+			align(4);
+
+
+			// The following is a variable-length array dynamically
+			// allocated with this record is created. The lineNumCnt
+			// field specifies the number of entries.
+
+			lineNumRecs	:lineNumRec_t[1];
+
+		endrecord;
+		
+

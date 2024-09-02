@@ -1,0 +1,1371 @@
+unit parseStaticUnit;
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+	 
+
+?@nodisplay := true;
+?@noalignstack := true;									   
+
+////////////////////////////////////////////////////////////////////////
+//
+// parseTypeDataDcl-
+//
+//	This procedure handles statements like
+//
+//		byte 1,2,3;
+//
+// that begin with a type identifier and are followed by a list of
+// constants that are compatible with the type (the constants are
+// directly emitted at the current offset in the segment specified
+// by the parameter).
+
+//proc( "parseTypeDataDcl" )
+procedure parseTypeDataDcl( theSegment:symNodePtr_t ); @returns( "@c" );
+var
+	elementCnt	:uns32;
+	theData		:attrPtr_t;
+	theType		:symNodePtr_t;
+	lexemeStart	:dword;
+	lexemeEnd	:dword;
+	tokenVal	:dword;
+	tokenClass	:dword;
+	tokenCopy	:token_t;
+
+begin parseTypeDataDcl;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	// If it's one of the type reserved words (e.g., "byte", "int32")
+	// then convert it to an "identifier" so we can process the
+	// current statement as a data definition statement.
+
+	if( ebx = type_tc ) then
+
+		if( eax in tkn_boolean..tkn_thunk && eax <> tkn_enum ) then
+		
+			// We need to build an attribute for this "identifier".
+			
+			mov( false, tokenECX.alloc );
+			mov( true, tokenECX.isID );
+			mov( false, tokenECX.hasAttr );
+			
+			mov( builtinPtrs[ eax*4 - tkn_boolean*4 ], ebx );
+			mov( ebx, tokenECX.symNode ); 
+
+			mov( symEBX.trueName, eax );
+			mov( eax, tokenECX.trueName );
+			mov( symEBX.lcName, eax );
+			mov( eax, tokenECX.lcName );
+			
+			// Convert this reserved word to an identifier.
+			// Note that reserved word type IDs exist at
+			// lex level zero, so they are always global.
+			// Since they are reserved words, they cannot be
+			// redefined locally.
+			
+			mov( tkn_globalID, eax );
+			mov( ID_tc, ebx );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+
+		endif;
+
+	endif;
+
+	// Here's a hack because we need an LL(2) parser
+	// to handle a user-defined type ID (which could
+	// also be a local symbol):
+
+	mov( tokenECX.symNode, edx );
+	if( eax = tkn_globalID ) then
+
+		canAccess( [edx] );
+		if( symEDX.symClass = Type_ct ) then
+
+			mov( eax, tokenVal );
+			mov( ebx, tokenClass );
+			mov( edi, lexemeStart );
+			mov( esi, lexemeEnd );
+
+			// Save the identifier's token value so we can
+			// restore it later, if necessary.
+
+			push( esi );
+			push( edi );
+			mov( ecx, esi );
+			lea( edi, tokenCopy );
+			mov( @size( token_t ), ecx );
+			rep.movsb();
+			pop( edi );
+			pop( esi );
+
+
+			lex( esi );
+			push( eax );
+
+			// Reset the token queue to empty
+			// and put the original symbol back into the queue:
+
+			mov( &tknQ, edi );
+			mov( edi, tknHead );
+			mov( &tknQ[@size(token_t)], tknTail );
+			mov( 1, tknCnt );
+			mov( 0, tknReuse );
+			mov( false, pendingReset );
+			lea( esi, tokenCopy );
+			mov( @size( token_t ), ecx );
+			rep.movsb();
+			mov( lexemeStart, edi );
+			mov( lexemeEnd, esi );
+			mov( &tknQ, ecx );
+			mov( tokenClass, ebx );
+			mov( tokenVal, eax );
+			pop( edx );
+			if( edx = ':' ) then
+
+				// Okay, we've got "globalID:..." Don't process
+				// this statement as a data declaration statement
+				// (return false so the caller will process this ID).
+
+				clc();
+				exit parseTypeDataDcl;
+				
+			endif;
+
+		endif;
+		mov( tkn_globalID, eax );
+
+	endif; 
+
+	if( eax = tkn_globalID || eax = tkn_localID ) then
+
+		mov( tokenECX.symNode, eax );
+		canAccess( [eax] );
+		if( symEAX.symClass = Type_ct ) then
+
+			mov( eax, theType );
+
+			// Okay, process the list of constants following
+			// type type identifier:
+
+			try
+
+				mov( 0, elementCnt );
+				getElement( elementCnt, dword(';') );
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+				stc();
+				exit parseTypeDataDcl;
+
+			endtry;
+			mov( eax, theData );
+
+			// Okay, now we've got to verify that the data elements
+			// we've processed are all compatible with the declared type:
+
+			getBaseIsoType( theType );
+			mov( symEAX.pType, cl );
+			if( cl = Byte_pt ) then
+
+				// BYTE is a special case, 'cause we're gonna allow
+				// strings in the data list.
+
+				mov( theData, ecx );
+				for( mov( 0, edx ); edx < elementCnt; inc( edx )) do
+
+					canAccess( [ecx] );
+					mov( attrECX.symType, ebx );
+					canAccess( [ebx] );
+					if( symEBX.objectSize <> 1 && ebx <> &string_ste ) then
+
+						HLAerror
+						( 
+							"Type mismatch in BYTE declaration list, " nl 
+							"encountered object of type '",
+							symEBX.trueName,
+							'''' nl 
+						);
+						freeAttr( theData );
+						stc();
+						exit parseTypeDataDcl;
+
+					endif;
+					add( @size( attr_t ), ecx );
+
+				endfor;
+
+			elseif( cl = Word_pt ) then
+
+
+				// WORD is a special case, 'cause we're gonna allow
+				// strings in the data list.
+
+				mov( theData, ecx );
+				for( mov( 0, edx ); edx < elementCnt; inc( edx )) do
+
+					canAccess( [ecx] );
+					mov( attrECX.symType, ebx );
+					canAccess( [ebx] );
+					if( symEBX.objectSize > 2 && ebx <> &ustring_ste ) then
+
+						HLAerror
+						( 
+							"Type mismatch in WORD declaration list, " nl 
+							"encountered object of type '",
+							symEBX.trueName,
+							'''' nl 
+						);
+						freeAttr( theData );
+						stc();
+						exit parseTypeDataDcl;
+
+					endif;
+					add( @size( attr_t ), ecx );
+
+				endfor;
+
+			else
+
+				// For all other data types, we have to be able to
+				// coerce the constant to the specified type if it
+				// is legal.
+
+				mov( theData, ecx );
+				for( mov( 0, edx ); edx < elementCnt; inc( edx )) do
+
+					if( !makeCompatible( theType, attrECX ) ) then
+
+						mov( theType, eax );
+						canAccess( symEAX.trueName );
+						mov( attrECX.symType, ecx );
+						canAccess( symECX.trueName );
+						HLAerror
+						( 
+							"Type mismatch in ",
+							symEAX.trueName,
+							" declaration list, " nl 
+							"encountered object of type '",
+							symECX.trueName,
+							'''' nl 
+						);
+						freeAttr( theData );
+						stc();
+						exit parseTypeDataDcl;
+
+					endif;
+					add( @size( attr_t ), ecx );
+
+				endfor;
+
+			endif;
+
+			// Create a segItem for this symbol and link it
+			// into the segment's list:
+
+			safe_malloc( @size( segItem_t ));
+			mov( dataRecord_c, segEAX.segItemType );
+			mov( NULL, segEAX.nextSegItem );	// Last entry, so NULL next ptr.
+			mov( theData, ebx );
+			mov( ebx, segEAX.valList.valPtr );	// Ptr object holding data.
+			mov( elementCnt, ebx );
+			mov( ebx, segEAX.valList.elementCnt );
+			mov( theType, ebx );
+			mov( ebx, segEAX.valList.valType );
+
+			// Add the segItem record to the segment list here.
+			// Note that this cannot be the first entry in the list.
+			// the first entry is always a "firstEntry_c" item, which
+			// we emit when we come across the "static" reserved word.
+			// So we don't have to worry about initializing the list here.
+
+			mov( theSegment, ecx );			// Patch this segItem record
+			canAccess( [ecx] );
+			assert( symECX.segList <> NULL );	// Sanity checks.
+			assert( symECX.endSegList <> NULL );
+
+			mov( symECX.endSegList, ebx );		// into the dataSegment list.
+			mov( eax, symECX.endSegList );		// Point dataSegment at our entry.
+			mov( ebx, segEAX.prevSegItem );		// Set current "prev link"
+			mov( eax, segEBX.nextSegItem );		// Set previous' "next link"
+
+
+			// Processed a type declaration statement, so return true.
+
+			stc();
+
+		else
+
+			// Was not a type ID, so return false.
+
+			clc();
+
+		endif;
+
+	else
+
+		// Didn't process a type declaration statement, so return false.
+
+		clc();
+
+	endif;
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end parseTypeDataDcl;
+/////////////////////////////////////////////////////////////////////////
+//
+// Handle static declarations here.
+//
+//	Handle a STATIC declaration section here.
+// Note that we've already seen the STATIC reserved word.
+//
+// Grammar:
+//
+// staticDcls ::= <optStaticAlign> <staticvars> <optEndStatic>
+//
+// optStaticAlign ::=
+//				<empty string>
+//			|	'(' <constExpr> <optMinExpr> ')'
+//
+// optMinExpr ::=
+//				<empty string>
+//			|	',' <constExpr>
+//
+// staticvars ::=
+//		(
+//				';'
+//			|	<ID> ':' <StaticType> 
+//			|	align '(' <constExpr> ')' ';'
+//			|	<typeID> <constList> ';'
+//		)*
+//
+// StaticType ::=
+//				<typeID> <optionalBounds> <initOrExt>
+//			|	enum '{' <idList> '}' <initOrExt>
+//			|	pointer to <ptrTypeID> <initOrExt>
+//			|	procedure <optionalParms> <staticProcOptions> 
+//			|	forward '(' <fID> ')' ';'
+//			|	record <recStuff> ';'
+//			|	union <recStuff> ';'
+//
+// initOrExt ::=
+//				';' <staticOptions> <optStaticExt> 
+//			|	':=' <constExpr> ';' <optVolatile>
+//
+// optStaticExt ::=
+//				<empty string>
+//			|	@external <optExtStr> ';'
+//
+// optExtStr ::=
+//				<empty string>
+//			|	'(' constExpr ')'  // constExpr must be a string.
+//
+// optVolatile ::=
+//				<empty string>
+//			|	@volatile ';'
+//
+// staticOptions ::=
+//				<empty string>
+//			|	@nostorage ';' <staticOptions>
+//			|	@volatile ';' <staticOptions>
+//
+// staticProcOptions ::=
+//				';' <protoOptions> <staticOptions> <optStaticExt>
+//			|	':=' <constExpr> ';' <optVolatile> <protoOptions>
+//
+// optEndStatic ::=
+//				<empty string>
+//			|	endstatic ';'
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the STATIC reserved word.
+
+//proc( "parseStatic" )
+procedure parseStatic( isPrivate:boolean );
+var
+	staticID	:string;
+	staticlcID	:string;
+	staticHash	:dword;
+	externType	:symNodePtr_t;
+	alignment	:attr_t;
+
+begin parseStatic;
+
+	optStaticAlign( dataSegment );
+
+	// Handle <staticVars> here:
+
+	forever
+
+		mov( NULL, externType );
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next var declaration.
+
+		// Check for a data definition statement;
+
+		continueif( parseTypeDataDcl( dataSegment ));
+		
+
+		// Handle the static identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			// If it's local, it could be a declaration
+			// of a previously external object. Check for that here:
+
+			mov( tokenECX.symNode, ebx );
+			canAccess( [ebx] );
+			if( !symEBX.isExternal ) then
+
+				HLAerror
+				( 
+					"Duplicate symbol definition: ", 
+					tokenECX.trueName, 
+					nl 
+				);
+
+			else
+
+				mov( ebx, externType );
+
+			endif;
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, staticID );
+			mov( tokenECX.lcName, staticlcID );
+			mov( tokenECX.hashValue, staticHash );
+			
+			// Okay, we've got to process a STATIC declaration here.
+			// Begin by initializing the type to nothing.
+			
+			// Grab the ':'
+			
+			matchTkn( esi, ':' );
+			if( @c ) then
+			
+				HLAerror( "Expected a ':', encountered " );
+				dumpQLexeme();
+				resyncOnSemicolon();
+
+			else
+
+				staticDclTypes
+				(
+					staticID,
+					staticlcID,
+					staticHash,
+					externType,
+					&dataSegment,
+					isPrivate,
+					&enterStatic
+				);
+
+			
+			endif;
+
+		elseif( eax = tkn_align ) then
+		
+			matchLParen();
+			if( @nc ) then
+
+				getUnsigned( alignment );
+				if( @nc ) then
+
+					// We need to emit an ALIGN record to
+					// the staticSegment output list. Note
+					// that we are guaranteed that this
+					// is not the first item in the list.
+
+					mov( dataSegment, ebx );
+					safe_malloc( @size( segItem_t ));
+					mov( symEBX.endSegList, ecx );
+					mov( eax, symEBX.endSegList );
+					mov( eax, segECX.nextSegItem );
+					mov( ecx, segEAX.prevSegItem );
+					mov( NULL, segEAX.nextSegItem );
+					mov( alignRecord_c, segEAX.segItemType );
+					xchg( eax, ebx );
+					mov( alignment.dword_vt, eax );
+					mov( eax, ecx );
+					bits.cnt( eax );
+					if( eax <> 1 ) then
+
+						HLAerror
+						(
+							"ALIGN directive in STATIC section only "
+							"allows arguments that are a power of two" nl
+							"(defaulting to 4)" nl
+						);
+						mov( 4, ecx );
+
+					endif;
+					mov( ecx, segEBX.alignedOn.min );
+					mov( ecx, segEBX.alignedOn.max );
+					matchRParen();
+					matchSemicolon();
+
+				endif;
+
+			endif;
+									
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a STATIC section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+
+
+	// Handle the optional endstatic down here:
+
+	if( eax = tkn_endstatic ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+
+
+end parseStatic;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// Handle readonly declarations here.
+//
+//	Handle a READONLY declaration section here.
+// Note that we've already seen the READONLY reserved word.
+//
+// Grammar:
+//
+// roDcls ::= <optROAlign> <ROvars> <optEndReadOnly>
+//
+// optROAlign ::=
+//				<empty string>
+//			|	'(' <constExpr> <optMinExpr> ')'
+//
+// optMinExpr ::=
+//				<empty string>
+//			|	',' <constExpr>
+//
+// ROvars ::=
+//		(
+//				';'
+//			|	<ID> ':' <ROType> 
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+// ROType ::=
+//				<typeID> <optionalBounds> <initOrOpt>
+//			|	enum '{' <idList> '}' <initOrOpt>
+//			|	pointer to <ptrTypeID> <initOrOpt>
+//			|	procedure <optionalParms> <ROProcOptions> 
+//			|	forward '(' <fID> ')' ';'
+//			|	record <recStuff> ';'
+//			|	union <recStuff> ';'
+//
+// initOrOpt ::=
+//				';' <noStoOrExt> 
+//			|	':=' <constExpr> ';'
+//
+// optROExt ::=
+//				<empty string>
+//			|	@external <optExtStr> ';'
+//
+// noStoOrExt ::=
+//				@nostorage ';' <optROext>
+//			|	@external <optExtStr> ';'
+//
+// optExtStr ::=
+//				<empty string>
+//			|	'(' constExpr ')'  // constExpr must be a string.
+//
+// ROProcOptions ::=
+//				';' <protoOptions> <noStoOrExt>
+//			|	':=' <constExpr> ';' <protoOptions>
+//
+// optEndReadOnly ::=
+//				<empty string>
+//			|	endreadonly ';'
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<fID> is an undefined ID, a globally defined ID, or a VAL ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the READONLY reserved word.
+
+//proc( "parseReadOnly" )
+procedure parseReadOnly( isPrivate:boolean );
+var
+	roID		:string;
+	rolcID		:string;
+	roHash		:dword;
+	externType	:symNodePtr_t;
+	roVar		:symNodePtr_t;
+	roType		:symNodePtr_t;
+	roToken		:pointer to token_t;
+	alignment	:attr_t;
+
+begin parseReadOnly;
+
+
+	optStaticAlign( readonlySegment );
+
+	// Okay, process all the items in the readonly section:
+
+	forever
+
+		mov( NULL, externType );
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next var declaration.
+
+		// Check for a data definition statement;
+
+		continueif( parseTypeDataDcl( readonlySegment ));
+		
+		// Handle the readonly identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			// If it's local, it could be a declaration
+			// of a previously external object. Check for that here:
+
+			mov( tokenECX.symNode, ebx );
+			canAccess( [ebx] );
+			if( !symEBX.isExternal ) then
+
+				HLAerror
+				( 
+					"Duplicate symbol definition: ", 
+					tokenECX.trueName, 
+					nl 
+				);
+
+			else
+
+				mov( ebx, externType );
+
+			endif;
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, roID );
+			mov( tokenECX.lcName, rolcID );
+			mov( tokenECX.hashValue, roHash );
+			
+			// Okay, we've got to process a READONLY declaration here.
+			// Begin by initializing the type to nothing.
+			
+			mov( NULL, roType );
+			mov( NULL, roVar );
+			mov( ecx, roToken );
+			
+			// Grab the ':'
+			
+			matchTkn( esi, ':' );
+			if( @c ) then
+			
+				HLAerror( "Expected a ':', encountered " );
+				dumpQLexeme();
+				resyncOnSemicolon();
+
+			else
+				
+				staticDclTypes
+				(
+					roID,
+					rolcID,
+					roHash,
+					externType,
+					&readonlySegment,
+					isPrivate,
+					&enterReadonly
+				);
+
+			
+			endif;
+
+		elseif( eax = tkn_align ) then
+		
+			matchLParen();
+			if( @nc ) then
+
+				getUnsigned( alignment );
+				if( @nc ) then
+
+					// We need to emit an ALIGN record to
+					// the staticSegment output list. Note
+					// that we are guaranteed that this
+					// is not the first item in the list.
+
+					mov( readonlySegment, ebx );
+					safe_malloc( @size( segItem_t ));
+					mov( symEBX.endSegList, ecx );
+					mov( eax, symEBX.endSegList );
+					mov( eax, segECX.nextSegItem );
+					mov( ecx, segEAX.prevSegItem );
+					mov( NULL, segEAX.nextSegItem );
+					mov( alignRecord_c, segEAX.segItemType );
+					xchg( eax, ebx );
+					mov( alignment.dword_vt, eax );
+					mov( eax, ecx );
+					bits.cnt( eax );
+					if( eax <> 1 ) then
+
+						HLAerror
+						(
+							"ALIGN directive in READONLY section only "
+							"allows arguments that are a power of two" nl
+							"(defaulting to 4)" nl
+						);
+						mov( 4, ecx );
+
+					endif;
+					mov( ecx, segEBX.alignedOn.min );
+					mov( ecx, segEBX.alignedOn.max );
+					matchRParen();
+					matchSemicolon();
+
+				endif;
+
+			endif;
+									
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a READONLY section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+
+
+	// Handle the optional endreadonly down here:
+
+	if( eax = tkn_endreadonly ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+
+
+
+end parseReadOnly;
+
+/////////////////////////////////////////////////////////////////////////
+//
+// Handle BSS (storage) declarations here.
+//
+//	Handle a STORAGE declaration section here.
+// Note that we've already seen the STORAGE reserved word.
+//
+// Grammar:
+//
+// bssDcls ::= <optBssAlign> <bssvars> <optEndStorage>
+//
+// optBssAlign ::=
+//				<empty string>
+//			|	'(' <constExpr> <optMinExpr> ')'
+//
+// optMinExpr ::=
+//				<empty string>
+//			|	',' <constExpr>
+//
+// bssvars ::=
+//		(
+//				';'
+//			|	<ID> ':' <BssType> ';' <varOptions> <optionalExternal>
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+// BssType ::=
+//				<typeID> <optionalBounds>
+//			|	enum '{' <idList> '}'
+//			|	pointer to <ptrTypeID>
+//			|	procedure <optionalParms> ';' <protoOptions> 
+//			|	forward '(' <fID> ')' ';'
+//			|	record <recStuff> ';'
+//			|	union <recStuff> ';'
+//
+// optionalExternal ::=
+//				<empty string>
+//			|	@external <optExtStr> ';'
+//
+// optExtStr ::=
+//				<empty string>
+//			|	'(' constExpr ')' ';'  // constExpr must be a string.
+//
+// varOptions ::=
+//				<empty string>
+//			|	@nostorage ';' <varOptions>
+//			|	@volatile ';' <varOptions>
+//
+// optEndStorage ::=
+//				<empty string>
+//			|	endstorage ';'
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the STORAGE reserved word.
+
+//proc( "parseStorage" )
+procedure parseStorage( isPrivate:boolean );
+var
+	bssID		:string;
+	bsslcID		:string;
+	bssHash		:dword;
+	externType	:symNodePtr_t;
+	bssType		:symNodePtr_t;
+	bssToken	:pointer to token_t;
+	dimensions	:dimPtr_t;
+	alignment	:attr_t;
+	constResult	:attr_t; 
+	bsspType	:pType_t;
+
+
+begin parseStorage;
+
+	// We've just seen the "STORAGE" keyword. Check for the optional
+	// alignment. This also emits the segItem_t "firstEntry_c" record.
+
+	optStaticAlign( bssSegment );
+	forever
+
+		mov( NULL, externType );
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next var declaration.
+
+		// Handle the storage identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			// If it's local, it could be a declaration
+			// of a previously external object. Check for that here:
+
+			mov( tokenECX.symNode, ebx );
+			canAccess( [ebx] );
+			if( !symEBX.isExternal ) then
+
+				HLAerror
+				( 
+					"Duplicate symbol definition: ", 
+					tokenECX.trueName, 
+					nl 
+				);
+
+			else
+
+				mov( ebx, externType );
+
+			endif;
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, bssID );
+			mov( tokenECX.lcName, bsslcID );
+			mov( tokenECX.hashValue, bssHash );
+			
+			// Okay, we've got to process a STORAGE declaration here.
+			// Begin by initializing the type to nothing.
+			
+			mov( NULL, bssType );
+			mov( ecx, bssToken );
+			
+			// Grab the ':'
+			
+			matchTkn( esi, ':' );
+			if( @c ) then
+			
+				HLAerror( "Expected a ':', encountered " );
+				dumpQLexeme();
+				stc();
+				
+			else
+			
+				staticDclTypes
+				(
+					bssID,
+					bsslcID,
+					bssHash,
+					externType,
+					&bssSegment,
+					isPrivate,
+					&enterStorage
+				);
+
+				
+			endif;
+			
+		elseif( eax = tkn_align ) then
+		
+			matchLParen();
+			if( @nc ) then
+
+				getUnsigned( alignment );
+				if( @nc ) then
+
+					// We need to emit an ALIGN record to
+					// the bssSegment output list. Note
+					// that we are guaranteed that this
+					// is not the first item in the list.
+
+					mov( bssSegment, ebx );
+					safe_malloc( @size( segItem_t ));
+					mov( symEBX.endSegList, ecx );
+					mov( eax, symEBX.endSegList );
+					mov( eax, segECX.nextSegItem );
+					mov( ecx, segEAX.prevSegItem );
+					mov( NULL, segEAX.nextSegItem );
+					mov( alignRecord_c, segEAX.segItemType );
+					xchg( eax, ebx );
+					mov( alignment.dword_vt, eax );
+					mov( eax, ecx );
+					bits.cnt( eax );
+					if( eax <> 1 ) then
+
+						HLAerror
+						(
+							"ALIGN directive in STORAGE section only "
+							"allows arguments that are a power of two" nl
+							"(defaulting to 4)" nl
+						);
+						mov( 4, ecx );
+
+					endif;
+					mov( ecx, segEBX.alignedOn.min );
+					mov( ecx, segEBX.alignedOn.max );
+					matchRParen();
+					matchSemicolon();
+
+				endif;
+
+			endif;
+									
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a STORAGE section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+
+	// Handle the optional endstorage down here:
+
+	if( eax = tkn_endstorage ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+
+end parseStorage;
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// Handle segment declarations here.
+//
+// Syntax for a segment declaration statement:
+//
+//	segment <segID>;
+//		<segmentVars>
+//
+//	Segment declarations are identical to what you'd find in a STATIC
+//	section. See the comments for the parseStatic procedure for more
+//	details.
+
+//proc( "parseSegment" )
+procedure parseSegment( isPrivate:boolean );
+var
+	segmentName	:string;
+	segmentID	:string;
+	segmentlcID	:string;
+	segmentHash	:dword;
+	externType	:symNodePtr_t;
+	alignment	:attr_t;
+begin parseSegment;
+
+	// First, get the identifier that follows the "SEGMENT"
+	// keyword:
+
+	lex( esi );
+	if( ebx <> ID_tc ) then
+
+		HLAerror
+		( 
+			"Expected identifier after SEGMENT reserved word, "
+			"encountered: "
+		);
+		dumpLexeme();
+		HLAerror2( nl );
+		exit parseSegment;
+		
+	endif;
+	if( eax = tkn_localID ) then
+	
+		HLAerror
+		(
+			"Duplicate local symbol appears after SEGMENT keyword" nl
+		);
+		exit parseSegment;
+		
+	endif;
+	if( eax = tkn_undefID ) then
+	
+		// If the symbol is undefined, make it a global (lex level 0)
+		// symbol:
+		
+		if( !tokenECX.alloc ) then
+
+			// If the identifier is not allocated on the heap,
+			// then make a copy on the heap, as required by
+			// enterSegment:
+
+			str.a_cpy( tokenECX.trueName );
+			mov( eax, tokenECX.trueName );
+			str.a_cpy( tokenECX.lcName );
+			mov( eax, tokenECX.lcName );
+			mov( true, tokenECX.alloc );	// Not really needed, but...
+
+		endif;
+		str.a_cpy( tokenECX.trueName );		// Create an external ID.
+		mov( eax, segmentName );
+		mov( eax, ebx );
+
+		enterSegmentID
+		( 
+			tokenECX.trueName, 
+			tokenECX.lcName, 
+			tokenECX.hashValue, 
+			ebx, 
+			true 
+		);
+
+		// Add this guy to the user segments list:
+			 
+		mov( eax, segmentSTE );
+		malloc( @size( userSegmentList_t ) );
+		mov( userSegmentsList, ebx );
+		mov( ebx, userSegEAX.next );
+		mov( eax, userSegmentsList );
+		mov( segmentSTE, ebx );
+		mov( ebx, userSegEAX.theSegment );
+		mov( NULL, userSegEAX.segList );
+		mov( NULL, userSegEAX.segRaw );
+		mov( 0, userSegEAX.segSize );
+		mov( NULL, userSegEAX.segReloc );
+		mov( 0, userSegEAX.segRelocSize );
+
+
+	else // It must be a global ID.
+
+		// Verify that the symbol is a SEGMENT declaration
+
+		mov( tokenECX.trueName, eax );
+		mov( eax, segmentName );
+		mov( tokenECX.symNode, eax );
+		if( symEAX.symClass <> Segment_ct || symEAX.pType <> Segment_pt ) then
+
+			HLAerror
+			( 
+				"Symbol is already defined at global level, but not as segment"
+				nl
+			);
+			exit parseSegment;
+
+		endif;
+		mov( eax, segmentSTE );
+
+	endif;
+
+
+
+	// Allow an optional alignment value (or values) after the
+	// segment declaration's name:
+	optStaticAlign( segmentSTE );
+
+	// SEGMENT declarations have a semicolon:
+
+	getSemicolon();
+
+	// Handle <segmentVars> here:
+
+	forever
+
+		mov( NULL, externType );
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next var declaration.
+
+		// Check for a data definition statement;
+
+		continueif( parseTypeDataDcl( segmentSTE ));
+
+
+		// Handle the segment identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			// If it's local, it could be a declaration
+			// of a previously external object. Check for that here:
+
+			mov( tokenECX.symNode, ebx );
+			canAccess( [ebx] );
+			if( !symEBX.isExternal ) then
+
+				HLAerror
+				( 
+					"Duplicate symbol definition: ", 
+					tokenECX.trueName, 
+					nl 
+				);
+
+			else
+
+				mov( ebx, externType );
+
+			endif;
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, segmentID );
+			mov( tokenECX.lcName, segmentlcID );
+			mov( tokenECX.hashValue, segmentHash );
+			
+			// Okay, we've got to process a SEGMENT declaration here.
+			// Begin by initializing the type to nothing.
+			
+			// Grab the ':'
+			
+			matchTkn( esi, ':' );
+			if( @c ) then
+			
+				HLAerror( "Expected a ':', encountered " );
+				dumpQLexeme();
+				resyncOnSemicolon();
+
+			else
+
+				staticDclTypes
+				(
+					segmentID,
+					segmentlcID,
+					segmentHash,
+					externType,
+					segmentSTE,
+					isPrivate,
+					&enterSegment
+				);
+			
+			endif;
+
+		elseif( eax = tkn_align ) then
+		
+			matchLParen();
+			if( @nc ) then
+
+				getUnsigned( alignment );
+				if( @nc ) then
+
+					// We need to emit an ALIGN record to
+					// the staticSegment output list. Note
+					// that we are guaranteed that this
+					// is not the first item in the list.
+
+					mov( segmentSTE, ebx );
+					safe_malloc( @size( segItem_t ));
+					mov( symEBX.endSegList, ecx );
+					mov( eax, symEBX.endSegList );
+					mov( eax, segECX.nextSegItem );
+					mov( ecx, segEAX.prevSegItem );
+					mov( NULL, segEAX.nextSegItem );
+					mov( alignRecord_c, segEAX.segItemType );
+					xchg( eax, ebx );
+					mov( alignment.dword_vt, eax );
+					mov( eax, ecx );
+					bits.cnt( eax );
+					if( eax <> 1 ) then
+
+						HLAerror
+						(
+							"ALIGN directive in SEGMENT section only "
+							"allows arguments that are a power of two" nl
+							"(defaulting to 4)" nl
+						);
+						mov( 4, ecx );
+
+					endif;
+					mov( ecx, segEBX.alignedOn.min );
+					mov( ecx, segEBX.alignedOn.max );
+					matchRParen();
+					matchSemicolon();
+
+				endif;
+
+			endif;
+									
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a SEGMENT section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+
+
+	// Handle the optional "end <segmentID>;" down here:
+
+	if( eax = tkn_end ) then
+	
+		lex( esi );
+		if( ebx <> ID_tc || str.ne( segmentName, tokenECX.trueName )) then
+
+			HLAerror
+			(
+				"Error, expected 'end ", segmentName, ";', encountered: 'end "
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			resyncOnSemicolon();
+
+		else
+
+			getSemicolon();
+
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+
+end parseSegment;
+
+
+
+end parseStaticUnit;

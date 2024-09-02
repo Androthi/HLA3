@@ -1,0 +1,1011 @@
+unit staticOptUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+// qsortSegs-
+//
+//	Sorts the segment list in descending order based on the
+// alignment size of each segment and then (when the alignments
+// are the same) in ascending order based on the size (mod 32) of
+// each segment.
+//
+// This is a quicksort version.
+
+//proc( "qsortSegs" );
+procedure qsortSegs( segs:segItemListPtr_t; Low:int32; High: int32 );
+const
+	segsECX	:text := "(type segItemList_t [ecx])";
+    
+begin qsortSegs;
+
+    push( eax );
+    push( ebx );
+    push( ecx );
+    push( edx );
+    push( esi );
+    push( edi );
+
+    mov( segs, ebx );      // Load BASE address of segs into EBX
+
+    mov( High, esi );
+    mov( Low, edi);
+  
+	// If there are three or fewer elements, then do the sort
+	// manually to avoid all the overhead of the qsort algorithm.
+	 
+    mov( esi, eax );
+    sub( edi, eax );
+    if( (type int32 eax) < 3 ) then
+
+		cmp( eax, 1 );
+		jl exitQsort;
+		jg sort3;
+
+			// Sort two elements here
+
+			mov( [ebx+edi*4], ecx );
+			mov( segsECX.alignment, eax );
+			mov( [ebx+esi*4], ecx );
+			if( eax < segsECX.alignment ) then
+
+	            mov( [ebx+edi*4], eax );
+	            mov( [ebx+esi*4], ecx );
+	            mov( eax, [ebx+esi*4] );
+	            mov( ecx, [ebx+edi*4] );
+
+			endif;
+			jmp exitQsort;
+			
+
+		// Sort three elements here:
+
+		sort3:
+			mov( [ebx+edi*4], ecx );
+			mov( segsECX.alignment, eax );
+			mov( [ebx+esi*4], ecx );
+			if( eax < segsECX.alignment ) then
+
+	            mov( [ebx+edi*4], eax );
+	            mov( [ebx+esi*4], ecx );
+	            mov( eax, [ebx+esi*4] );
+	            mov( ecx, [ebx+edi*4] );
+
+			endif;
+
+			mov( [ebx+esi*4-4], ecx );
+			mov( segsECX.alignment, eax );
+			mov( [ebx+esi*4], ecx );
+			if( eax < segsECX.alignment ) then
+
+	            mov( [ebx+esi*4-4], eax );
+	            mov( [ebx+esi*4], ecx );
+	            mov( eax, [ebx+esi*4] );
+	            mov( ecx, [ebx+esi*4-4] );
+
+			endif;
+
+			mov( [ebx+edi*4], ecx );
+			mov( segsECX.alignment, eax );
+			mov( [ebx+edi*4+4], ecx );
+			if( eax < segsECX.alignment ) then
+
+	            mov( [ebx+edi*4], eax );
+	            mov( [ebx+edi*4+4], ecx );
+	            mov( eax, [ebx+edi*4+4] );
+	            mov( ecx, [ebx+edi*4] );
+
+			endif;
+    
+    else   
+    
+	    // Compute a pivotal element by selecting the
+	    // physical middle element of the array.
+	    
+	    mov( edi, edx );
+	    add( esi, edx );
+	    shr( 1, edx );
+
+	    // Repeat until the EDI and ESI indicies cross one
+	    // another (EDI works from the start towards the end
+	    // of the array, ESI works from the end towards the
+	    // start of the array).
+	    
+	    repeat
+	    
+	        // Scan from the start of the array forward
+	        // looking for the first element less than
+	        // the middle element). Note that we are sorting
+			// in descending order on the alignment field.
+	        
+			dec( edi );			// To balance inc, below, on first iteration.
+			WhileMiddleLTLower:
+				inc( edi );
+
+				// repeat while middle.alignment < lower.alignment:
+
+				mov( [ebx+edx*4], ecx );
+				mov( segsECX.alignment, eax );
+				mov( [ebx+edi*4], ecx );
+				cmp( eax, segsECX.alignment );
+				jb WhileMiddleLTLower;
+
+			WMLTLdone:
+
+	        
+	        // Scan from the end of the array backwards looking
+	        // for the first element that is less than or equal
+	        // to the middle element.
+			
+			inc( esi );			// To balance dec, below, on first iteration.
+			WhileMiddleGTUpper:
+				dec( esi );
+
+				// repeat while middle.alignment > upper.alignment:
+
+				mov( [ebx+edx*4], ecx );
+				mov( segsECX.alignment, eax );
+				mov( [ebx+esi*4], ecx );
+				cmp( eax, segsECX.alignment );
+				ja WhileMiddleGTUpper;
+
+			WMGTUdone:
+	        
+	        // If we've stopped before the two pointers have
+	        // passed over one another, then we've got two
+	        // elements that are out of order with respect
+	        // to the middle element.  So swap these two elements.
+	                    
+	        if( (type int32 edi) <= esi ) then
+	        
+	            mov( [ebx+edi*4], eax );
+	            mov( [ebx+esi*4], ecx );
+	            mov( eax, [ebx+esi*4] );
+	            mov( ecx, [ebx+edi*4] );
+	            inc( edi );
+	            dec( esi );
+	            
+	        endif;
+	        
+	    until( (type int32 edi) > esi );
+	    
+	    // We have just placed all elements in the array in
+	    // their correct positions with respect to the middle
+	    // element of the array.  So all elements at indicies
+	    // greater than the middle element are also numerically
+	    // greater than this element.  Likewise, elements at
+	    // indicies less than the middle (pivotal) element are
+	    // now less than that element.  Unfortunately, the
+	    // two halves of the array on either side of the pivotal
+	    // element are not yet sorted.  Call quicksort recursively
+	    // to sort these two halves if they have more than one
+	    // element in them (if they have zero or one elements, then
+	    // they are already sorted).
+	    
+	    if( Low < (type int32 esi) ) then
+	    
+	        qsortSegs( ebx, Low, esi );
+	        
+	    endif;
+	    if( (type int32 edi) < High ) then
+	    
+	        qsortSegs( ebx, edi, High );
+	        
+	    endif;
+
+	endif;
+
+exitQsort:    
+    pop( edi );
+    pop( esi );
+    pop( edx );
+    pop( ecx );
+    pop( ebx );
+    pop( eax );
+
+end qsortSegs;
+
+
+
+
+
+//proc( "setOffsets" );
+procedure setOffsets
+( 
+	src:segItemListPtr_t in esi;
+	LocCntr:dword in edx 
+);
+const
+	silEBX	:text := "(type segItemList_t [ebx])";
+	siESI	:text := "(type segItem_t [esi])";
+
+begin setOffsets;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( esi );
+
+	// Fill in the offsets for all of the variables in this declaration section.
+	// Begin by computing the amount of padding we're going to need.
+	//
+	//	The algorithm:
+	//
+	//		1.	The alignment is a power of two (always), so alignment-1
+	//			creates a bit mask to compute (n mod alignment).
+	//		2.  Adding (alignment-1) to the current location counter value
+	//			will cause it to cross over the next alignment boundary if
+	//			the current location counter is not equal to the alignment.
+	//		3.	ANDing the location counter with not (alignment-1) rounds it 
+	//			back down to the nearest (alignment) boundary that is greater 
+	//			than or equal to the location counter value.
+
+	mov( [esi], ebx );
+	mov( silEBX.alignment, eax );	// This is always a power of two.
+	dec( eax );						// All 1s in the L.O. bits
+	add( eax, edx );				// Round up, if necessary
+	not( eax );
+	and( eax, edx );				// Round it back down.
+
+	// EDX now contains the starting location counter value to add to
+	// the offsets of all the items in the segItemList:
+
+	mov( silEBX.firstItem, esi );
+	mov( silEBX.itemCount, ecx );
+	repeat
+
+		mov( siESI.segItemType, eax );
+		add( edx, siESI.offset );
+		if( eax = symbolRecord_c ) then
+
+			mov( siESI.symPtr, eax );
+
+			// Do not adjust the offset on external symbols:
+
+			if( !symEAX.isExternal || symEAX.isPublic ) then
+
+				add( edx, symEAX.offset );
+
+			endif;
+			 
+		endif;
+		mov( siESI.nextSegItem, esi );
+		dec( ecx );
+		
+	until( @z );
+	add( silEBX.size, edx );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end setOffsets;
+
+
+//////////////////////////////////////////////////////////////////
+//
+// buildStaticList
+//
+// This procedure handles optimizations that
+// are independent of the actual machine
+// code generation (e.g., traditional compiler
+// optimizations).
+//
+// This module also handles variable placement
+// in the static sections.
+//
+// This procedure returns a pointer to the list it
+// generates in EAX and it returns the number of entries
+// in the list in EDX.
+
+
+//proc( "buildStaticList" );
+procedure buildStaticList( theSegment:symNodePtr_t; segNumber:uns32 );
+var
+	elementCnt		:dword;
+	wastedSpace		:dword;
+	bestSection		:dword;
+	segItems		:segItemListPtr_t;
+	segPtrs			:segItemArrayPtr_t;
+	altSegPtrArray	:pointer to segItemListPtr_t;
+
+	// AllocateList-
+	//
+	//	Traverses a segment list and divides it up into "runs" with
+	// each run corresponding to a sequence of declarations in a
+	// single declaration section (e.g., a single STATIC section).
+	//
+	// Allocates storage for a segItemArray_t object and returns a
+	// pointer to four bytes into that structure (that is, it returns
+	// a pointer to the first theArray element in the segItemArray_t
+	// record). It is the caller's responsibility to subtract four
+	// from this value to obtain the address of the actual segItemArray_t
+	// structure.
+	//
+	//	This code also computes the offsets into this run for each of
+	// the variables in this run. The computed offsets include adjustments
+	// for any align values in effect. Offsets begin at zero for each
+	// run (final offsets for the entire segment will be computed later).
+	 
+	procedure allocateList
+	( 
+		segItems	:segItemPtr_t in ecx;
+		base		:dword in ebx 
+	);
+	const
+		segItemECX		:text := "(type segItem_t [ecx])";
+		segItemListEAX	:text := "(type segItemList_t [eax])"; 
+	var
+		itemCnt		:uns32;		// # of items in a run
+		alignMin	:dword;		// Max alignment for all objs in the run
+		alignMax	:dword;		// Min alignment for all objs in the run
+		tempMin		:dword;		// Min alignment for current obj
+		tempMax		:dword;		// Max alignment for current obj
+		objSize		:dword;		// Size of current object.
+		isNoStorage	:boolean;	// True if var has @nostorage attribute.
+
+	begin allocateList;
+
+		push( edx );
+		push( esi );
+		push( edi );
+		assert
+		( 
+				ecx = NULL 
+			||	segItemECX.segItemType = firstEntry_c 
+		);
+
+		// Search for the end of the current "run" of items in the
+		// seg list. A "run" ends with either the end of the list (a NULL)
+		// or it ends with the start of the next run (which begins with
+		// a firstEntry_c record).
+
+		if( ecx <> NULL ) then
+
+			push( ecx );	// Save for later.
+
+			// Okay, we've got at least one more item in the list,
+			// so bump up the element counter by one.
+
+			inc( ebx::elementCnt );
+			
+			// Count the number of items in this run:
+
+			mov( 0, itemCnt );
+
+			// alignMin/alignMax are used to track the last alignment command.
+			// alignMin/Max are set according to the alignment values for
+			// the entire declaration section (a firstEntry_c record) and
+			// apply throughout. Unaligned value is 1 (for byte alignment).
+			// tempMin/Max are used to track alignment records (alignRecord_c)
+			// and they contain a non-zero value if the last entry was an
+			// alignRecord_c entry. If this is the case, the current item
+			// should use the tempMin/Max values rather than the alignMin/Max
+			// values. tempMin/Max must be set back to zero after usage, so
+			// that the follow declarations don't use their values.
+			//
+			// Currently, tempMin and tempMax are always the same value.
+			// They are treated as separate values here to allow an extension
+			// of the "align" directive in the future.
+
+			mov( 1, eax );			// Default is byte-aligned for the section.
+			mov( eax, alignMin );
+			mov( eax, alignMax );
+
+			mov( 0, eax );			// We don't start with an ALIGN record!
+			mov( eax, tempMin );
+			mov( eax, tempMax );
+
+			// Compute the maximum align value in ESI:
+
+			xor( esi, esi );
+
+			// Compute the section's size in EDI (this is also the location
+			// counter we use to assign offsets to objects in this section).
+
+			xor( edi, edi );
+
+			// Skip over the current run of items.
+
+			repeat
+
+				// The first record in a section is (by definition) a
+				// firstEntry_c record. This record contains the
+				// alignMin/alignMax values to use for the entire section:
+
+				if( segItemECX.segItemType = firstEntry_c ) then
+
+					mov( segItemECX.alignedOn.min, eax );
+					mov( eax, alignMin );
+					mov( segItemECX.alignedOn.max, eax );
+					mov( eax, alignMax );
+					if( esi <= eax ) then
+
+						mov( eax, esi );
+
+					endif;
+
+
+				// If we encounter a alignRecord_c section, then set the
+				// tempMin/tempMax values to force the alignment
+				// of the next declaration in the section.
+				//
+				// These records correspond to an "align(n)" directive
+				// in the source code.
+
+				elseif(	segItemECX.segItemType = alignRecord_c ) then
+
+					mov( segItemECX.alignedOn.min, eax );
+					mov( eax, tempMin );
+					mov( segItemECX.alignedOn.max, eax );
+					mov( eax, tempMax );
+					if( esi <= eax ) then
+
+						mov( eax, esi );
+
+					endif;
+
+				elseif(	segItemECX.segItemType = dataRecord_c ) then
+
+					// The compiler emits a dataRecord_c record whenever
+					// it encounters data emission directives in a static
+					// data declaration section w/o an attached label, e.g.,
+					//
+					//		byte 1,2,3;
+					//
+					// Compute the length of this run of data items. Note
+					// that if we have an array of objects, we use the
+					// size of an array element as the native object size.
+
+					mov( segItemECX.valList.valType, eax );
+					if( symEAX.pType = Array_pt ) then
+
+						getArrayBaseType( eax );
+						
+					endif;
+					mov( symEAX.objectSize, eax );
+					mov( eax, objSize );
+
+					// Compute a native alignment for this data
+					// type (because record types can be
+					// quite large, we'll limit ourselves to
+					// a maximum of 32 bytes for the object's
+					// alignment; 32 bytes was chosen because
+					// this is the largest native data type
+					// that HLA supports [xcset]). Native alignment
+					// values are computed by rounding the object's
+					// size up to the next power of two that is
+					// greater than or equal to the object's actual
+					// size.
+
+					if( eax >= 17 ) then
+
+						mov( 32, eax );
+
+					elseif( eax >= 9 ) then
+
+						mov( 16, eax );
+
+					elseif( eax >=5 ) then
+
+						mov( 8, eax );
+
+					elseif( eax >= 3 ) then
+
+						mov( 4, eax );
+
+					// else if eax == 2, then eax = 2
+					// else if eax == 1, then eax = 1
+					// We'll assume zero is not possible.
+
+					endif;
+
+						
+
+					if( tempMax <> 0 ) then
+
+						// There is a temporary align value.
+						// Use it to create the starting offset
+						// for this object.
+
+						if( eax > tempMax ) then
+
+							mov( tempMax, eax );
+
+						elseif( eax < tempMin ) then
+
+							mov( tempMin, eax );
+
+						endif;
+						
+
+					else // use alignMin/alignMax
+
+						if( eax > alignMax ) then
+
+							mov( alignMax, eax );
+
+						elseif( eax < alignMin ) then
+
+							mov( alignMin, eax );
+
+						endif;
+
+					endif;
+
+					// EAX is now the next highest power of two greater
+					// than or equal to the minimum alignment (if EAX
+					// is less than this), the maximum alignment (if
+					// EAX is greater than this), or EAX's value (if
+					// EAX is between these two values). The important
+					// thing to note is that EAX's value is a power
+					// of two at this point.
+					//
+					// The following code adjusts our location counter
+					// (EDI) so that it sits on the next appropriate
+					// alignment value for the variable we're about to
+					// assign an offset.
+
+					dec( eax );				// 2^n - 1 is all ones.
+					add( eax, edi );		// Round up to next 2^n value.
+					not( eax );
+					and( eax, edi );
+
+					// EDI now contains the starting offset of our object.
+					// Let's save that away.
+
+					mov( edi, segItemECX.offset );
+
+					// Okay, compute the total size of the object (as it's
+					// probably an array of objects) and bump up our global
+					// offset in EDI by this amount:
+
+					mov( objSize, eax );
+					intmul( segItemECX.valList.elementCnt, eax );
+					add( eax, edi );
+
+					// Clear the temp alignment values because we've
+					// used them already.
+
+					mov( 0, tempMin );
+					mov( 0, tempMax );
+
+
+
+				elseif( segItemECX.segItemType = symbolRecord_c ) then
+
+					// Compute the length of this data object.
+					// Again, use the element size as the "native"
+					// object size if this is an array type.
+
+					mov( segItemECX.symPtr, eax );
+
+					// Only assign offsets to non-external objects:
+
+					if( !symEAX.isExternal || symEAX.isPublic ) then
+
+						// Save the nostorage flag for later use.
+
+						mov( symEAX.isNoStorage, dl );
+						mov( symEAX.objectSize, objSize );
+						if( symEAX.pType = Array_pt ) then
+
+							getArrayBaseType( eax );
+							
+						endif;
+						mov( symEAX.objectSize, eax );
+
+						// Compute a native alignment for this data
+						// type (because record/array types can be
+						// quite large, we'll limit ourselves to
+						// a maximum of 32 bytes for the object's
+						// alignment):
+
+						if( eax >= 17 ) then
+
+							mov( 32, eax );
+
+						elseif( eax >= 9 ) then
+
+							mov( 16, eax );
+
+						elseif( eax >=5 ) then
+
+							mov( 8, eax );
+
+						elseif( eax >= 3 ) then
+
+							mov( 4, eax );
+
+						// else if eax == 2, then eax = 2
+						// else if eax == 1, then eax = 1
+						// We'll assume zero is not possible.
+
+						endif;
+
+						// Align this object's offset, as appropriate.
+						// Begin by getting the min/max alignment
+						// values to use for this variable.	
+
+						if( tempMax <> 0 ) then
+
+							// There is a temporary align value.
+							// Use it to create the starting offset
+							// for this object.
+
+							if( eax > tempMax ) then
+
+								mov( tempMax, eax );
+
+							elseif( eax < tempMin ) then
+
+								mov( tempMin, eax );
+
+							endif;
+							
+
+						else // use alignMin/alignMax
+
+							if( eax > alignMax ) then
+
+								mov( alignMax, eax );
+
+							elseif( eax < alignMin ) then
+
+								mov( alignMin, eax );
+
+							endif;
+
+						endif;
+
+						// EAX is now the next highest power of two greater
+						// than or equal to the minimum alignment (if EAX
+						// is less than this), the maximum alignment (if
+						// EAX is greater than this), or EAX's value (if
+						// EAX is between these two values). The important
+						// thing to note is that EAX's value is a power
+						// of two at this point.
+						//
+						// The following code adjusts our location counter
+						// (EDI) so that it sits on the next appropriate
+						// alignment value for the variable we're about to
+						// assign an offset.
+
+						dec( eax );				// 2^n - 1 is all ones.
+						add( eax, edi );		// Round up to next 2^n value.
+						not( eax );
+						and( eax, edi );
+
+						// EDI now contains the starting offset of our object.
+						// Let's save that away.
+
+						mov( edi, segItemECX.offset );
+						mov( segItemECX.symPtr, eax );
+						mov( edi, symEAX.offset );
+
+						// Let's copy the current section number to the
+						// symbol table entry, we'll need that later on
+						// when generating COFF files:
+
+						mov( (type word ebx::segNumber), symEAX.sectionNum ); 
+
+						// Okay, add the symbol's size to EDI to
+						// properly update our location counter (unless,
+						// of course, the @nostorage option was specified).
+
+						if( !dl ) then
+
+							add( objSize, edi );
+
+							// We're done with tempMin/Max, so reset them
+							// in case we were using their values (unless,
+
+							mov( 0, tempMin );
+							mov( 0, tempMax );
+
+						else
+
+							// The next declaration must use the offset
+							// of this current @nostorage variable. We
+							// can do this by setting the tempMin/Max
+							// values to one. Of course, if the next
+							// record is an ALIGN record, all bets are
+							// off (but presumably, the person knows what
+							// they are doing if they stick an ALIGN
+							// directive after a @nostorage variable).
+
+							mov( 1, tempMin );
+							mov( 1, tempMax );
+
+						endif;
+
+
+
+					endif;
+
+				endif;
+				mov( segItemECX.nextSegItem, ecx );
+				inc( itemCnt );
+
+			// Repeat the loop until we reach the start of the
+			// next run or we hit the end of the list:
+
+			until
+			(
+					ecx = NULL							  // End of list 
+				||	segItemECX.segItemType = firstEntry_c // Start of next list 
+			);
+
+			// Recursively call allocateList to process the remaining
+			// runs in the segment's list. On return, EAX will be
+			// pointing at the end of the record where we need to store 
+			// the current run's information.
+
+			allocateList( ecx, ebx );
+
+			// Move EAX to the beginning of the record:
+
+			sub( @size( segItemList_t ), eax );
+
+			// Store away the information we've computed for this record:
+
+			mov( itemCnt, (type segItemList_t [eax]).itemCount );
+			pop( segItemListEAX.firstItem );	// ECX value pushed earlier
+			mov( esi, segItemListEAX.alignment );
+			mov( edi, segItemListEAX.size );
+
+		// The following gets executed after we've processed all the runs
+		// in the current segment (ECX/SegItems is NULL). In this case
+		// element count tells us how many records we've processed and
+		// we need to allocate that many records before returning.
+
+		else
+
+			if( ebx::elementCnt <> 0 ) then
+
+				intmul( @size( segItemList_t ), ebx::elementCnt, edx );
+				malloc( edx );
+
+				// Point return value (eax) at the end of the list:
+
+				add( edx, eax );
+
+			else
+
+				// The list was empty! No need to allocate any storage.
+
+				mov( NULL, eax );
+
+			endif;
+
+		endif;
+		pop( edi );
+		pop( esi );
+		pop( edx );
+
+	end allocateList;
+
+begin buildStaticList;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	push( esi );
+	push( edi );
+
+	// elementCnt is used by allocateList to determine how
+	// many declarations there are in the current list. We
+	// must initialize it to zero. allocateList increments
+	// it for each item it processes so allocateList can
+	// determine how much space to allocate:
+
+	mov( 0, elementCnt );
+
+	// Count the items in this segment, allocate storage,
+	// and compute the offsets for each declaration section
+	// in the segment.  On return, EAX will point at the
+	// first record in the segment list.
+
+	mov( theSegment, eax );
+	allocateList( symEAX.segList, ebp );
+	mov( eax, segItems );
+
+	// Build an array of pointers so we can sort the list more efficiently:
+
+	mov( NULL, segPtrs );	// In case the list is empty.
+	mov( elementCnt, edx );
+
+	intmul( @size( segItemListPtr_t ), edx, ecx );
+	xor( eax, eax );
+	if( ecx <> 0 ) then
+
+		malloc( ecx );
+
+	endif;
+	mov( eax, altSegPtrArray );	// If ECX = 0 
+	add( @offset( segItemArray_t.theArray), ecx );
+	malloc( ecx );
+	mov( eax, segPtrs );
+	mov( edx, (type segItemArray_t [eax]).count );
+	mov( 0, (type segItemArray_t [eax]).size );		// Initialize segment size
+
+	if( edx <> 0 ) then
+
+		// Initialize the count and elementZero fields:
+
+		mov( (type segItemArray_t [eax]).theArray[0], ebx );
+		mov( ebx, (type segItemArray_t [eax]).elementZero );
+
+		// Initialize the array of pointers:
+
+		mov( altSegPtrArray, eax );
+		mov( segItems, ebx );
+		for( xor( ecx, ecx ); ecx<edx; inc(ecx) ) do
+
+			// Store away a pointer to the ECXth element of this array:
+
+			mov( ebx, [eax+ecx*4] );
+			add( @size( segItemList_t ), ebx );
+
+		endfor;
+
+		// If optStaticPlacement is active, then rearrange the static
+		// declaration sections to minimize the amount of wasted space
+		// (padding bytes) between the sections:
+
+		if( optStaticPlacement ) then
+
+			// Sort the array of pointers:
+
+			dec( elementCnt );
+			qsortSegs( eax, 0, elementCnt );
+			inc( elementCnt );
+
+			// Arrange the segments to minimize gaps between them:
+
+			mov( segPtrs, edx );
+			lea( edi, (type segItemArray_t [edx]).theArray );
+			mov( eax, esi );
+			
+			// Copy the first element straight across in order to kick 
+			// things off.
+
+			xor( edx, edx );		// The global location counter
+			setOffsets( esi, edx );
+			mov( [esi], eax );
+			mov( eax, [edi] );
+			mov( NULL, (type dword [esi]) );	// Mark this guy as used.
+
+			// Place the remaining segments as best we can:
+
+			forever
+
+				// Find a segment that we can insert into the destination
+				// array based on the alignment requirements (to minimize
+				// the padding needed):
+
+				mov( altSegPtrArray, esi );
+				xor( ecx, ecx );
+				while( ecx < elementCnt && (type dword [esi+ecx*4]) = NULL ) do
+
+					inc( ecx );
+
+				endwhile;
+				breakif( ecx >= elementCnt );
+
+				// Okay, we've found a non-null entry. Let's compute the amount
+				// of wasted space between the [edi] entry and this one. 
+				// We will use this as the default "waste" space.
+
+				push( esi );
+				mov( [esi+ecx*4], esi );
+				mov( ecx, bestSection );
+
+				// Get the alignment of the current entry and compute the number
+				// of padding bytes between the last entry (location counter in
+				// EDX) and the start of the current entry.
+
+				mov( (type segItemList_t [esi]).alignment, eax );
+				dec( eax );
+				lea( esi, [eax+edx] );
+				not( eax );
+				and( esi, eax );
+				sub( edx, eax );		// Compute "wasted" space.
+				mov( eax, wastedSpace );
+				pop( esi );
+				if( eax <> 0 ) then
+
+					// If we didn't get an exact fit, then try
+					// search for a declaration section that has less
+					// wasted space than the current item
+
+					while( ecx < elementCnt ) do
+
+						if( (type dword [esi+ecx*4]) <> NULL ) then
+
+							// See if this declaration section would
+							// waste less space than the current best
+							// section.
+
+							push( esi );
+							mov( [esi+ecx*4], esi );
+							mov( (type segItemList_t [esi]).alignment, eax );
+							dec( eax );
+							lea( esi, [eax+edx] );
+							not( eax );
+							and( esi, eax );
+							pop( esi );
+							sub( edx, eax );
+							if( eax < wastedSpace ) then
+
+								mov( eax, wastedSpace );
+								mov( ecx, bestSection );
+
+							endif;
+
+						endif;
+						inc( ecx );
+
+					endwhile;
+
+
+				endif;
+				add( 4, edi );
+				mov( altSegPtrArray, esi );
+				mov( bestSection, ecx );
+				mov( [esi+ecx*4], eax );
+				mov( NULL, (type dword [esi+ecx*4]) );	// Mark this guy as used.
+				mov( eax, [edi] );
+				setOffsets( edi, edx );
+				
+			endfor;
+
+		else
+
+			// If we're not optimizing the placement of the sections,
+			// we've still got to assign offsets to all the variables.
+
+			mov( segPtrs, edx );
+			lea( edi, (type segItemArray_t [edx]).theArray );
+			mov( altSegPtrArray, esi );
+			xor( edx, edx );
+			for( mov( 0, ecx ); ecx < elementCnt; inc( ecx )) do
+
+				mov( [esi], eax );
+				mov( eax, [edi] );
+				push( esi );
+				setOffsets( edi, edx );
+				pop( esi );
+				add( @size( segItemListPtr_t ), edi );
+				add( @size( segItemListPtr_t ), esi );
+
+			endfor;
+
+
+		endif;
+		
+		// Free up the storage the alternate segment array is using.
+
+		free( altSegPtrArray );
+
+	endif;
+
+	// Return a pointer to the segment list:
+
+	mov( segPtrs, eax );
+	
+	// Set the total size for the segment:
+
+	mov( edx, (type segItemArray_t [eax]).size );
+		
+	pop( edi );
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+
+end buildStaticList;
+
+end staticOptUnit;

@@ -1,0 +1,631 @@
+unit parseTypeUnit;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+	 
+
+?@nodisplay := true;
+?@noalignstack := true;									   
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// parseType
+//
+//	Handle the parsing of the TYPE section here.
+// Note that we've already seen the "TYPE" lexeme.
+//
+//
+//	Grammar:
+//
+//	types ::=
+//		(
+//				';'
+//			|	<ID> ':' <tDcls>
+//		)*
+//		<optionalEndType>
+//
+//
+//	tDcls ::=
+//				<typeID> <optionalBounds> ';'
+//			|	enum '{' <idList> '}' ';'
+//			|	pointer to <typeID> ';'
+//			|	@forward '(' <fID> ')' ';'
+//			|	record <recStuff> ';'
+//			|	union <recStuff> ';'
+//			|	class <classStuff> ';'
+//			|	procedure <optionalParms> ';' <protoOptions>
+//
+//	optionalBounds ::= 
+//				'(' <dimlist> ')'
+//			|	<empty string>
+//
+//	typeID ::=
+//				<typeID>  // Must be a type identifier.
+//			|	thunk | boolean | uns8 | uns16 | uns32 | uns64
+//			|	uns128 | byte | word | dword | qword | tbyte
+//			|	lword | int8 | int16 | int32 | int64 | int128
+//			|	char | xchar | unicode | real32 | real64 | real80
+//			|	string | ustring | cset | xcset | text
+//
+//	optionalEndType ::=
+//				<empty string>
+//			|	endtype ';'
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the CONST reserved word.
+//
+// Returns:
+//
+//	carry-
+//		clear if success,
+//		set if error.
+
+//proc( "parseType" )
+procedure parseType;
+var
+	typeSym		:symNodePtr_t;
+	typeToken	:tokenPtr_t;
+	fwdName		:string;
+	trueName	:string;
+	lcName		:string;
+	hashValue	:dword;
+	dimensions	:dimPtr_t;
+	arrayType	:symNodePtr_t;
+	nameConst	:attr_t;
+
+	//proc( "createTypeSym" )
+	procedure createTypeSym; @noframe;
+	begin createTypeSym;
+
+		// The symbol is not going to be in the symbol table, hence
+		// the following always returns NULL in EAX. We call it to
+		// get the leaf node address in EBX.
+
+		push( eax );
+		push( ebx );
+		push( ecx );
+		push( edx );
+
+		lookupLocal( ebp::trueName, ebp::lcName, ebp::hashValue );
+		enterType
+		(
+			ebp::trueName,
+			ebp::lcName,
+			NULL,
+			Byte_pt,			// Just a dummy, for now
+			&byte_ste,			// Just a dummy, for now
+			curOwner,
+			[ebx]
+		);
+		mov( eax, ebp::typeSym );
+		pop( edx );
+		pop( ecx );
+		pop( ebx );
+		pop( eax );
+		ret();
+	
+	end createTypeSym;
+
+
+	//proc( "tDcls" )
+	procedure tDcls; @noframe;
+	begin tDcls;
+	
+		// Handle type isomorphisms and array types here:
+		
+		if( getTypeID() ) then
+		
+			if( eax = &text_ste ) then
+
+				// Defensive code, situation handled elsewhere:
+			
+				HLAerror( "TEXT is an illegal type here" nl );
+				mov( &string_ste, eax );
+				
+			endif;
+		
+			// We're going to need a symbol table entry, build it here:
+
+			createTypeSym();
+
+			// Process any optional array dimensions attached to the type:
+
+			optionalBounds();
+			mov( eax, ebp::dimensions );
+			if( eax <> NULL ) then
+			
+				// We have an array type.  If this is a multidimensional
+				// array, we need to build anonymous type records
+				// for all but the first array dimension and link them
+				// together (and to the type parsed by getTypeID):
+				
+				mov( tokenECX.symNode, edx );
+				mov( edx, ebp::arrayType );
+				mov( (type dimensions_t [eax]).arity, ecx );
+				while( ecx > 1 ) do
+				
+					// We need to create a dummy name for
+					// the anonymous array type that we're
+					// about to create.  This is of the form:
+					//
+					//	" arrayXXX"
+					//
+					// where XXX is some unique numeric value.
+					// Note the '@' at the beginning of the
+					// string, this ensures that the program
+					// can never reference this symbol directly.
+					
+					makeLabel( "@array" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Array_pt,
+						ebp::arrayType,
+						curOwner,
+						[ebx]
+					);
+					mov( ebp::arrayType, edx );
+					mov( symEDX.objectSize, edx );
+					mov( eax, ebp::arrayType );
+					
+					// We need to fill in the array dimensions info here:
+					
+					mov( ebp::dimensions, ebx );
+					mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+					mov( ebx, symEAX.numElements );
+					intmul( ebx, edx );
+					mov( edx, symEAX.objectSize );
+					dec( ecx );
+					
+				endwhile;
+				
+				// The code above creates anonymous symbol table
+				// entries for dimensions 1..n-1.  For dimension 0,
+				// we're just going to fill in the information in
+				// the TYPE's symbol table entry:
+				
+				mov( ebp::typeSym, ebx );		// Original symbol table entry.
+				mov( ebp::arrayType, eax );
+				mov( eax, symEBX.symType );
+				
+				mov( ebp::dimensions, ecx );
+				mov( (type dimensions_t [ecx]).dims[0], ecx );
+				mov( ecx, symEBX.numElements );
+				intmul( symEAX.objectSize, ecx );
+				mov( ecx, symEBX.objectSize );
+				mov( Array_pt, symEBX.pType );
+			
+			else
+			
+				// Okay, we have a type isomorphism (renaming an
+				// existing type).  Just set up the type to be
+				// the same as the one returned by getTypeID:
+				
+
+				mov( ebp::typeSym, ebx );		// Type the symbol table entry.
+				
+				// Okay, set the symbol table fields of our new type
+				// symbol according to the symbol we just processed.
+				
+				mov( tokenECX.symNode, eax );
+				mov( eax, symEBX.symType );
+				mov( Deferred_pt, symEBX.pType );
+				
+				mov( symEAX.objectSize, edx );
+				mov( edx, symEBX.objectSize );
+
+			endif;
+			mustMatchSemicolon();
+			ret();
+			
+		endif;
+		
+		
+			
+		////////////////////////////////////////
+		//	
+		// Handle <id> : enum{ id_list }; here:
+		
+		lex( esi );
+		if( eax = tkn_enum ) then
+
+			// We're going to need a symbol table entry, build it here:
+
+			createTypeSym();
+
+			buildEnumType( ebp::typeSym );
+			ret();
+			
+		endif;
+		
+		
+		
+		
+		////////////////////////////////////////
+		//	
+		// Handle <ID> : @FORWARD( <id> ); here:
+		
+		if( eax = tkn_at_forward ) then
+		
+			// First, generate a string constant
+			// from the original type name:
+			
+			mov( ebp::trueName, ebx );
+			mov( ebx, ebp::nameConst.string_vt );
+			mov( &string_ste, ebp::nameConst.symType );
+			mov( String_pt, ebp::nameConst.pType );
+			mov( Constant_ct, ebp::nameConst.symClass );
+			strfree( ebp::lcName );
+
+
+			// Okay, process the remainder of the @FORWARD clause:
+							
+			matchLParen();
+			lex( esi );
+			if( eax = tkn_globalID ) then
+			
+				makeUndefID( [ecx] );
+				mov( tkn_undefID, eax );
+				
+			elseif( eax = tkn_localID ) then
+			
+				mov( tokenECX.symNode, ebx );
+				if( symEBX.symClass <> Value_ct ) then
+
+					HLAerror
+					( 
+						"Duplicate symbol definition: ", 
+						tokenECX.trueName,
+						nl
+					);
+					makeUndefID( [ecx] );
+					mov( tkn_undefID, eax );
+
+				endif;
+				
+			endif;
+			if( eax = tkn_undefID || eax == tkn_localID ) then
+			
+				// lookupLocal returns NULL if this is an
+				// undefined ID, it returns a pointer to
+				// a symbol table entry if it's a VAL ID.
+				// This also puts the leaf node address in EBX.
+				
+				push( ecx );
+				lookupLocal
+				( 
+					tokenECX.trueName, 
+					tokenECX.lcName, 
+					tokenECX.hashValue
+				);
+				
+				if( eax = NULL ) then
+
+					// Create a new text constant:
+					
+					mov( [esp], ecx );
+					enterConst
+					(
+						tokenECX.trueName,
+						tokenECX.lcName,
+						NULL,
+						&text_ste,
+						ebp::nameConst,
+						curOwner,
+						[ebx]
+					);
+
+				elseif( symEAX.symClass = Value_ct ) then
+
+					// Change the value of the existing VAL object:
+
+					setVal
+					(
+						tokenECX.trueName,
+						tokenECX.lcName,
+						eax,
+						&text_ste,
+						ebp::nameConst,
+						curOwner,
+						[ebx]
+					);
+					
+				else	
+
+					// Defensive code, error handled elsewhere
+				
+					HLAerror
+					( 
+						"Symbol in @FORWARD must be undefined or a VAL symbol" 
+						nl 
+					);
+
+				endif;
+				pop( ecx );
+				
+				
+			else
+			
+				HLAerror
+				( 
+					"Expected an identifier, encountered " 
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+							
+			endif;
+			matchRParen();
+			ret();
+			
+		endif;
+			
+		
+
+		///////////////////////////////////////////
+		//	
+		// Handle <id> : pointer to <typeID>; here:					
+			
+		if( eax = tkn_pointer ) then
+
+			// We'll need a type symbol for this guy:
+
+			createTypeSym();
+
+		
+			lex( esi );
+			if( eax <> tkn_to ) then
+			
+				HLAerror( "Expected 'TO' after 'POINTER'" nl );
+				reuseLastTkn();
+				
+			endif;
+			if( getTypeID() ) then
+			
+				if( symEAX.symClass = Type_ct ) then
+				
+					mov( ebp::typeSym, ebx );
+					mov( eax, symEBX.baseType );
+					mov( Pointer_pt, symEBX.pType );
+					mov( 4, symEBX.objectSize );
+					
+				else
+
+					// Defensive code, error handled elsewhere
+				
+					HLAerror
+					(
+						"Expected a type ID as the pointer "
+						"base type"
+						nl
+					);
+					freeTkn( tokenECX );
+				
+				endif;
+				
+			else
+
+				if( !getUndefTypeID( ebp::typeSym )) then
+								
+					HLAerror( "Expected a type ID, found " );
+					dumpQLexeme();
+					freeTkn( [ecx] );
+					resyncOnSemicolon();
+					
+				endif;
+					
+			endif;
+			ret();
+			
+		endif;
+
+
+
+		//////////////////////////////////////////////////
+		//	
+		// Handle <id> :  record <fields> endrecord; here:
+		
+		if( eax = tkn_record ) then
+
+			// We're going to need a symbol table entry, build it here:
+
+			createTypeSym();
+
+			// Process the actual record:
+
+			parseRecord( ebp::typeSym );
+			ret();
+			
+		endif;
+						
+			
+			
+		////////////////////////////////////////////////
+		//	
+		// Handle <id> :  union <fields> endunion; here:
+		
+		if( eax = tkn_union ) then
+		
+			// We're going to need a symbol table entry, build it here:
+
+			createTypeSym();
+
+			// Process the actual union:
+
+			parseUnion( ebp::typeSym );
+			ret();
+			
+		endif;
+			
+			
+		////////////////////////////////////////////////
+		//	
+		// Handle <id> :  class <fields> endclass; here:
+		
+		if( eax = tkn_class ) then
+		
+			// We're going to need a symbol table entry, build it here:
+
+			createTypeSym();
+
+			// parse the "guts" of this class definition.
+
+			parseClass( ebp::typeSym );
+			ret();
+			
+		endif;
+			
+		
+		//////////////////////////////////////////////
+		//	
+		// Handle <id> : procedure (parameters); here:
+		
+		if( eax = tkn_procedure ) then
+		
+			mov( ebp::typeToken, eax );
+			parseProcType
+			( 
+				tokenEAX.trueName, 
+				tokenEAX.lcName,
+				tokenEAX.hashValue,
+				Type_ct,			// This is a type object  
+				0, 					// Offset is inapplicable
+				notp_pc, 			// This is not a parameter 
+				startParmsOffs,		// Starting offset for parms
+				NULL,				// No segment associated with types
+				NULL,				// No "enterSym" needed.
+				false 				// No initial value for proc ptr.
+			);
+			ret();
+			
+		endif;
+		
+		HLAerror
+		(
+			"Expected a type identifier after the ':' "
+			"but encountered "
+		);
+		dumpQLexeme();
+		raise( ex.hlaerr );
+		
+	end tDcls;
+	
+begin parseType;
+
+	forever
+	
+		// Reset the token queue at the beginning of each
+		// declaration to prevent overflowing the token queue.
+		
+		resetTknQ();
+		
+	
+		// Get the next token from the source file:
+			
+		lex( esi );
+		
+		// Handle the type identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+
+			
+		elseif( eax = tkn_localID ) then
+		
+			HLAerror
+			( 
+				"Duplicate symbol definition: ",
+				tokenECX.trueName,
+				nl
+			);
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( ecx, typeToken );
+			mov( tokenECX.trueName, eax );
+			mov( eax, trueName );
+			mov( tokenECX.lcName, eax );
+			mov( eax, lcName );
+			mov( tokenECX.hashValue, eax );
+			mov( eax, hashValue );
+
+			// Eat the colon:
+			
+			matchColon();
+			
+			// Okay, we've got to process a type declaration here.
+			
+			try
+				tDcls();			
+
+			  exception( ex.hlaerr )
+
+				resyncOnSemicolon();
+
+			endtry;
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a TYPE section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+
+		
+	endfor;
+	if( eax = tkn_endtype ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+	
+	
+end parseType;
+
+
+end parseTypeUnit;

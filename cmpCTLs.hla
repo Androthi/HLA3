@@ -1,0 +1,1201 @@
+// cmpCTLs.hla (include file to scan HLA v2.x function names)
+
+// Note: The following code is emitted by machine. 
+//       Do not modify this code by hand.  Instead, see the
+//       documentation for the "func" (function names) program
+//       that accompanies the HLA v2.x source code to determine
+//       how to add new function names to the HLA language.
+
+cmpCTLs_1_0:
+	jmp BadCTLID;
+cmpCTLs_2_0:
+	cmp( ax, funcstr( "if", 0, 2) );
+	jb cmpCTLs_2_1;
+	ja cmpCTLs_2_2;
+	mov( tkn_pound_if, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_2_1:
+	cmp( ax, funcstr( "id", 0, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_id, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_2_2:
+	cmp( ax, funcstr( "rw", 0, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_rw, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_3_0:
+	cmp( eax, funcstr( "eof", 0, 3) );
+	jb cmpCTLs_3_1;
+	ja cmpCTLs_3_3;
+	mov( tkn_pound_eof, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_3_1:
+	cmp( eax, funcstr( "asm", 0, 3) );
+	jb cmpCTLs_3_2;
+	ja BadCTLID;
+	mov( tkn_pound_asm, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_3_2:
+	cmp( eax, funcstr( "arb", 0, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_arb, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_3_3:
+	cmp( eax, funcstr( "for", 0, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_for, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_4_0:
+	cmp( eax, funcstr( "fail", 0, 4) );
+	jb cmpCTLs_4_1;
+	ja cmpCTLs_4_3;
+	mov( tkn_pound_fail, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_4_1:
+	cmp( eax, funcstr( "emit", 0, 4) );
+	jb cmpCTLs_4_2;
+	ja BadCTLID;
+	mov( tkn_pound_emit, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_4_2:
+	cmp( eax, funcstr( "else", 0, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_else, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_4_3:
+	cmp( eax, funcstr( "text", 0, 4) );
+	jb cmpCTLs_4_4;
+	ja BadCTLID;
+	mov( tkn_pound_text, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_4_4:
+	cmp( eax, funcstr( "skip", 0, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_skip, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_0:
+	cmp( eax, funcstr( "macro", 0, 4) );
+	jb cmpCTLs_5_1;
+	ja cmpCTLs_5_6;
+	cmp( bl, funcstr( "macro", 4, 1) );
+	jb cmpCTLs_5_1;
+	ja cmpCTLs_5_6;
+	mov( tkn_pound_macro, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_1:
+	cmp( eax, funcstr( "error", 0, 4) );
+	jb cmpCTLs_5_2;
+	ja cmpCTLs_5_4;
+	cmp( bl, funcstr( "error", 4, 1) );
+	jb cmpCTLs_5_2;
+	ja cmpCTLs_5_4;
+	mov( tkn_pound_error, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_2:
+	cmp( eax, funcstr( "endif", 0, 4) );
+	jb cmpCTLs_5_3;
+	ja BadCTLID;
+	cmp( bl, funcstr( "endif", 4, 1) );
+	jb cmpCTLs_5_3;
+	ja BadCTLID;
+	mov( tkn_pound_endif, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_3:
+	cmp( eax, funcstr( "atpos", 0, 4) );
+	jne BadCTLID;
+	cmp( bl, funcstr( "atpos", 4, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_atpos, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_4:
+	cmp( eax, funcstr( "l_arb", 0, 4) );
+	jb cmpCTLs_5_5;
+	ja BadCTLID;
+	cmp( bl, funcstr( "l_arb", 4, 1) );
+	jb cmpCTLs_5_5;
+	ja BadCTLID;
+	mov( tkn_pound_l_arb, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_5:
+	cmp( eax, funcstr( "fence", 0, 4) );
+	jne BadCTLID;
+	cmp( bl, funcstr( "fence", 4, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_fence, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_6:
+	cmp( eax, funcstr( "while", 0, 4) );
+	jb cmpCTLs_5_7;
+	ja cmpCTLs_5_9;
+	cmp( bl, funcstr( "while", 4, 1) );
+	jb cmpCTLs_5_7;
+	ja cmpCTLs_5_9;
+	mov( tkn_pound_while, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_7:
+	cmp( eax, funcstr( "print", 0, 4) );
+	jb cmpCTLs_5_8;
+	ja BadCTLID;
+	cmp( bl, funcstr( "print", 4, 1) );
+	jb cmpCTLs_5_8;
+	ja BadCTLID;
+	mov( tkn_pound_print, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_8:
+	cmp( eax, funcstr( "match", 0, 4) );
+	jne BadCTLID;
+	cmp( bl, funcstr( "match", 4, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_match, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_5_9:
+	cmp( eax, funcstr( "write", 0, 4) );
+	jne BadCTLID;
+	cmp( bl, funcstr( "write", 4, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_write, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_0:
+	cmp( eax, funcstr( "getpos", 0, 4) );
+	jb cmpCTLs_6_1;
+	ja cmpCTLs_6_4;
+	cmp( bx, funcstr( "getpos", 4, 2) );
+	jb cmpCTLs_6_1;
+	ja cmpCTLs_6_4;
+	mov( tkn_pound_getpos, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_1:
+	cmp( eax, funcstr( "endasm", 0, 4) );
+	jb cmpCTLs_6_2;
+	ja cmpCTLs_6_3;
+	cmp( bx, funcstr( "endasm", 4, 2) );
+	jb cmpCTLs_6_2;
+	ja cmpCTLs_6_3;
+	mov( tkn_pound_endasm, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_2:
+	cmp( eax, funcstr( "elseif", 0, 4) );
+	jne BadCTLID;
+	cmp( bx, funcstr( "elseif", 4, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_elseif, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_3:
+	cmp( eax, funcstr( "endfor", 0, 4) );
+	jne BadCTLID;
+	cmp( bx, funcstr( "endfor", 4, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_endfor, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_4:
+	cmp( eax, funcstr( "peekws", 0, 4) );
+	jb cmpCTLs_6_5;
+	ja cmpCTLs_6_6;
+	cmp( bx, funcstr( "peekws", 4, 2) );
+	jb cmpCTLs_6_5;
+	ja cmpCTLs_6_6;
+	mov( tkn_pound_peekws, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_5:
+	cmp( eax, funcstr( "onepat", 0, 4) );
+	jne BadCTLID;
+	cmp( bx, funcstr( "onepat", 4, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_onepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_6_6:
+	cmp( eax, funcstr( "system", 0, 4) );
+	jne BadCTLID;
+	cmp( bx, funcstr( "system", 4, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_system, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_0:
+	cmp( eax, funcstr( "onechar", 0, 4) );
+	jb cmpCTLs_7_1;
+	ja cmpCTLs_7_5;
+	cmp( ebx, funcstr( "onechar", 4, 3) );
+	jb cmpCTLs_7_1;
+	ja cmpCTLs_7_5;
+	mov( tkn_pound_onechar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_1:
+	cmp( eax, funcstr( "include", 0, 4) );
+	jb cmpCTLs_7_2;
+	ja cmpCTLs_7_4;
+	cmp( ebx, funcstr( "include", 4, 3) );
+	jb cmpCTLs_7_2;
+	ja cmpCTLs_7_4;
+	mov( tkn_pound_include, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_2:
+	cmp( eax, funcstr( "failure", 0, 4) );
+	jb cmpCTLs_7_3;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "failure", 4, 3) );
+	jb cmpCTLs_7_3;
+	ja BadCTLID;
+	mov( tkn_pound_failure, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_3:
+	cmp( eax, funcstr( "endtext", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "endtext", 4, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_endtext, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_4:
+	cmp( eax, funcstr( "keyword", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "keyword", 4, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_keyword, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_5:
+	cmp( eax, funcstr( "uptostr", 0, 4) );
+	jb cmpCTLs_7_6;
+	ja cmpCTLs_7_7;
+	cmp( ebx, funcstr( "uptostr", 4, 3) );
+	jb cmpCTLs_7_6;
+	ja cmpCTLs_7_7;
+	mov( tkn_pound_uptostr, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_6:
+	cmp( eax, funcstr( "onecset", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "onecset", 4, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_onecset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_7_7:
+	cmp( eax, funcstr( "wsoreos", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "wsoreos", 4, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_wsoreos, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_0:
+	cmp( eax, funcstr( "openread", 0, 4) );
+	jb cmpCTLs_8_1;
+	ja cmpCTLs_8_8;
+	cmp( ebx, funcstr( "openread", 4, 4) );
+	jb cmpCTLs_8_1;
+	ja cmpCTLs_8_8;
+	mov( tkn_pound_openread, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_1:
+	cmp( eax, funcstr( "matchstr", 0, 4) );
+	jb cmpCTLs_8_2;
+	ja cmpCTLs_8_5;
+	cmp( ebx, funcstr( "matchstr", 4, 4) );
+	jb cmpCTLs_8_2;
+	ja cmpCTLs_8_5;
+	mov( tkn_pound_matchstr, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_2:
+	cmp( eax, funcstr( "endmatch", 0, 4) );
+	jb cmpCTLs_8_3;
+	ja cmpCTLs_8_4;
+	cmp( ebx, funcstr( "endmatch", 4, 4) );
+	jb cmpCTLs_8_3;
+	ja cmpCTLs_8_4;
+	mov( tkn_pound_endmatch, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_3:
+	cmp( eax, funcstr( "endmacro", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "endmacro", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_endmacro, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_4:
+	cmp( eax, funcstr( "endwhile", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "endwhile", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_endwhile, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_5:
+	cmp( eax, funcstr( "ntomcset", 0, 4) );
+	jb cmpCTLs_8_6;
+	ja cmpCTLs_8_7;
+	cmp( ebx, funcstr( "ntomcset", 4, 4) );
+	jb cmpCTLs_8_6;
+	ja cmpCTLs_8_7;
+	mov( tkn_pound_ntomcset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_6:
+	cmp( eax, funcstr( "ntomchar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "ntomchar", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_ntomchar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_7:
+	cmp( eax, funcstr( "oneichar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "oneichar", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_oneichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_8:
+	cmp( eax, funcstr( "uptochar", 0, 4) );
+	jb cmpCTLs_8_9;
+	ja cmpCTLs_8_12;
+	cmp( ebx, funcstr( "uptochar", 4, 4) );
+	jb cmpCTLs_8_9;
+	ja cmpCTLs_8_12;
+	mov( tkn_pound_uptochar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_9:
+	cmp( eax, funcstr( "peekcset", 0, 4) );
+	jb cmpCTLs_8_10;
+	ja cmpCTLs_8_11;
+	cmp( ebx, funcstr( "peekcset", 4, 4) );
+	jb cmpCTLs_8_10;
+	ja cmpCTLs_8_11;
+	mov( tkn_pound_peekcset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_10:
+	cmp( eax, funcstr( "peekchar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "peekchar", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_peekchar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_11:
+	cmp( eax, funcstr( "position", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "position", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_position, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_12:
+	cmp( eax, funcstr( "uptoistr", 0, 4) );
+	jb cmpCTLs_8_13;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "uptoistr", 4, 4) );
+	jb cmpCTLs_8_13;
+	ja BadCTLID;
+	mov( tkn_pound_uptoistr, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_8_13:
+	cmp( eax, funcstr( "uptocset", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "uptocset", 4, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_uptocset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_0:
+	cmp( eax, funcstr( "ntomichar", 0, 4) );
+	jb cmpCTLs_9_1;
+	ja cmpCTLs_9_6;
+	cmp( ebx, funcstr( "ntomichar", 4, 4) );
+	jb cmpCTLs_9_1;
+	ja cmpCTLs_9_6;
+	cmp( cl, funcstr( "ntomichar", 8, 1) );
+	jb cmpCTLs_9_1;
+	ja cmpCTLs_9_6;
+	mov( tkn_pound_ntomichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_1:
+	cmp( eax, funcstr( "endonepat", 0, 4) );
+	jb cmpCTLs_9_2;
+	ja cmpCTLs_9_4;
+	cmp( ebx, funcstr( "endonepat", 4, 4) );
+	jb cmpCTLs_9_2;
+	ja cmpCTLs_9_4;
+	cmp( cl, funcstr( "endonepat", 8, 1) );
+	jb cmpCTLs_9_2;
+	ja cmpCTLs_9_4;
+	mov( tkn_pound_endonepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_2:
+	cmp( eax, funcstr( "closeread", 0, 4) );
+	jb cmpCTLs_9_3;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "closeread", 4, 4) );
+	jb cmpCTLs_9_3;
+	ja BadCTLID;
+	cmp( cl, funcstr( "closeread", 8, 1) );
+	jb cmpCTLs_9_3;
+	ja BadCTLID;
+	mov( tkn_pound_closeread, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_3:
+	cmp( eax, funcstr( "alternate", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "alternate", 4, 4) );
+	jne BadCTLID;
+	cmp( cl, funcstr( "alternate", 8, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_alternate, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_4:
+	cmp( eax, funcstr( "matchword", 0, 4) );
+	jb cmpCTLs_9_5;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "matchword", 4, 4) );
+	jb cmpCTLs_9_5;
+	ja BadCTLID;
+	cmp( cl, funcstr( "matchword", 8, 1) );
+	jb cmpCTLs_9_5;
+	ja BadCTLID;
+	mov( tkn_pound_matchword, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_5:
+	cmp( eax, funcstr( "matchistr", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "matchistr", 4, 4) );
+	jne BadCTLID;
+	cmp( cl, funcstr( "matchistr", 8, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_matchistr, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_6:
+	cmp( eax, funcstr( "uptoichar", 0, 4) );
+	jb cmpCTLs_9_7;
+	ja cmpCTLs_9_9;
+	cmp( ebx, funcstr( "uptoichar", 4, 4) );
+	jb cmpCTLs_9_7;
+	ja cmpCTLs_9_9;
+	cmp( cl, funcstr( "uptoichar", 8, 1) );
+	jb cmpCTLs_9_7;
+	ja cmpCTLs_9_9;
+	mov( tkn_pound_uptoichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_7:
+	cmp( eax, funcstr( "peekichar", 0, 4) );
+	jb cmpCTLs_9_8;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "peekichar", 4, 4) );
+	jb cmpCTLs_9_8;
+	ja BadCTLID;
+	cmp( cl, funcstr( "peekichar", 8, 1) );
+	jb cmpCTLs_9_8;
+	ja BadCTLID;
+	mov( tkn_pound_peekichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_8:
+	cmp( eax, funcstr( "openwrite", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "openwrite", 4, 4) );
+	jne BadCTLID;
+	cmp( cl, funcstr( "openwrite", 8, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_openwrite, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_9_9:
+	cmp( eax, funcstr( "wstheneos", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "wstheneos", 4, 4) );
+	jne BadCTLID;
+	cmp( cl, funcstr( "wstheneos", 8, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_wstheneos, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_10_0:
+	cmp( eax, funcstr( "matchtostr", 0, 4) );
+	jb cmpCTLs_10_1;
+	ja cmpCTLs_10_4;
+	cmp( ebx, funcstr( "matchtostr", 4, 4) );
+	jb cmpCTLs_10_1;
+	ja cmpCTLs_10_4;
+	cmp( cx, funcstr( "matchtostr", 8, 2) );
+	jb cmpCTLs_10_1;
+	ja cmpCTLs_10_4;
+	mov( tkn_pound_matchtostr, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_10_1:
+	cmp( eax, funcstr( "firstnchar", 0, 4) );
+	jb cmpCTLs_10_2;
+	ja cmpCTLs_10_3;
+	cmp( ebx, funcstr( "firstnchar", 4, 4) );
+	jb cmpCTLs_10_2;
+	ja cmpCTLs_10_3;
+	cmp( cx, funcstr( "firstnchar", 8, 2) );
+	jb cmpCTLs_10_2;
+	ja cmpCTLs_10_3;
+	mov( tkn_pound_firstnchar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_10_2:
+	cmp( eax, funcstr( "closewrite", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "closewrite", 4, 4) );
+	jne BadCTLID;
+	cmp( cx, funcstr( "closewrite", 8, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_closewrite, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_10_3:
+	cmp( eax, funcstr( "firstncset", 0, 4) );
+	jb BadCTLID;
+	ja cmpCTLs_10_5;
+	cmp( ebx, funcstr( "firstncset", 4, 4) );
+	jb BadCTLID;
+	ja cmpCTLs_10_5;
+	cmp( cx, funcstr( "firstncset", 8, 2) );
+	jb BadCTLID;
+	ja cmpCTLs_10_5;
+	mov( tkn_pound_firstncset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_10_5:
+	cmp( eax, funcstr( "matchiword", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "matchiword", 4, 4) );
+	jne BadCTLID;
+	cmp( cx, funcstr( "matchiword", 8, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_matchiword, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_10_4:
+	cmp( eax, funcstr( "terminator", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "terminator", 4, 4) );
+	jne BadCTLID;
+	cmp( cx, funcstr( "terminator", 8, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_terminator, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_0:
+	cmp( eax, funcstr( "norlesscset", 0, 4) );
+	jb cmpCTLs_11_1;
+	ja cmpCTLs_11_5;
+	cmp( ebx, funcstr( "norlesscset", 4, 4) );
+	jb cmpCTLs_11_1;
+	ja cmpCTLs_11_5;
+	cmp( ecx, funcstr( "norlesscset", 8, 3) );
+	jb cmpCTLs_11_1;
+	ja cmpCTLs_11_5;
+	mov( tkn_pound_norlesscset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_1:
+	cmp( eax, funcstr( "matchtoistr", 0, 4) );
+	jb cmpCTLs_11_2;
+	ja cmpCTLs_11_4;
+	cmp( ebx, funcstr( "matchtoistr", 4, 4) );
+	jb cmpCTLs_11_2;
+	ja cmpCTLs_11_4;
+	cmp( ecx, funcstr( "matchtoistr", 8, 3) );
+	jb cmpCTLs_11_2;
+	ja cmpCTLs_11_4;
+	mov( tkn_pound_matchtoistr, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_2:
+	cmp( eax, funcstr( "includeonce", 0, 4) );
+	jb cmpCTLs_11_3;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "includeonce", 4, 4) );
+	jb cmpCTLs_11_3;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "includeonce", 8, 3) );
+	jb cmpCTLs_11_3;
+	ja BadCTLID;
+	mov( tkn_pound_includeonce, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_3:
+	cmp( eax, funcstr( "firstnichar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "firstnichar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "firstnichar", 8, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_firstnichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_4:
+	cmp( eax, funcstr( "norlesschar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "norlesschar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "norlesschar", 8, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_norlesschar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_5:
+	cmp( eax, funcstr( "oneormorews", 0, 4) );
+	jb cmpCTLs_11_6;
+	ja cmpCTLs_11_8;
+	cmp( ebx, funcstr( "oneormorews", 4, 4) );
+	jb cmpCTLs_11_6;
+	ja cmpCTLs_11_8;
+	cmp( ecx, funcstr( "oneormorews", 8, 3) );
+	jb cmpCTLs_11_6;
+	ja cmpCTLs_11_8;
+	mov( tkn_pound_oneormorews, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_6:
+	cmp( eax, funcstr( "normorecset", 0, 4) );
+	jb cmpCTLs_11_7;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "normorecset", 4, 4) );
+	jb cmpCTLs_11_7;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "normorecset", 8, 3) );
+	jb cmpCTLs_11_7;
+	ja BadCTLID;
+	mov( tkn_pound_normorecset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_7:
+	cmp( eax, funcstr( "normorechar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "normorechar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "normorechar", 8, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_normorechar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_11_8:
+	cmp( eax, funcstr( "peekwsoreos", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "peekwsoreos", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "peekwsoreos", 8, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_peekwsoreos, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_0:
+	cmp( eax, funcstr( "normoreichar", 0, 4) );
+	jb cmpCTLs_12_1;
+	ja cmpCTLs_12_4;
+	cmp( ebx, funcstr( "normoreichar", 4, 4) );
+	jb cmpCTLs_12_1;
+	ja cmpCTLs_12_4;
+	cmp( ecx, funcstr( "normoreichar", 8, 4) );
+	jb cmpCTLs_12_1;
+	ja cmpCTLs_12_4;
+	mov( tkn_pound_normoreichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_1:
+	cmp( eax, funcstr( "exactlyncset", 0, 4) );
+	jb cmpCTLs_12_2;
+	ja cmpCTLs_12_3;
+	cmp( ebx, funcstr( "exactlyncset", 4, 4) );
+	jb cmpCTLs_12_2;
+	ja cmpCTLs_12_3;
+	cmp( ecx, funcstr( "exactlyncset", 8, 4) );
+	jb cmpCTLs_12_2;
+	ja cmpCTLs_12_3;
+	mov( tkn_pound_exactlyncset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_2:
+	cmp( eax, funcstr( "exactlynchar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "exactlynchar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "exactlynchar", 8, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_exactlynchar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_3:
+	cmp( eax, funcstr( "norlessichar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "norlessichar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "norlessichar", 8, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_norlessichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_4:
+	cmp( eax, funcstr( "zeroormorews", 0, 4) );
+	jb cmpCTLs_12_5;
+	ja cmpCTLs_12_6;
+	cmp( ebx, funcstr( "zeroormorews", 4, 4) );
+	jb cmpCTLs_12_5;
+	ja cmpCTLs_12_6;
+	cmp( ecx, funcstr( "zeroormorews", 8, 4) );
+	jb cmpCTLs_12_5;
+	ja cmpCTLs_12_6;
+	mov( tkn_pound_zeroormorews, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_5:
+	cmp( eax, funcstr( "oneormorepat", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "oneormorepat", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "oneormorepat", 8, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_oneormorepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_12_6:
+	cmp( eax, funcstr( "zerooronepat", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "zerooronepat", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "zerooronepat", 8, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_zerooronepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_0:
+	cmp( eax, funcstr( "oneormorechar", 0, 4) );
+	jb cmpCTLs_13_1;
+	ja cmpCTLs_13_5;
+	cmp( ebx, funcstr( "oneormorechar", 4, 4) );
+	jb cmpCTLs_13_1;
+	ja cmpCTLs_13_5;
+	cmp( ecx, funcstr( "oneormorechar", 8, 4) );
+	jb cmpCTLs_13_1;
+	ja cmpCTLs_13_5;
+	cmp( dl, funcstr( "oneormorechar", 12, 1) );
+	jb cmpCTLs_13_1;
+	ja cmpCTLs_13_5;
+	mov( tkn_pound_oneormorechar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_1:
+	cmp( eax, funcstr( "matchnumconst", 0, 4) );
+	jb cmpCTLs_13_2;
+	ja cmpCTLs_13_4;
+	cmp( ebx, funcstr( "matchnumconst", 4, 4) );
+	jb cmpCTLs_13_2;
+	ja cmpCTLs_13_4;
+	cmp( ecx, funcstr( "matchnumconst", 8, 4) );
+	jb cmpCTLs_13_2;
+	ja cmpCTLs_13_4;
+	cmp( dl, funcstr( "matchnumconst", 12, 1) );
+	jb cmpCTLs_13_2;
+	ja cmpCTLs_13_4;
+	mov( tkn_pound_matchnumconst, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_2:
+	cmp( eax, funcstr( "matchintconst", 0, 4) );
+	jb cmpCTLs_13_3;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "matchintconst", 4, 4) );
+	jb cmpCTLs_13_3;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "matchintconst", 8, 4) );
+	jb cmpCTLs_13_3;
+	ja BadCTLID;
+	cmp( dl, funcstr( "matchintconst", 12, 1) );
+	jb cmpCTLs_13_3;
+	ja BadCTLID;
+	mov( tkn_pound_matchintconst, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_3:
+	cmp( eax, funcstr( "exactlynichar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "exactlynichar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "exactlynichar", 8, 4) );
+	jne BadCTLID;
+	cmp( dl, funcstr( "exactlynichar", 12, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_exactlynichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_4:
+	cmp( eax, funcstr( "matchstrconst", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "matchstrconst", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "matchstrconst", 8, 4) );
+	jne BadCTLID;
+	cmp( dl, funcstr( "matchstrconst", 12, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_matchstrconst, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_5:
+	cmp( eax, funcstr( "zerooronechar", 0, 4) );
+	jb cmpCTLs_13_6;
+	ja cmpCTLs_13_8;
+	cmp( ebx, funcstr( "zerooronechar", 4, 4) );
+	jb cmpCTLs_13_6;
+	ja cmpCTLs_13_8;
+	cmp( ecx, funcstr( "zerooronechar", 8, 4) );
+	jb cmpCTLs_13_6;
+	ja cmpCTLs_13_8;
+	cmp( dl, funcstr( "zerooronechar", 12, 1) );
+	jb cmpCTLs_13_6;
+	ja cmpCTLs_13_8;
+	mov( tkn_pound_zerooronechar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_6:
+	cmp( eax, funcstr( "zeroormorepat", 0, 4) );
+	jb cmpCTLs_13_7;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "zeroormorepat", 4, 4) );
+	jb cmpCTLs_13_7;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "zeroormorepat", 8, 4) );
+	jb cmpCTLs_13_7;
+	ja BadCTLID;
+	cmp( dl, funcstr( "zeroormorepat", 12, 1) );
+	jb cmpCTLs_13_7;
+	ja BadCTLID;
+	mov( tkn_pound_zeroormorepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_7:
+	cmp( eax, funcstr( "oneormorecset", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "oneormorecset", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "oneormorecset", 8, 4) );
+	jne BadCTLID;
+	cmp( dl, funcstr( "oneormorecset", 12, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_oneormorecset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_13_8:
+	cmp( eax, funcstr( "zerooronecset", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "zerooronecset", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "zerooronecset", 8, 4) );
+	jne BadCTLID;
+	cmp( dl, funcstr( "zerooronecset", 12, 1) );
+	jne BadCTLID;
+	mov( tkn_pound_zerooronecset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_14_0:
+	cmp( eax, funcstr( "zeroormorechar", 0, 4) );
+	jb cmpCTLs_14_1;
+	ja cmpCTLs_14_3;
+	cmp( ebx, funcstr( "zeroormorechar", 4, 4) );
+	jb cmpCTLs_14_1;
+	ja cmpCTLs_14_3;
+	cmp( ecx, funcstr( "zeroormorechar", 8, 4) );
+	jb cmpCTLs_14_1;
+	ja cmpCTLs_14_3;
+	cmp( dx, funcstr( "zeroormorechar", 12, 2) );
+	jb cmpCTLs_14_1;
+	ja cmpCTLs_14_3;
+	mov( tkn_pound_zeroormorechar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_14_1:
+	cmp( eax, funcstr( "oneormoreichar", 0, 4) );
+	jb cmpCTLs_14_2;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "oneormoreichar", 4, 4) );
+	jb cmpCTLs_14_2;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "oneormoreichar", 8, 4) );
+	jb cmpCTLs_14_2;
+	ja BadCTLID;
+	cmp( dx, funcstr( "oneormoreichar", 12, 2) );
+	jb cmpCTLs_14_2;
+	ja BadCTLID;
+	mov( tkn_pound_oneormoreichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_14_2:
+	cmp( eax, funcstr( "matchrealconst", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "matchrealconst", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "matchrealconst", 8, 4) );
+	jne BadCTLID;
+	cmp( dx, funcstr( "matchrealconst", 12, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_matchrealconst, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_14_3:
+	cmp( eax, funcstr( "zerooroneichar", 0, 4) );
+	jb cmpCTLs_14_4;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "zerooroneichar", 4, 4) );
+	jb cmpCTLs_14_4;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "zerooroneichar", 8, 4) );
+	jb cmpCTLs_14_4;
+	ja BadCTLID;
+	cmp( dx, funcstr( "zerooroneichar", 12, 2) );
+	jb cmpCTLs_14_4;
+	ja BadCTLID;
+	mov( tkn_pound_zerooroneichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_14_4:
+	cmp( eax, funcstr( "zeroormorecset", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "zeroormorecset", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "zeroormorecset", 8, 4) );
+	jne BadCTLID;
+	cmp( dx, funcstr( "zeroormorecset", 12, 2) );
+	jne BadCTLID;
+	mov( tkn_pound_zeroormorecset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_15_0:
+	cmp( eax, funcstr( "exactlyntomcset", 0, 4) );
+	jb cmpCTLs_15_1;
+	ja cmpCTLs_15_3;
+	cmp( ebx, funcstr( "exactlyntomcset", 4, 4) );
+	jb cmpCTLs_15_1;
+	ja cmpCTLs_15_3;
+	cmp( ecx, funcstr( "exactlyntomcset", 8, 4) );
+	jb cmpCTLs_15_1;
+	ja cmpCTLs_15_3;
+	cmp( edx, funcstr( "exactlyntomcset", 12, 3) );
+	jb cmpCTLs_15_1;
+	ja cmpCTLs_15_3;
+	mov( tkn_pound_exactlyntomcset, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_15_1:
+	cmp( eax, funcstr( "exactlyntomchar", 0, 4) );
+	jb cmpCTLs_15_2;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "exactlyntomchar", 4, 4) );
+	jb cmpCTLs_15_2;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "exactlyntomchar", 8, 4) );
+	jb cmpCTLs_15_2;
+	ja BadCTLID;
+	cmp( edx, funcstr( "exactlyntomchar", 12, 3) );
+	jb cmpCTLs_15_2;
+	ja BadCTLID;
+	mov( tkn_pound_exactlyntomchar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_15_2:
+	cmp( eax, funcstr( "endoneormorepat", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "endoneormorepat", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "endoneormorepat", 8, 4) );
+	jne BadCTLID;
+	cmp( edx, funcstr( "endoneormorepat", 12, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_endoneormorepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_15_3:
+	cmp( eax, funcstr( "zeroormoreichar", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "zeroormoreichar", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "zeroormoreichar", 8, 4) );
+	jne BadCTLID;
+	cmp( edx, funcstr( "zeroormoreichar", 12, 3) );
+	jne BadCTLID;
+	mov( tkn_pound_zeroormoreichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_16_0:
+	cmp( eax, funcstr( "exactlyntomichar", 0, 4) );
+	jb cmpCTLs_16_1;
+	ja BadCTLID;
+	cmp( ebx, funcstr( "exactlyntomichar", 4, 4) );
+	jb cmpCTLs_16_1;
+	ja BadCTLID;
+	cmp( ecx, funcstr( "exactlyntomichar", 8, 4) );
+	jb cmpCTLs_16_1;
+	ja BadCTLID;
+	cmp( edx, funcstr( "exactlyntomichar", 12, 4) );
+	jb cmpCTLs_16_1;
+	ja BadCTLID;
+	mov( tkn_pound_exactlyntomichar, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+cmpCTLs_16_1:
+	cmp( eax, funcstr( "endzeroormorepat", 0, 4) );
+	jne BadCTLID;
+	cmp( ebx, funcstr( "endzeroormorepat", 4, 4) );
+	jne BadCTLID;
+	cmp( ecx, funcstr( "endzeroormorepat", 8, 4) );
+	jne BadCTLID;
+	cmp( edx, funcstr( "endzeroormorepat", 12, 4) );
+	jne BadCTLID;
+	mov( tkn_pound_endzeroormorepat, eax );
+	mov( func_tc, ebx );
+	jmp CTLsDone;
+
+
+
+// End of HLA compile-time statement name scanner include file.

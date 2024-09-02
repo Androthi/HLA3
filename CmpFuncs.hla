@@ -1,0 +1,2325 @@
+// CmpFuncs.hla (include file to scan HLA v2.x function names)
+
+// Note: The following code is emitted by machine. 
+//       Do not modify this code by hand.  Instead, see the
+//       documentation for the "func" (function names) program
+//       that accompanies the HLA v2.x source code to determine
+//       how to add new function names to the HLA language.
+
+cmpfuncs_1_0:
+	cmp( al, 'l' );
+	jb cmpfuncs_1_1;
+	ja cmpfuncs_1_6;
+	mov( tkn_at_l, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_1:
+	cmp( al, 'c' );
+	jb cmpfuncs_1_2;
+	ja cmpfuncs_1_4;
+	mov( tkn_at_c, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_2:
+	cmp( al, 'b' );
+	jb cmpfuncs_1_3;
+	ja BadFuncID;
+	mov( tkn_at_b, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_3:
+	cmp( al, 'a' );
+	jne BadFuncID;
+	mov( tkn_at_a, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_4:
+	cmp( al, 'g' );
+	jb cmpfuncs_1_5;
+	ja BadFuncID;
+	mov( tkn_at_g, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_5:
+	cmp( al, 'e' );
+	jne BadFuncID;
+	mov( tkn_at_e, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_6:
+	cmp( al, 's' );
+	jb cmpfuncs_1_7;
+	ja cmpfuncs_1_9;
+	mov( tkn_at_s, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_7:
+	cmp( al, 'p' );
+	jb cmpfuncs_1_8;
+	ja BadFuncID;
+	mov( tkn_at_p, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_8:
+	cmp( al, 'o' );
+	jne BadFuncID;
+	mov( tkn_at_o, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_1_9:
+	cmp( al, 'z' );
+	jne BadFuncID;
+	mov( tkn_at_z, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_0:
+	cmp( ax, funcstr( "ng", 0, 2) );
+	jb cmpfuncs_2_1;
+	ja cmpfuncs_2_9;
+	mov( tkn_at_ng, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_1:
+	cmp( ax, funcstr( "na", 0, 2) );
+	jb cmpfuncs_2_2;
+	ja cmpfuncs_2_6;
+	mov( tkn_at_na, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_2:
+	cmp( ax, funcstr( "ge", 0, 2) );
+	jb cmpfuncs_2_3;
+	ja cmpfuncs_2_5;
+	mov( tkn_at_ge, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_3:
+	cmp( ax, funcstr( "be", 0, 2) );
+	jb cmpfuncs_2_4;
+	ja BadFuncID;
+	mov( tkn_at_be, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_4:
+	cmp( ax, funcstr( "ae", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_ae, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_5:
+	cmp( ax, funcstr( "le", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_le, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_6:
+	cmp( ax, funcstr( "nc", 0, 2) );
+	jb cmpfuncs_2_7;
+	ja cmpfuncs_2_8;
+	mov( tkn_at_nc, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_7:
+	cmp( ax, funcstr( "nb", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_nb, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_8:
+	cmp( ax, funcstr( "ne", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_ne, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_9:
+	cmp( ax, funcstr( "ns", 0, 2) );
+	jb cmpfuncs_2_10;
+	ja cmpfuncs_2_13;
+	mov( tkn_at_ns, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_10:
+	cmp( ax, funcstr( "no", 0, 2) );
+	jb cmpfuncs_2_11;
+	ja cmpfuncs_2_12;
+	mov( tkn_at_no, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_11:
+	cmp( ax, funcstr( "nl", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_nl, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_12:
+	cmp( ax, funcstr( "np", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_np, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_13:
+	cmp( ax, funcstr( "pe", 0, 2) );
+	jb cmpfuncs_2_14;
+	ja cmpfuncs_2_15;
+	mov( tkn_at_pe, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_14:
+	cmp( ax, funcstr( "nz", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_nz, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_2_15:
+	cmp( ax, funcstr( "po", 0, 2) );
+	jne BadFuncID;
+	mov( tkn_at_po, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_0:
+	cmp( eax, funcstr( "min", 0, 3) );
+	jb cmpfuncs_3_1;
+	ja cmpfuncs_3_9;
+	mov( tkn_at_min, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_1:
+	cmp( eax, funcstr( "exp", 0, 3) );
+	jb cmpfuncs_3_2;
+	ja cmpfuncs_3_6;
+	mov( tkn_at_exp, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_2:
+	cmp( eax, funcstr( "dim", 0, 3) );
+	jb cmpfuncs_3_3;
+	ja cmpfuncs_3_5;
+	mov( tkn_at_dim, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_3:
+	cmp( eax, funcstr( "cos", 0, 3) );
+	jb cmpfuncs_3_4;
+	ja BadFuncID;
+	mov( tkn_at_cos, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_4:
+	cmp( eax, funcstr( "abs", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_abs, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_5:
+	cmp( eax, funcstr( "eos", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_eos, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_6:
+	cmp( eax, funcstr( "log", 0, 3) );
+	jb cmpfuncs_3_7;
+	ja cmpfuncs_3_8;
+	mov( tkn_at_log, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_7:
+	cmp( eax, funcstr( "lex", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_lex, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_8:
+	cmp( eax, funcstr( "max", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_max, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_9:
+	cmp( eax, funcstr( "odd", 0, 3) );
+	jb cmpfuncs_3_10;
+	ja cmpfuncs_3_14;
+	mov( tkn_at_odd, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_10:
+	cmp( eax, funcstr( "nge", 0, 3) );
+	jb cmpfuncs_3_11;
+	ja cmpfuncs_3_13;
+	mov( tkn_at_nge, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_11:
+	cmp( eax, funcstr( "nbe", 0, 3) );
+	jb cmpfuncs_3_12;
+	ja BadFuncID;
+	mov( tkn_at_nbe, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_12:
+	cmp( eax, funcstr( "nae", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_nae, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_13:
+	cmp( eax, funcstr( "nle", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_nle, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_14:
+	cmp( eax, funcstr( "tan", 0, 3) );
+	jb cmpfuncs_3_15;
+	ja cmpfuncs_3_16;
+	mov( tkn_at_tan, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_15:
+	cmp( eax, funcstr( "sin", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_sin, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_3_16:
+	cmp( eax, funcstr( "use", 0, 3) );
+	jne BadFuncID;
+	mov( tkn_at_use, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_0:
+	cmp( eax, funcstr( "read", 0, 4) );
+	jb cmpfuncs_4_1;
+	ja cmpfuncs_4_11;
+	mov( tkn_at_read, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_1:
+	cmp( eax, funcstr( "eval", 0, 4) );
+	jb cmpfuncs_4_2;
+	ja cmpfuncs_4_7;
+	mov( tkn_at_eval, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_2:
+	cmp( eax, funcstr( "char", 0, 4) );
+	jb cmpfuncs_4_3;
+	ja cmpfuncs_4_5;
+	mov( tkn_at_char, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_3:
+	cmp( eax, funcstr( "ceil", 0, 4) );
+	jb cmpfuncs_4_4;
+	ja BadFuncID;
+	mov( tkn_at_ceil, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_4:
+	cmp( eax, funcstr( "byte", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_byte, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_5:
+	cmp( eax, funcstr( "date", 0, 4) );
+	jb cmpfuncs_4_6;
+	ja BadFuncID;
+	mov( tkn_at_date, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_6:
+	cmp( eax, funcstr( "cset", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_cset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_7:
+	cmp( eax, funcstr( "into", 0, 4) );
+	jb cmpfuncs_4_8;
+	ja cmpfuncs_4_10;
+	mov( tkn_at_into, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_8:
+	cmp( eax, funcstr( "int8", 0, 4) );
+	jb cmpfuncs_4_9;
+	ja BadFuncID;
+	mov( tkn_at_int8, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_9:
+	cmp( eax, funcstr( "here", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_here, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_10:
+	cmp( eax, funcstr( "name", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_name, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_11:
+	cmp( eax, funcstr( "trim", 0, 4) );
+	jb cmpfuncs_4_12;
+	ja cmpfuncs_4_17;
+	mov( tkn_at_trim, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_12:
+	cmp( eax, funcstr( "text", 0, 4) );
+	jb cmpfuncs_4_13;
+	ja cmpfuncs_4_15;
+	mov( tkn_at_text, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_13:
+	cmp( eax, funcstr( "sqrt", 0, 4) );
+	jb cmpfuncs_4_14;
+	ja BadFuncID;
+	mov( tkn_at_sqrt, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_14:
+	cmp( eax, funcstr( "size", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_size, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_15:
+	cmp( eax, funcstr( "time", 0, 4) );
+	jb cmpfuncs_4_16;
+	ja BadFuncID;
+	mov( tkn_at_time, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_16:
+	cmp( eax, funcstr( "this", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_this, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_17:
+	cmp( eax, funcstr( "utf8", 0, 4) );
+	jb cmpfuncs_4_18;
+	ja cmpfuncs_4_20;
+	mov( tkn_at_utf8, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_18:
+	cmp( eax, funcstr( "uns8", 0, 4) );
+	jb cmpfuncs_4_19;
+	ja BadFuncID;
+	mov( tkn_at_uns8, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_19:
+	cmp( eax, funcstr( "type", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_type, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_4_20:
+	cmp( eax, funcstr( "word", 0, 4) );
+	jne BadFuncID;
+	mov( tkn_at_word, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_0:
+	cmp( eax, funcstr( "ismem", 0, 4) );
+	jb cmpfuncs_5_1;
+	ja cmpfuncs_5_14;
+	cmp( bl, funcstr( "ismem", 4, 1) );
+	jb cmpfuncs_5_1;
+	ja cmpfuncs_5_14;
+	mov( tkn_at_ismem, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_1:
+	cmp( eax, funcstr( "enter", 0, 4) );
+	jb cmpfuncs_5_2;
+	ja cmpfuncs_5_8;
+	cmp( bl, funcstr( "enter", 4, 1) );
+	jb cmpfuncs_5_2;
+	ja cmpfuncs_5_8;
+	mov( tkn_at_enter, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_2:
+	cmp( eax, funcstr( "cdecl", 0, 4) );
+	jb cmpfuncs_5_3;
+	ja cmpfuncs_5_6;
+	cmp( bl, funcstr( "cdecl", 4, 1) );
+	jb cmpfuncs_5_3;
+	ja cmpfuncs_5_6;
+	mov( tkn_at_cdecl, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_3:
+	cmp( eax, funcstr( "arity", 0, 4) );
+	jb cmpfuncs_5_4;
+	ja cmpfuncs_5_5;
+	cmp( bl, funcstr( "arity", 4, 1) );
+	jb cmpfuncs_5_4;
+	ja cmpfuncs_5_5;
+	mov( tkn_at_arity, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_4:
+	cmp( eax, funcstr( "align", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "align", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_align, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_5:
+	cmp( eax, funcstr( "bound", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "bound", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_bound, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_6:
+	cmp( eax, funcstr( "dword", 0, 4) );
+	jb cmpfuncs_5_7;
+	ja BadFuncID;
+	cmp( bl, funcstr( "dword", 4, 1) );
+	jb cmpfuncs_5_7;
+	ja BadFuncID;
+	mov( tkn_at_dword, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_7:
+	cmp( eax, funcstr( "class", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "class", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_class, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_8:
+	cmp( eax, funcstr( "int16", 0, 4) );
+	jb cmpfuncs_5_9;
+	ja cmpfuncs_5_12;
+	cmp( bl, funcstr( "int16", 4, 1) );
+	jb cmpfuncs_5_9;
+	ja cmpfuncs_5_12;
+	mov( tkn_at_int16, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_9:
+	cmp( eax, funcstr( "frame", 0, 4) );
+	jb cmpfuncs_5_10;
+	ja cmpfuncs_5_11;
+	cmp( bl, funcstr( "frame", 4, 1) );
+	jb cmpfuncs_5_10;
+	ja cmpfuncs_5_11;
+	mov( tkn_at_frame, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_10:
+	cmp( eax, funcstr( "floor", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "floor", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_floor, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_11:
+	cmp( eax, funcstr( "index", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "index", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_index, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_12:
+	cmp( eax, funcstr( "int64", 0, 4) );
+	jb cmpfuncs_5_13;
+	ja BadFuncID;
+	cmp( bl, funcstr( "int64", 4, 1) );
+	jb cmpfuncs_5_13;
+	ja BadFuncID;
+	mov( tkn_at_int64, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_13:
+	cmp( eax, funcstr( "int32", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "int32", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_int32, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_14:
+	cmp( eax, funcstr( "qword", 0, 4) );
+	jb cmpfuncs_5_15;
+	ja cmpfuncs_5_21;
+	cmp( bl, funcstr( "qword", 4, 1) );
+	jb cmpfuncs_5_15;
+	ja cmpfuncs_5_21;
+	mov( tkn_at_qword, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_15:
+	cmp( eax, funcstr( "lword", 0, 4) );
+	jb cmpfuncs_5_16;
+	ja cmpfuncs_5_19;
+	cmp( bl, funcstr( "lword", 4, 1) );
+	jb cmpfuncs_5_16;
+	ja cmpfuncs_5_19;
+	mov( tkn_at_lword, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_16:
+	cmp( eax, funcstr( "leave", 0, 4) );
+	jb cmpfuncs_5_17;
+	ja cmpfuncs_5_18;
+	cmp( bl, funcstr( "leave", 4, 1) );
+	jb cmpfuncs_5_17;
+	ja cmpfuncs_5_18;
+	mov( tkn_at_leave, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_17:
+	cmp( eax, funcstr( "isreg", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "isreg", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_isreg, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_18:
+	cmp( eax, funcstr( "log10", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "log10", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_log10, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_19:
+	cmp( eax, funcstr( "ptype", 0, 4) );
+	jb cmpfuncs_5_20;
+	ja BadFuncID;
+	cmp( bl, funcstr( "ptype", 4, 1) );
+	jb cmpfuncs_5_20;
+	ja BadFuncID;
+	mov( tkn_at_ptype, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_20:
+	cmp( eax, funcstr( "parms", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "parms", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_parms, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_21:
+	cmp( eax, funcstr( "uns32", 0, 4) );
+	jb cmpfuncs_5_22;
+	ja cmpfuncs_5_24;
+	cmp( bl, funcstr( "uns32", 4, 1) );
+	jb cmpfuncs_5_22;
+	ja cmpfuncs_5_24;
+	mov( tkn_at_uns32, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_22:
+	cmp( eax, funcstr( "uns16", 0, 4) );
+	jb cmpfuncs_5_23;
+	ja BadFuncID;
+	cmp( bl, funcstr( "uns16", 4, 1) );
+	jb cmpfuncs_5_23;
+	ja BadFuncID;
+	mov( tkn_at_uns16, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_23:
+	cmp( eax, funcstr( "trace", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "trace", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_trace, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_24:
+	cmp( eax, funcstr( "wchar", 0, 4) );
+	jb cmpfuncs_5_25;
+	ja BadFuncID;
+	cmp( bl, funcstr( "wchar", 4, 1) );
+	jb cmpfuncs_5_25;
+	ja BadFuncID;
+	mov( tkn_at_wchar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_5_25:
+	cmp( eax, funcstr( "uns64", 0, 4) );
+	jne BadFuncID;
+	cmp( bl, funcstr( "uns64", 4, 1) );
+	jne BadFuncID;
+	mov( tkn_at_uns64, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_0:
+	cmp( eax, funcstr( "pascal", 0, 4) );
+	jb cmpfuncs_6_1;
+	ja cmpfuncs_6_13;
+	cmp( bx, funcstr( "pascal", 4, 2) );
+	jb cmpfuncs_6_1;
+	ja cmpfuncs_6_13;
+	mov( tkn_at_pascal, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_1:
+	cmp( eax, funcstr( "isreg8", 0, 4) );
+	jb cmpfuncs_6_2;
+	ja cmpfuncs_6_8;
+	cmp( bx, funcstr( "isreg8", 4, 2) );
+	jb cmpfuncs_6_2;
+	ja cmpfuncs_6_8;
+	mov( tkn_at_isreg8, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_2:
+	cmp( eax, funcstr( "insert", 0, 4) );
+	jb cmpfuncs_6_3;
+	ja cmpfuncs_6_6;
+	cmp( bx, funcstr( "insert", 4, 2) );
+	jb cmpfuncs_6_3;
+	ja cmpfuncs_6_6;
+	mov( tkn_at_insert, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_3:
+	cmp( eax, funcstr( "delete", 0, 4) );
+	jb cmpfuncs_6_4;
+	ja cmpfuncs_6_5;
+	cmp( bx, funcstr( "delete", 4, 2) );
+	jb cmpfuncs_6_4;
+	ja cmpfuncs_6_5;
+	mov( tkn_at_delete, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_4:
+	cmp( eax, funcstr( "curlex", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "curlex", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_curlex, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_5:
+	cmp( eax, funcstr( "global", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "global", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_global, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_6:
+	cmp( eax, funcstr( "isexpr", 0, 4) );
+	jb cmpfuncs_6_7;
+	ja BadFuncID;
+	cmp( bx, funcstr( "isexpr", 4, 2) );
+	jb cmpfuncs_6_7;
+	ja BadFuncID;
+	mov( tkn_at_isexpr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_7:
+	cmp( eax, funcstr( "int128", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "int128", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_int128, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_8:
+	cmp( eax, funcstr( "memory", 0, 4) );
+	jb cmpfuncs_6_9;
+	ja cmpfuncs_6_11;
+	cmp( bx, funcstr( "memory", 4, 2) );
+	jb cmpfuncs_6_9;
+	ja cmpfuncs_6_11;
+	mov( tkn_at_memory, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_9:
+	cmp( eax, funcstr( "length", 0, 4) );
+	jb cmpfuncs_6_10;
+	ja BadFuncID;
+	cmp( bx, funcstr( "length", 4, 2) );
+	jb cmpfuncs_6_10;
+	ja BadFuncID;
+	mov( tkn_at_length, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_10:
+	cmp( eax, funcstr( "istype", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "istype", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_istype, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_11:
+	cmp( eax, funcstr( "parent", 0, 4) );
+	jb cmpfuncs_6_12;
+	ja BadFuncID;
+	cmp( bx, funcstr( "parent", 4, 2) );
+	jb cmpfuncs_6_12;
+	ja BadFuncID;
+	mov( tkn_at_parent, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_12:
+	cmp( eax, funcstr( "offset", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "offset", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_offset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_13:
+	cmp( eax, funcstr( "rindex", 0, 4) );
+	jb cmpfuncs_6_14;
+	ja cmpfuncs_6_20;
+	cmp( bx, funcstr( "rindex", 4, 2) );
+	jb cmpfuncs_6_14;
+	ja cmpfuncs_6_20;
+	mov( tkn_at_rindex, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_14:
+	cmp( eax, funcstr( "real32", 0, 4) );
+	jb cmpfuncs_6_15;
+	ja cmpfuncs_6_18;
+	cmp( bx, funcstr( "real32", 4, 2) );
+	jb cmpfuncs_6_15;
+	ja cmpfuncs_6_18;
+	mov( tkn_at_real32, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_15:
+	cmp( eax, funcstr( "peekws", 0, 4) );
+	jb cmpfuncs_6_16;
+	ja cmpfuncs_6_17;
+	cmp( bx, funcstr( "peekws", 4, 2) );
+	jb cmpfuncs_6_16;
+	ja cmpfuncs_6_17;
+	mov( tkn_at_peekws, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_16:
+	cmp( eax, funcstr( "pclass", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "pclass", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_pclass, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_17:
+	cmp( eax, funcstr( "random", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "random", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_random, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_18:
+	cmp( eax, funcstr( "real80", 0, 4) );
+	jb cmpfuncs_6_19;
+	ja BadFuncID;
+	cmp( bx, funcstr( "real80", 4, 2) );
+	jb cmpfuncs_6_19;
+	ja BadFuncID;
+	mov( tkn_at_real80, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_19:
+	cmp( eax, funcstr( "real64", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "real64", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_real64, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_20:
+	cmp( eax, funcstr( "strset", 0, 4) );
+	jb cmpfuncs_6_21;
+	ja cmpfuncs_6_23;
+	cmp( bx, funcstr( "strset", 4, 2) );
+	jb cmpfuncs_6_21;
+	ja cmpfuncs_6_23;
+	mov( tkn_at_strset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_21:
+	cmp( eax, funcstr( "string", 0, 4) );
+	jb cmpfuncs_6_22;
+	ja BadFuncID;
+	cmp( bx, funcstr( "string", 4, 2) );
+	jb cmpfuncs_6_22;
+	ja BadFuncID;
+	mov( tkn_at_string, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_22:
+	cmp( eax, funcstr( "strbrk", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "strbrk", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_strbrk, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_23:
+	cmp( eax, funcstr( "uns128", 0, 4) );
+	jb cmpfuncs_6_24;
+	ja BadFuncID;
+	cmp( bx, funcstr( "uns128", 4, 2) );
+	jb cmpfuncs_6_24;
+	ja BadFuncID;
+	mov( tkn_at_uns128, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_6_24:
+	cmp( eax, funcstr( "substr", 0, 4) );
+	jne BadFuncID;
+	cmp( bx, funcstr( "substr", 4, 2) );
+	jne BadFuncID;
+	mov( tkn_at_substr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_0:
+	cmp( eax, funcstr( "matchid", 0, 4) );
+	jb cmpfuncs_7_1;
+	ja cmpfuncs_7_15;
+	cmp( ebx, funcstr( "matchid", 4, 3) );
+	jb cmpfuncs_7_1;
+	ja cmpfuncs_7_15;
+	mov( tkn_at_matchid, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_1:
+	cmp( eax, funcstr( "isconst", 0, 4) );
+	jb cmpfuncs_7_2;
+	ja cmpfuncs_7_9;
+	cmp( ebx, funcstr( "isconst", 4, 3) );
+	jb cmpfuncs_7_2;
+	ja cmpfuncs_7_9;
+	mov( tkn_at_isconst, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_2:
+	cmp( eax, funcstr( "extract", 0, 4) );
+	jb cmpfuncs_7_3;
+	ja cmpfuncs_7_6;
+	cmp( ebx, funcstr( "extract", 4, 3) );
+	jb cmpfuncs_7_3;
+	ja cmpfuncs_7_6;
+	mov( tkn_at_extract, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_3:
+	cmp( eax, funcstr( "defined", 0, 4) );
+	jb cmpfuncs_7_4;
+	ja cmpfuncs_7_5;
+	cmp( ebx, funcstr( "defined", 4, 3) );
+	jb cmpfuncs_7_4;
+	ja cmpfuncs_7_5;
+	mov( tkn_at_defined, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_4:
+	cmp( eax, funcstr( "basereg", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "basereg", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_basereg, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_5:
+	cmp( eax, funcstr( "display", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "display", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_display, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_6:
+	cmp( eax, funcstr( "isalpha", 0, 4) );
+	jb cmpfuncs_7_7;
+	ja cmpfuncs_7_8;
+	cmp( ebx, funcstr( "isalpha", 4, 3) );
+	jb cmpfuncs_7_7;
+	ja cmpfuncs_7_8;
+	mov( tkn_at_isalpha, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_7:
+	cmp( eax, funcstr( "forward", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "forward", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_forward, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_8:
+	cmp( eax, funcstr( "isclass", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "isclass", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_isclass, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_9:
+	cmp( eax, funcstr( "isreg32", 0, 4) );
+	jb cmpfuncs_7_10;
+	ja cmpfuncs_7_13;
+	cmp( ebx, funcstr( "isreg32", 4, 3) );
+	jb cmpfuncs_7_10;
+	ja cmpfuncs_7_13;
+	mov( tkn_at_isreg32, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_10:
+	cmp( eax, funcstr( "islower", 0, 4) );
+	jb cmpfuncs_7_11;
+	ja cmpfuncs_7_12;
+	cmp( ebx, funcstr( "islower", 4, 3) );
+	jb cmpfuncs_7_11;
+	ja cmpfuncs_7_12;
+	mov( tkn_at_islower, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_11:
+	cmp( eax, funcstr( "isdigit", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "isdigit", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_isdigit, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_12:
+	cmp( eax, funcstr( "isreg16", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "isreg16", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_isreg16, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_13:
+	cmp( eax, funcstr( "isupper", 0, 4) );
+	jb cmpfuncs_7_14;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "isupper", 4, 3) );
+	jb cmpfuncs_7_14;
+	ja BadFuncID;
+	mov( tkn_at_isupper, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_14:
+	cmp( eax, funcstr( "isspace", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "isspace", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_isspace, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_15:
+	cmp( eax, funcstr( "real128", 0, 4) );
+	jb cmpfuncs_7_16;
+	ja cmpfuncs_7_22;
+	cmp( ebx, funcstr( "real128", 4, 3) );
+	jb cmpfuncs_7_16;
+	ja cmpfuncs_7_22;
+	mov( tkn_at_real128, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_16:
+	cmp( eax, funcstr( "onechar", 0, 4) );
+	jb cmpfuncs_7_17;
+	ja cmpfuncs_7_20;
+	cmp( ebx, funcstr( "onechar", 4, 3) );
+	jb cmpfuncs_7_17;
+	ja cmpfuncs_7_20;
+	mov( tkn_at_onechar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_17:
+	cmp( eax, funcstr( "noframe", 0, 4) );
+	jb cmpfuncs_7_18;
+	ja cmpfuncs_7_19;
+	cmp( ebx, funcstr( "noframe", 4, 3) );
+	jb cmpfuncs_7_18;
+	ja cmpfuncs_7_19;
+	mov( tkn_at_noframe, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_18:
+	cmp( eax, funcstr( "noenter", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "noenter", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_noenter, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_19:
+	cmp( eax, funcstr( "noleave", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "noleave", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_noleave, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_20:
+	cmp( eax, funcstr( "pointer", 0, 4) );
+	jb cmpfuncs_7_21;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "pointer", 4, 3) );
+	jb cmpfuncs_7_21;
+	ja BadFuncID;
+	mov( tkn_at_pointer, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_21:
+	cmp( eax, funcstr( "onecset", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "onecset", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_onecset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_22:
+	cmp( eax, funcstr( "strspan", 0, 4) );
+	jb cmpfuncs_7_23;
+	ja cmpfuncs_7_26;
+	cmp( ebx, funcstr( "strspan", 4, 3) );
+	jb cmpfuncs_7_23;
+	ja cmpfuncs_7_26;
+	mov( tkn_at_strspan, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_23:
+	cmp( eax, funcstr( "section", 0, 4) );
+	jb cmpfuncs_7_24;
+	ja cmpfuncs_7_25;
+	cmp( ebx, funcstr( "section", 4, 3) );
+	jb cmpfuncs_7_24;
+	ja cmpfuncs_7_25;
+	mov( tkn_at_section, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_24:
+	cmp( eax, funcstr( "returns", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "returns", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_returns, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_25:
+	cmp( eax, funcstr( "stdcall", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "stdcall", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_stdcall, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_26:
+	cmp( eax, funcstr( "wsoreos", 0, 4) );
+	jb cmpfuncs_7_27;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "wsoreos", 4, 3) );
+	jb cmpfuncs_7_27;
+	ja BadFuncID;
+	mov( tkn_at_wsoreos, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_7_27:
+	cmp( eax, funcstr( "uptostr", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "uptostr", 4, 3) );
+	jne BadFuncID;
+	mov( tkn_at_uptostr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_0:
+	cmp( eax, funcstr( "ntomcset", 0, 4) );
+	jb cmpfuncs_8_1;
+	ja cmpfuncs_8_12;
+	cmp( ebx, funcstr( "ntomcset", 4, 4) );
+	jb cmpfuncs_8_1;
+	ja cmpfuncs_8_12;
+	mov( tkn_at_ntomcset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_1:
+	cmp( eax, funcstr( "isregfpu", 0, 4) );
+	jb cmpfuncs_8_2;
+	ja cmpfuncs_8_7;
+	cmp( ebx, funcstr( "isregfpu", 4, 4) );
+	jb cmpfuncs_8_2;
+	ja cmpfuncs_8_7;
+	mov( tkn_at_isregfpu, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_2:
+	cmp( eax, funcstr( "enumsize", 0, 4) );
+	jb cmpfuncs_8_3;
+	ja cmpfuncs_8_5;
+	cmp( ebx, funcstr( "enumsize", 4, 4) );
+	jb cmpfuncs_8_3;
+	ja cmpfuncs_8_5;
+	mov( tkn_at_enumsize, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_3:
+	cmp( eax, funcstr( "elements", 0, 4) );
+	jb cmpfuncs_8_4;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "elements", 4, 4) );
+	jb cmpfuncs_8_4;
+	ja BadFuncID;
+	mov( tkn_at_elements, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_4:
+	cmp( eax, funcstr( "abstract", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "abstract", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_abstract, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_5:
+	cmp( eax, funcstr( "filename", 0, 4) );
+	jb cmpfuncs_8_6;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "filename", 4, 4) );
+	jb cmpfuncs_8_6;
+	ja BadFuncID;
+	mov( tkn_at_filename, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_6:
+	cmp( eax, funcstr( "external", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "external", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_external, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_7:
+	cmp( eax, funcstr( "isxdigit", 0, 4) );
+	jb cmpfuncs_8_8;
+	ja cmpfuncs_8_10;
+	cmp( ebx, funcstr( "isxdigit", 4, 4) );
+	jb cmpfuncs_8_8;
+	ja cmpfuncs_8_10;
+	mov( tkn_at_isxdigit, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_8:
+	cmp( eax, funcstr( "isregsse", 0, 4) );
+	jb cmpfuncs_8_9;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "isregsse", 4, 4) );
+	jb cmpfuncs_8_9;
+	ja BadFuncID;
+	mov( tkn_at_isregsse, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_9:
+	cmp( eax, funcstr( "isregmmx", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "isregmmx", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_isregmmx, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_10:
+	cmp( eax, funcstr( "ntomchar", 0, 4) );
+	jb cmpfuncs_8_11;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "ntomchar", 4, 4) );
+	jb cmpfuncs_8_11;
+	ja BadFuncID;
+	mov( tkn_at_ntomchar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_11:
+	cmp( eax, funcstr( "matchstr", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "matchstr", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_matchstr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_12:
+	cmp( eax, funcstr( "typename", 0, 4) );
+	jb cmpfuncs_8_13;
+	ja cmpfuncs_8_18;
+	cmp( ebx, funcstr( "typename", 4, 4) );
+	jb cmpfuncs_8_13;
+	ja cmpfuncs_8_18;
+	mov( tkn_at_typename, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_13:
+	cmp( eax, funcstr( "peekcset", 0, 4) );
+	jb cmpfuncs_8_14;
+	ja cmpfuncs_8_16;
+	cmp( ebx, funcstr( "peekcset", 4, 4) );
+	jb cmpfuncs_8_14;
+	ja cmpfuncs_8_16;
+	mov( tkn_at_peekcset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_14:
+	cmp( eax, funcstr( "peekchar", 0, 4) );
+	jb cmpfuncs_8_15;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "peekchar", 4, 4) );
+	jb cmpfuncs_8_15;
+	ja BadFuncID;
+	mov( tkn_at_peekchar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_15:
+	cmp( eax, funcstr( "oneichar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "oneichar", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_oneichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_16:
+	cmp( eax, funcstr( "tostring", 0, 4) );
+	jb cmpfuncs_8_17;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "tostring", 4, 4) );
+	jb cmpfuncs_8_17;
+	ja BadFuncID;
+	mov( tkn_at_tostring, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_17:
+	cmp( eax, funcstr( "tokenize", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "tokenize", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_tokenize, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_18:
+	cmp( eax, funcstr( "uptoistr", 0, 4) );
+	jb cmpfuncs_8_19;
+	ja cmpfuncs_8_21;
+	cmp( ebx, funcstr( "uptoistr", 4, 4) );
+	jb cmpfuncs_8_19;
+	ja cmpfuncs_8_21;
+	mov( tkn_at_uptoistr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_19:
+	cmp( eax, funcstr( "uptocset", 0, 4) );
+	jb cmpfuncs_8_20;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "uptocset", 4, 4) );
+	jb cmpfuncs_8_20;
+	ja BadFuncID;
+	mov( tkn_at_uptocset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_20:
+	cmp( eax, funcstr( "uptochar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "uptochar", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_uptochar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_8_21:
+	cmp( eax, funcstr( "volatile", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "volatile", 4, 4) );
+	jne BadFuncID;
+	mov( tkn_at_volatile, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_0:
+	cmp( eax, funcstr( "nostorage", 0, 4) );
+	jb cmpfuncs_9_1;
+	ja cmpfuncs_9_8;
+	cmp( ebx, funcstr( "nostorage", 4, 4) );
+	jb cmpfuncs_9_1;
+	ja cmpfuncs_9_8;
+	cmp( cl, funcstr( "nostorage", 8, 1) );
+	jb cmpfuncs_9_1;
+	ja cmpfuncs_9_8;
+	mov( tkn_at_nostorage, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_1:
+	cmp( eax, funcstr( "localsyms", 0, 4) );
+	jb cmpfuncs_9_2;
+	ja cmpfuncs_9_5;
+	cmp( ebx, funcstr( "localsyms", 4, 4) );
+	jb cmpfuncs_9_2;
+	ja cmpfuncs_9_5;
+	cmp( cl, funcstr( "localsyms", 8, 1) );
+	jb cmpfuncs_9_2;
+	ja cmpfuncs_9_5;
+	mov( tkn_at_localsyms, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_2:
+	cmp( eax, funcstr( "curobject", 0, 4) );
+	jb cmpfuncs_9_3;
+	ja cmpfuncs_9_4;
+	cmp( ebx, funcstr( "curobject", 4, 4) );
+	jb cmpfuncs_9_3;
+	ja cmpfuncs_9_4;
+	cmp( cl, funcstr( "curobject", 8, 1) );
+	jb cmpfuncs_9_3;
+	ja cmpfuncs_9_4;
+	mov( tkn_at_curobject, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_3:
+	cmp( eax, funcstr( "constexpr", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "constexpr", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "constexpr", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_constexpr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_4:
+	cmp( eax, funcstr( "curoffset", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "curoffset", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "curoffset", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_curoffset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_5:
+	cmp( eax, funcstr( "matchistr", 0, 4) );
+	jb cmpfuncs_9_6;
+	ja cmpfuncs_9_7;
+	cmp( ebx, funcstr( "matchistr", 4, 4) );
+	jb cmpfuncs_9_6;
+	ja cmpfuncs_9_7;
+	cmp( cl, funcstr( "matchistr", 8, 1) );
+	jb cmpfuncs_9_6;
+	ja cmpfuncs_9_7;
+	mov( tkn_at_matchistr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_6:
+	cmp( eax, funcstr( "lowercase", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "lowercase", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "lowercase", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_lowercase, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_7:
+	cmp( eax, funcstr( "nodisplay", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "nodisplay", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "nodisplay", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_nodisplay, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_8:
+	cmp( eax, funcstr( "randomize", 0, 4) );
+	jb cmpfuncs_9_9;
+	ja cmpfuncs_9_12;
+	cmp( ebx, funcstr( "randomize", 4, 4) );
+	jb cmpfuncs_9_9;
+	ja cmpfuncs_9_12;
+	cmp( cl, funcstr( "randomize", 8, 1) );
+	jb cmpfuncs_9_9;
+	ja cmpfuncs_9_12;
+	mov( tkn_at_randomize, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_9:
+	cmp( eax, funcstr( "peekichar", 0, 4) );
+	jb cmpfuncs_9_10;
+	ja cmpfuncs_9_11;
+	cmp( ebx, funcstr( "peekichar", 4, 4) );
+	jb cmpfuncs_9_10;
+	ja cmpfuncs_9_11;
+	cmp( cl, funcstr( "peekichar", 8, 1) );
+	jb cmpfuncs_9_10;
+	ja cmpfuncs_9_11;
+	mov( tkn_at_peekichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_10:
+	cmp( eax, funcstr( "ntomichar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "ntomichar", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "ntomichar", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_ntomichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_11:
+	cmp( eax, funcstr( "preserves", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "preserves", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "preserves", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_preserves, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_12:
+	cmp( eax, funcstr( "uptoichar", 0, 4) );
+	jb cmpfuncs_9_13;
+	ja cmpfuncs_9_14;
+	cmp( ebx, funcstr( "uptoichar", 4, 4) );
+	jb cmpfuncs_9_13;
+	ja cmpfuncs_9_14;
+	cmp( cl, funcstr( "uptoichar", 8, 1) );
+	jb cmpfuncs_9_13;
+	ja cmpfuncs_9_14;
+	mov( tkn_at_uptoichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_13:
+	cmp( eax, funcstr( "uppercase", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "uppercase", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "uppercase", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_uppercase, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_9_14:
+	cmp( eax, funcstr( "wstheneos", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "wstheneos", 4, 4) );
+	jne BadFuncID;
+	cmp( cl, funcstr( "wstheneos", 8, 1) );
+	jne BadFuncID;
+	mov( tkn_at_wstheneos, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_0:
+	cmp( eax, funcstr( "linenumber", 0, 4) );
+	jb cmpfuncs_10_1;
+	ja cmpfuncs_10_7;
+	cmp( ebx, funcstr( "linenumber", 4, 4) );
+	jb cmpfuncs_10_1;
+	ja cmpfuncs_10_7;
+	cmp( cx, funcstr( "linenumber", 8, 2) );
+	jb cmpfuncs_10_1;
+	ja cmpfuncs_10_7;
+	mov( tkn_at_linenumber, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_1:
+	cmp( eax, funcstr( "firstncset", 0, 4) );
+	jb cmpfuncs_10_2;
+	ja cmpfuncs_10_5;
+	cmp( ebx, funcstr( "firstncset", 4, 4) );
+	jb cmpfuncs_10_2;
+	ja cmpfuncs_10_5;
+	cmp( cx, funcstr( "firstncset", 8, 2) );
+	jb cmpfuncs_10_2;
+	ja cmpfuncs_10_5;
+	mov( tkn_at_firstncset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_2:
+	cmp( eax, funcstr( "exceptions", 0, 4) );
+	jb cmpfuncs_10_3;
+	ja cmpfuncs_10_4;
+	cmp( ebx, funcstr( "exceptions", 4, 4) );
+	jb cmpfuncs_10_3;
+	ja cmpfuncs_10_4;
+	cmp( cx, funcstr( "exceptions", 8, 2) );
+	jb cmpfuncs_10_3;
+	ja cmpfuncs_10_4;
+	mov( tkn_at_exceptions, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_3:
+	cmp( eax, funcstr( "alignstack", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "alignstack", 4, 4) );
+	jne BadFuncID;
+	cmp( cx, funcstr( "alignstack", 8, 2) );
+	jne BadFuncID;
+	mov( tkn_at_alignstack, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_4:
+	cmp( eax, funcstr( "firstnchar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "firstnchar", 4, 4) );
+	jne BadFuncID;
+	cmp( cx, funcstr( "firstnchar", 8, 2) );
+	jne BadFuncID;
+	mov( tkn_at_firstnchar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_5:
+	cmp( eax, funcstr( "isexternal", 0, 4) );
+	jb cmpfuncs_10_6;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "isexternal", 4, 4) );
+	jb cmpfuncs_10_6;
+	ja BadFuncID;
+	cmp( cx, funcstr( "isexternal", 8, 2) );
+	jb cmpfuncs_10_6;
+	ja BadFuncID;
+	mov( tkn_at_isexternal, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_6:
+	cmp( eax, funcstr( "isalphanum", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "isalphanum", 4, 4) );
+	jne BadFuncID;
+	cmp( cx, funcstr( "isalphanum", 8, 2) );
+	jne BadFuncID;
+	mov( tkn_at_isalphanum, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_7:
+	cmp( eax, funcstr( "stackalign", 0, 4) );
+	jb cmpfuncs_10_8;
+	ja cmpfuncs_10_11;
+	cmp( ebx, funcstr( "stackalign", 4, 4) );
+	jb cmpfuncs_10_8;
+	ja cmpfuncs_10_11;
+	cmp( cx, funcstr( "stackalign", 8, 2) );
+	jb cmpfuncs_10_8;
+	ja cmpfuncs_10_11;
+	mov( tkn_at_stackalign, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_8:
+	cmp( eax, funcstr( "parmoffset", 0, 4) );
+	jb cmpfuncs_10_9;
+	ja cmpfuncs_10_10;
+	cmp( ebx, funcstr( "parmoffset", 4, 4) );
+	jb cmpfuncs_10_9;
+	ja cmpfuncs_10_10;
+	cmp( cx, funcstr( "parmoffset", 8, 2) );
+	jb cmpfuncs_10_9;
+	ja cmpfuncs_10_10;
+	mov( tkn_at_parmoffset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_9:
+	cmp( eax, funcstr( "matchtostr", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "matchtostr", 4, 4) );
+	jne BadFuncID;
+	cmp( cx, funcstr( "matchtostr", 8, 2) );
+	jne BadFuncID;
+	mov( tkn_at_matchtostr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_10:
+	cmp( eax, funcstr( "procprefix", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "procprefix", 4, 4) );
+	jne BadFuncID;
+	cmp( cx, funcstr( "procprefix", 8, 2) );
+	jne BadFuncID;
+	mov( tkn_at_procprefix, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_11:
+	cmp( eax, funcstr( "traceprocs", 0, 4) );
+	jb cmpfuncs_10_12;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "traceprocs", 4, 4) );
+	jb cmpfuncs_10_12;
+	ja BadFuncID;
+	cmp( cx, funcstr( "traceprocs", 8, 2) );
+	jb cmpfuncs_10_12;
+	ja BadFuncID;
+	mov( tkn_at_traceprocs, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_10_12:
+	cmp( eax, funcstr( "staticname", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "staticname", 4, 4) );
+	jne BadFuncID;
+	cmp( cx, funcstr( "staticname", 8, 2) );
+	jne BadFuncID;
+	mov( tkn_at_staticname, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_0:
+	cmp( eax, funcstr( "norlesschar", 0, 4) );
+	jb cmpfuncs_11_1;
+	ja cmpfuncs_11_5;
+	cmp( ebx, funcstr( "norlesschar", 4, 4) );
+	jb cmpfuncs_11_1;
+	ja cmpfuncs_11_5;
+	cmp( ecx, funcstr( "norlesschar", 8, 3) );
+	jb cmpfuncs_11_1;
+	ja cmpfuncs_11_5;
+	mov( tkn_at_norlesschar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_1:
+	cmp( eax, funcstr( "localoffset", 0, 4) );
+	jb cmpfuncs_11_2;
+	ja cmpfuncs_11_4;
+	cmp( ebx, funcstr( "localoffset", 4, 4) );
+	jb cmpfuncs_11_2;
+	ja cmpfuncs_11_4;
+	cmp( ecx, funcstr( "localoffset", 8, 3) );
+	jb cmpfuncs_11_2;
+	ja cmpfuncs_11_4;
+	mov( tkn_at_localoffset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_2:
+	cmp( eax, funcstr( "firstnichar", 0, 4) );
+	jb cmpfuncs_11_3;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "firstnichar", 4, 4) );
+	jb cmpfuncs_11_3;
+	ja BadFuncID;
+	cmp( ecx, funcstr( "firstnichar", 8, 3) );
+	jb cmpfuncs_11_3;
+	ja BadFuncID;
+	mov( tkn_at_firstnichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_3:
+	cmp( eax, funcstr( "elementsize", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "elementsize", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "elementsize", 8, 3) );
+	jne BadFuncID;
+	mov( tkn_at_elementsize, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_4:
+	cmp( eax, funcstr( "matchtoistr", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "matchtoistr", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "matchtoistr", 8, 3) );
+	jne BadFuncID;
+	mov( tkn_at_matchtoistr, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_5:
+	cmp( eax, funcstr( "normorecset", 0, 4) );
+	jb cmpfuncs_11_6;
+	ja cmpfuncs_11_8;
+	cmp( ebx, funcstr( "normorecset", 4, 4) );
+	jb cmpfuncs_11_6;
+	ja cmpfuncs_11_8;
+	cmp( ecx, funcstr( "normorecset", 8, 3) );
+	jb cmpfuncs_11_6;
+	ja cmpfuncs_11_8;
+	mov( tkn_at_normorecset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_6:
+	cmp( eax, funcstr( "normorechar", 0, 4) );
+	jb cmpfuncs_11_7;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "normorechar", 4, 4) );
+	jb cmpfuncs_11_7;
+	ja BadFuncID;
+	cmp( ecx, funcstr( "normorechar", 8, 3) );
+	jb cmpfuncs_11_7;
+	ja BadFuncID;
+	mov( tkn_at_normorechar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_7:
+	cmp( eax, funcstr( "norlesscset", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "norlesscset", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "norlesscset", 8, 3) );
+	jne BadFuncID;
+	mov( tkn_at_norlesscset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_11_8:
+	cmp( eax, funcstr( "oneormorews", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "oneormorews", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "oneormorews", 8, 3) );
+	jne BadFuncID;
+	mov( tkn_at_oneormorews, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_0:
+	cmp( eax, funcstr( "norlessichar", 0, 4) );
+	jb cmpfuncs_12_1;
+	ja cmpfuncs_12_4;
+	cmp( ebx, funcstr( "norlessichar", 4, 4) );
+	jb cmpfuncs_12_1;
+	ja cmpfuncs_12_4;
+	cmp( ecx, funcstr( "norlessichar", 8, 4) );
+	jb cmpfuncs_12_1;
+	ja cmpfuncs_12_4;
+	mov( tkn_at_norlessichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_1:
+	cmp( eax, funcstr( "exactlyncset", 0, 4) );
+	jb cmpfuncs_12_2;
+	ja cmpfuncs_12_3;
+	cmp( ebx, funcstr( "exactlyncset", 4, 4) );
+	jb cmpfuncs_12_2;
+	ja cmpfuncs_12_3;
+	cmp( ecx, funcstr( "exactlyncset", 8, 4) );
+	jb cmpfuncs_12_2;
+	ja cmpfuncs_12_3;
+	mov( tkn_at_exactlyncset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_2:
+	cmp( eax, funcstr( "exactlynchar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "exactlynchar", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "exactlynchar", 8, 4) );
+	jne BadFuncID;
+	mov( tkn_at_exactlynchar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_3:
+	cmp( eax, funcstr( "noalignstack", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "noalignstack", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "noalignstack", 8, 4) );
+	jne BadFuncID;
+	mov( tkn_at_noalignstack, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_4:
+	cmp( eax, funcstr( "nostackalign", 0, 4) );
+	jb cmpfuncs_12_5;
+	ja cmpfuncs_12_6;
+	cmp( ebx, funcstr( "nostackalign", 4, 4) );
+	jb cmpfuncs_12_5;
+	ja cmpfuncs_12_6;
+	cmp( ecx, funcstr( "nostackalign", 8, 4) );
+	jb cmpfuncs_12_5;
+	ja cmpfuncs_12_6;
+	mov( tkn_at_nostackalign, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_5:
+	cmp( eax, funcstr( "normoreichar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "normoreichar", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "normoreichar", 8, 4) );
+	jne BadFuncID;
+	mov( tkn_at_normoreichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_12_6:
+	cmp( eax, funcstr( "zeroormorews", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "zeroormorews", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "zeroormorews", 8, 4) );
+	jne BadFuncID;
+	mov( tkn_at_zeroormorews, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_0:
+	cmp( eax, funcstr( "oneormorechar", 0, 4) );
+	jb cmpfuncs_13_1;
+	ja cmpfuncs_13_5;
+	cmp( ebx, funcstr( "oneormorechar", 4, 4) );
+	jb cmpfuncs_13_1;
+	ja cmpfuncs_13_5;
+	cmp( ecx, funcstr( "oneormorechar", 8, 4) );
+	jb cmpfuncs_13_1;
+	ja cmpfuncs_13_5;
+	cmp( dl, funcstr( "oneormorechar", 12, 1) );
+	jb cmpfuncs_13_1;
+	ja cmpfuncs_13_5;
+	mov( tkn_at_oneormorechar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_1:
+	cmp( eax, funcstr( "matchnumconst", 0, 4) );
+	jb cmpfuncs_13_2;
+	ja cmpfuncs_13_4;
+	cmp( ebx, funcstr( "matchnumconst", 4, 4) );
+	jb cmpfuncs_13_2;
+	ja cmpfuncs_13_4;
+	cmp( ecx, funcstr( "matchnumconst", 8, 4) );
+	jb cmpfuncs_13_2;
+	ja cmpfuncs_13_4;
+	cmp( dl, funcstr( "matchnumconst", 12, 1) );
+	jb cmpfuncs_13_2;
+	ja cmpfuncs_13_4;
+	mov( tkn_at_matchnumconst, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_2:
+	cmp( eax, funcstr( "matchintconst", 0, 4) );
+	jb cmpfuncs_13_3;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "matchintconst", 4, 4) );
+	jb cmpfuncs_13_3;
+	ja BadFuncID;
+	cmp( ecx, funcstr( "matchintconst", 8, 4) );
+	jb cmpfuncs_13_3;
+	ja BadFuncID;
+	cmp( dl, funcstr( "matchintconst", 12, 1) );
+	jb cmpfuncs_13_3;
+	ja BadFuncID;
+	mov( tkn_at_matchintconst, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_3:
+	cmp( eax, funcstr( "exactlynichar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "exactlynichar", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "exactlynichar", 8, 4) );
+	jne BadFuncID;
+	cmp( dl, funcstr( "exactlynichar", 12, 1) );
+	jne BadFuncID;
+	mov( tkn_at_exactlynichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_4:
+	cmp( eax, funcstr( "matchstrconst", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "matchstrconst", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "matchstrconst", 8, 4) );
+	jne BadFuncID;
+	cmp( dl, funcstr( "matchstrconst", 12, 1) );
+	jne BadFuncID;
+	mov( tkn_at_matchstrconst, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_5:
+	cmp( eax, funcstr( "zerooronechar", 0, 4) );
+	jb cmpfuncs_13_6;
+	ja cmpfuncs_13_7;
+	cmp( ebx, funcstr( "zerooronechar", 4, 4) );
+	jb cmpfuncs_13_6;
+	ja cmpfuncs_13_7;
+	cmp( ecx, funcstr( "zerooronechar", 8, 4) );
+	jb cmpfuncs_13_6;
+	ja cmpfuncs_13_7;
+	cmp( dl, funcstr( "zerooronechar", 12, 1) );
+	jb cmpfuncs_13_6;
+	ja cmpfuncs_13_7;
+	mov( tkn_at_zerooronechar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_6:
+	cmp( eax, funcstr( "oneormorecset", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "oneormorecset", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "oneormorecset", 8, 4) );
+	jne BadFuncID;
+	cmp( dl, funcstr( "oneormorecset", 12, 1) );
+	jne BadFuncID;
+	mov( tkn_at_oneormorecset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_13_7:
+	cmp( eax, funcstr( "zerooronecset", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "zerooronecset", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "zerooronecset", 8, 4) );
+	jne BadFuncID;
+	cmp( dl, funcstr( "zerooronecset", 12, 1) );
+	jne BadFuncID;
+	mov( tkn_at_zerooronecset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_14_0:
+	cmp( eax, funcstr( "zeroormorechar", 0, 4) );
+	jb cmpfuncs_14_1;
+	ja cmpfuncs_14_3;
+	cmp( ebx, funcstr( "zeroormorechar", 4, 4) );
+	jb cmpfuncs_14_1;
+	ja cmpfuncs_14_3;
+	cmp( ecx, funcstr( "zeroormorechar", 8, 4) );
+	jb cmpfuncs_14_1;
+	ja cmpfuncs_14_3;
+	cmp( dx, funcstr( "zeroormorechar", 12, 2) );
+	jb cmpfuncs_14_1;
+	ja cmpfuncs_14_3;
+	mov( tkn_at_zeroormorechar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_14_1:
+	cmp( eax, funcstr( "oneormoreichar", 0, 4) );
+	jb cmpfuncs_14_2;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "oneormoreichar", 4, 4) );
+	jb cmpfuncs_14_2;
+	ja BadFuncID;
+	cmp( ecx, funcstr( "oneormoreichar", 8, 4) );
+	jb cmpfuncs_14_2;
+	ja BadFuncID;
+	cmp( dx, funcstr( "oneormoreichar", 12, 2) );
+	jb cmpfuncs_14_2;
+	ja BadFuncID;
+	mov( tkn_at_oneormoreichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_14_2:
+	cmp( eax, funcstr( "matchrealconst", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "matchrealconst", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "matchrealconst", 8, 4) );
+	jne BadFuncID;
+	cmp( dx, funcstr( "matchrealconst", 12, 2) );
+	jne BadFuncID;
+	mov( tkn_at_matchrealconst, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_14_3:
+	cmp( eax, funcstr( "zerooroneichar", 0, 4) );
+	jb cmpfuncs_14_4;
+	ja BadFuncID;
+	cmp( ebx, funcstr( "zerooroneichar", 4, 4) );
+	jb cmpfuncs_14_4;
+	ja BadFuncID;
+	cmp( ecx, funcstr( "zerooroneichar", 8, 4) );
+	jb cmpfuncs_14_4;
+	ja BadFuncID;
+	cmp( dx, funcstr( "zerooroneichar", 12, 2) );
+	jb cmpfuncs_14_4;
+	ja BadFuncID;
+	mov( tkn_at_zerooroneichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_14_4:
+	cmp( eax, funcstr( "zeroormorecset", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "zeroormorecset", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "zeroormorecset", 8, 4) );
+	jne BadFuncID;
+	cmp( dx, funcstr( "zeroormorecset", 12, 2) );
+	jne BadFuncID;
+	mov( tkn_at_zeroormorecset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_15_0:
+	cmp( eax, funcstr( "exactlyntomcset", 0, 4) );
+	jb cmpfuncs_15_1;
+	ja cmpfuncs_15_2;
+	cmp( ebx, funcstr( "exactlyntomcset", 4, 4) );
+	jb cmpfuncs_15_1;
+	ja cmpfuncs_15_2;
+	cmp( ecx, funcstr( "exactlyntomcset", 8, 4) );
+	jb cmpfuncs_15_1;
+	ja cmpfuncs_15_2;
+	cmp( edx, funcstr( "exactlyntomcset", 12, 3) );
+	jb cmpfuncs_15_1;
+	ja cmpfuncs_15_2;
+	mov( tkn_at_exactlyntomcset, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_15_1:
+	cmp( eax, funcstr( "exactlyntomchar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "exactlyntomchar", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "exactlyntomchar", 8, 4) );
+	jne BadFuncID;
+	cmp( edx, funcstr( "exactlyntomchar", 12, 3) );
+	jne BadFuncID;
+	mov( tkn_at_exactlyntomchar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_15_2:
+	cmp( eax, funcstr( "zeroormoreichar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "zeroormoreichar", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "zeroormoreichar", 8, 4) );
+	jne BadFuncID;
+	cmp( edx, funcstr( "zeroormoreichar", 12, 3) );
+	jne BadFuncID;
+	mov( tkn_at_zeroormoreichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+cmpfuncs_16_0:
+	cmp( eax, funcstr( "exactlyntomichar", 0, 4) );
+	jne BadFuncID;
+	cmp( ebx, funcstr( "exactlyntomichar", 4, 4) );
+	jne BadFuncID;
+	cmp( ecx, funcstr( "exactlyntomichar", 8, 4) );
+	jne BadFuncID;
+	cmp( edx, funcstr( "exactlyntomichar", 12, 4) );
+	jne BadFuncID;
+	mov( tkn_at_exactlyntomichar, eax );
+	mov( func_tc, ebx );
+	jmp funcsDone;
+
+
+
+// End of HLA function name scanner include file.

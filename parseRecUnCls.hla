@@ -1,0 +1,4196 @@
+unit parseRecUnCls;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+
+static
+	ExceptionPtr	:dword; @external( "ExceptionPtr__hla_" );	 
+
+?@nodisplay := true;
+?@noalignstack := true;	
+								   
+procedure parseClassVar( isPrivate:boolean ); @forward;
+
+								   
+
+//////////////////////////////////////////////////////////////////////////////
+// 
+// parseRecord, parseUnion-                                                
+//                                                             
+// We've already seen the "RECORD" or "UNION" lexeme, now parse the "guts"
+// of the declaration and build the TYPE symbol table record entry specified 
+// by the parameter.                    
+//                                                             
+// Inputs:                                                      
+// 	symType-                                                   
+// 			Pointer to the TYPE symbol table entry into        
+// 			which we will install the fields for this          
+// 			record or union.
+//
+// Grammar:
+//
+//	recordDcl -> <recOptions> <recunVars> <privateRecVars> endrecord
+//	unionDcl -> <recunVars> endunion
+//
+//	recOptions ->
+//			<inherits>
+//		|	<setRecOffset>
+//		|	<alignment>
+//		|	<empty string>
+//		
+//
+//	inherits-> inherits '(' <id> ')' ';'
+//
+//	setRecOffset -> ':=' <constExpr> ';'
+//
+//	alignment -> '[' <maxAlign> <expr> ']' ';'
+//
+//	maxAlign ->
+//			<expr> ','
+//		|	<empty string>
+//
+//	recunVars -> ruVars (ruVars)*
+//
+//	privateRecVars ->
+//			private ':' <recunvars>
+//		|	<empty string>         
+//
+//	ruVars ->
+//			align '(' constExpr ')' ';'
+//		|	record <recunVars> endrecord ';'
+//		|	union <recunVars> endunion ';'
+//		|	<orID> ':' ruDcls
+//
+// ruDcls ->
+//			@forward '(' <id> ')' ';'
+//		|	record <recordDcl> ';'
+//		|	union <unionDcl> ';'
+//		|	procedure <optionalParms> ';' <protoOptions> 
+//		|	enum '{' <enumList> '}' ';'
+//		|	pointer to <typeID> ';'
+//		|	<typeID> <optionalBounds> ';'
+//
+//	orID ->
+//			<id>
+//		|	override <id>
+//
+// unionDcl -> <recunVars> endunion
+
+
+// recOptions-
+//
+//	Handles the 'inherits', alignment, and ':= offset' record options.
+//
+// Note: returns minRecAlign value in EAX and maxRecAlign in EDX. 
+
+//proc( "recOptions" )
+procedure recOptions
+( 
+		symType :symNodePtr_t; 
+	var	offset	:dword;
+	var size	:dword 
+);
+	@use eax;
+	
+var
+	startOffset	:dword;
+	inhSym		:symNodePtr_t;
+	attr		:attr_t;
+	
+begin recOptions;
+
+	// Default alignment values are both 1:
+	
+	mov( 1, minRecAlign );
+	mov( 1, maxRecAlign );
+
+	resetTknQ();
+	lex( esi );
+	if( eax = tkn_inherits ) then
+	
+		matchLParen();
+		raiseErr( @c );
+		lex( esi );
+		mov( tokenECX.symNode, ebx );
+		mov( ebx, inhSym );
+		if
+		(
+				( 
+						eax <> tkn_localID 
+					&&	eax <> tkn_globalID
+				)
+			||	symEBX.symClass <> Type_ct
+			||	symEBX.pType <> Record_pt
+			 
+		) then
+		
+			HLAerror
+			( 
+				"Expected a record type identifier in 'inherits( id )'" 
+				nl 
+			);
+			resyncOnSemicolon();
+			exit recOptions;
+			
+		endif;
+		mustMatchRParen();
+				
+		// Okay, the inherits option is syntactically and semantically
+		// correct, copy the fields from the inherited record into
+		// the current record.  Do this by stepping through the
+		// linear list associated with the inherited type and
+		// entering each (non-private) field into the current record.
+		
+		mov( tokenECX.symNode, ebx );
+		mov( symEBX.linearSyms, ecx );
+		while( ecx <> NULL && !symECX.isPrivate ) do
+										
+			// Only enter the VAR fields, skip the type
+			// and placeholder fields.
+			
+			if( symECX.symClass = Var_ct ) then
+			
+				str.a_cpy( symECX.trueName );
+				mov( eax, edx );
+				str.a_cpy( symECX.lcName );
+				
+				// The call to local lookup always fails, we do this
+				// just to get the leaf pointer into ebx.
+				
+				push( ecx );
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				mov( [esp], eax );
+				lookupLocal( edx, eax, ebx );
+				
+				// Compute the first offset after this guy
+				// so we'll have the last offset in the record
+				// for the first field in the new record:
+
+
+				mov( symECX.offset, eax );
+				add( symECX.objectSize, eax );
+				mov( eax, startOffset );
+
+				pop( eax );
+				enterVar
+				(
+					edx,
+					eax,
+					NULL,
+					symECX.pType,
+					symECX.symType,
+					curOwner,
+					symECX.offset,
+					notp_pc,
+					[ebx]
+				);
+				pop( ecx );
+				
+			endif;
+			mov( symECX.next, ecx );
+			
+		endwhile;
+
+		// If there are private fields, we need to quickly scan through
+		// them in order to determine the starting offset of the new
+		// record:
+
+		while( ecx <> NULL ) do
+
+			mov( symECX.offset, eax );
+			add( symECX.objectSize, eax );
+			mov( eax, startOffset );
+			mov( symECX.next, ecx );
+			
+		endwhile;
+		
+		// Okay, adjust the size and offset values according
+		// the the size of the inherited record (this also
+		// "hides" the private fields).
+		
+		mov( size, ebx ) ;
+		canAccess( [ebx] );
+		mov( inhSym, eax );
+		mov( symEAX.objectSize, eax );
+		mov( eax, [ebx] );
+		mov( startOffset, eax );
+		mov( offset, ebx );
+		canAccess( [ebx] );
+		mov( eax, [ebx] );
+		
+	
+	////////////////////////////////////////////////////////////////////
+	//
+	// Handle 'record := <offset>' here:
+	
+	elseif( eax = tkn_assign ) then
+	
+		try
+			constExpr( attr );
+			raiseErr( @c );
+		
+			// Need to verify that it's a numeric constant:
+			
+			if( attr.pType in Byte_pt..Int128_pt ) then
+			
+				mov( (type dword attr.uns128_vt[0]), eax );
+				cdq();
+				if
+				( #{
+						cmp( edx, (type dword attr.uns128_vt[4]) );
+						jne true;
+						cmp( edx, (type dword attr.uns128_vt[8]) );
+						jne true;
+						cmp( edx, (type dword attr.uns128_vt[12]) );
+						je false;
+				}#) then
+				
+					HLAerror( "Record offset is out of range" nl );
+					raise( ex.hlaerr );
+				
+				endif;
+				mov( offset, ebx );
+				mov( eax, [ebx] );
+				mustMatchSemicolon();
+			
+			else
+			
+				HLAerror
+				( 
+					"Expected a numeric constant as starting record offset" 
+				);
+				raise( ex.hlaerr );
+				
+			endif;
+		
+		  exception( ex.hlaerr );
+		
+			resyncOnSemicolon();
+			
+		endtry;
+	
+	////////////////////////////////////////////////////////////////////
+	//
+	// Handle 'record[expr{:expr}[' here:
+	
+	elseif( eax = '[' ) then
+
+		try
+			constExpr( attr );
+			raiseErr( @c );
+		
+			// Need to verify that it's a numeric constant:
+			
+			if( attr.pType in Byte_pt..Int128_pt ) then
+			
+				mov( (type dword attr.dword_vt[4]), eax );
+				or(  (type dword attr.dword_vt[8]), eax );
+				or(  (type dword attr.dword_vt[12]), eax );
+				if( @nz) then
+				
+					HLAerror( "Record alignment value is out of range" nl );
+					raise( ex.hlaerr );
+				
+				endif;
+				mov( attr.dword_vt, eax );
+				mov( eax, maxRecAlign );
+				mov( eax, minRecAlign );
+			
+			  else
+			
+				HLAerror
+				( 
+					"Expected a numeric constant as record alignment value" 
+				);
+				raise( ex.hlaerr );
+				
+			endif;
+
+			// See if we have an optional second value:
+
+			lex( esi );
+			if( eax = ',' ) then
+
+				constExpr( attr );
+				if( @nc ) then
+
+					if( attr.pType in Byte_pt..Int128_pt ) then
+					
+						mov( (type dword attr.dword_vt[4]), eax );
+						or(  (type dword attr.dword_vt[8]), eax );
+						or(  (type dword attr.dword_vt[12]), eax );
+						if( @nz) then
+						
+							HLAerror
+							( 
+								"Minimum record alignment value "
+								"is out of range" nl 
+							);
+							raise( ex.hlaerr );
+						
+						endif;
+						mov( attr.dword_vt, eax );
+						mov( eax, minRecAlign );
+
+					endif;
+					
+				endif;
+
+				// Grab the next lexeme to sync the lexer up with
+				// the following code:
+
+				lex( esi );
+
+			endif;
+			if( eax <> ']' ) then
+
+				HLAerror( "Expected ']' in record alignment option" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( maxRecAlign, eax );
+			if( eax < minRecAlign ) then
+
+				HLAerror
+				( 
+					"Maximum alignment value (",
+					(type uns32 eax),
+					") must be greater than the minimum" nl
+					"alignment value (",
+					(type uns32 minRecAlign),
+					") in the record declaration" nl
+				);
+				xchg( eax, minRecAlign );
+				raise( ex.hlaerr );
+
+			endif;
+
+
+		  exception( ex.hlaerr );
+
+			resyncOnSemicolon();
+		endtry;
+		
+
+
+	////////////////////////////////////////////////////////////////////
+	//
+	// Okay, we don't have a record option, so return at this point.
+
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+	
+end recOptions;
+
+
+
+// recunVars-
+//
+//	Handles the field declarations for records and unions:
+//
+//	recunVars -> ruVars (ruVars)*
+
+//proc( "recunVars" )
+procedure recunVars
+( 
+		symType 	:symNodePtr_t; 
+	var	offset		:dword;
+	var	size		:dword;
+		hasOverride	:boolean;
+		isUnion		:boolean;
+		isPrivate	:boolean
+); 
+	@use eax;
+	
+var
+	fldName		:string;
+	fldlcName	:string;
+	fldHash		:dword;
+	theType		:symNodePtr_t;
+	arrayType	:symNodePtr_t;
+	dimensions	:pointer to dimensions_t;
+	maxSize		:uns32;
+	unionSize	:dword;
+	unionOffset	:dword;
+	saveOffset	:dword;
+	fwdAttr		:attr_t;
+	alignAttr	:attr_t;
+	
+	
+	// ruvars-
+	//	Handles a single declaration or option within a record or union.
+	//
+	//	ruVars ->
+	//			align '(' constExpr ')' ';'
+	//		|	record <recunVars> endrecord ';'
+	//		|	union <recunVars> endunion ';'
+	//		|	<orID> ':' ruDcls
+	//
+	//	orID ->
+	//			<id>
+	//		|	override <id>
+	
+	//proc( "ruvars" )
+	procedure ruvars; @noframe; @returns( "@c" );
+	
+		// ruDcls-
+		//
+		//	Handles type TYPE for a record field declaration:
+		//
+		//	ruDcls ->
+		//			@forward '(' <id> ')' ';'
+		//		|	record <parseRecord> ';'
+		//		|	union <parseUnion> ';'
+		//		|	procedure <optionalParms> ';' <protoOptions> 
+		//		|	enum '{' <idlist> '}' ';'
+		//		|	pointer to <id> ';'
+		//		|	<id> <optionalBounds> ';'
+		
+		//proc( "ruDcls" )
+		procedure ruDcls; @noframe; @returns( "@c" );
+		
+			// enterField-
+			//
+			//	ebp::theType contains the field's type.
+			//	ebp::fldName,
+			//	ebp::fldlcName, and
+			//	ebp::fldHash contain the field name's info.
+			//
+			// Enter the specified field into the symbol table
+			// for the current record.
+			
+			//proc( "enterField" )
+			procedure enterField; @noframe;
+			begin enterField;
+			
+				// Now we've got to create the symbol table entry
+				// for the field.  Note: the call to lookupLocal
+				// always returns NULL;  we call it just to get
+				// the leaf node pointer in EBX.				
+
+				if( !ebp::hasOverride ) then
+				
+					assert( ebp::fldName <> NULL );
+					lookupLocal
+					( 
+						ebp::fldName, 
+						ebp::fldlcName,
+						ebp::fldHash 
+					);
+					
+				endif;
+
+				// Get the type and pType of the object.  Must special
+				// case out the pointer objects.
+				
+				mov( ebp::theType, edx );
+				canAccess( [edx] );
+
+				movzx( symEDX.pType, eax );
+				
+				// Get the offset for this variable (pass by reference!)
+								
+				push( edi );
+				mov( ebp::offset, edi );
+				canAccess( [edi] );
+				mov( [edi], edi );
+
+				// Adjust the offset based on the minRecAlign and
+				// maxRecAlign values.
+
+				if( minRecAlign != 1 || maxRecAlign != 1 ) then
+
+					// For alignment, we align the current
+					// offset to:
+					//
+					// 1. minRecAlign if the type size is less than minRecAlign,
+					// 2. maxRecAlign if the type size is greater than maxRecAlign,
+					// 3. type size if it's between minRecAlign..maxRecAlign:
+
+					push( eax );
+					push( edx );
+					push( edi );	// Holds current offset.
+					mov( symEDX.objectSize, edx );
+					mov( minRecAlign, eax );
+					if( eax < edx ) then
+
+						mov( edx, eax );
+
+					endif;
+					if( edx > maxRecAlign ) then
+
+						mov( maxRecAlign, eax );
+
+					endif;
+					
+					// Okay, compute the necessary padding to align this
+					// field on the desired boundary. 
+					//
+					// Alignment is computed as:
+					//
+					// alignment := minRecAlign or maxRecAlign as defined above.
+					// remainder := offset mod alignment;
+					// padding := alignment - remainder;
+					// if alignment <> 0 then offset := offset + alignment
+					
+					xchg( eax, edi );
+					cdq();
+					div( edi );
+					if( edx <> 0 ) then
+
+						sub( edx, edi );
+						mov( edi, edx );
+
+					endif;
+					pop( edi );
+					add( edx, edi );
+
+					// Must save offset value as it was passed by reference!
+
+					mov( ebp::offset, edx );
+					mov( edi, [edx] );
+					pop( edx );
+					pop( eax );
+	
+				endif;
+				
+				push( eax );	// Save pType for patch.
+				push( edx );	// Save Type for patch.
+				push( edi );	// Save offset for patch.
+				
+				if( !ebp::hasOverride ) then
+				
+					// Enter the field into the symbol table.
+					
+					enterVar
+					(
+						str.a_cpy( ebp::fldName ),
+						str.a_cpy( ebp::fldlcName ),
+						NULL,
+						al,
+						edx,
+						curOwner,
+						edi,
+						notp_pc,
+						[ebx]
+					);
+					mov( ebp::isPrivate, cl );
+					mov( cl, symEAX.isPrivate );
+					
+				endif;
+				
+				// If hasOverride was true, then we need to
+				// patch various fields in the symbol table
+				// entry for this field.  Note that this
+				// also patches the entry if hasOverride was
+				// false, but we're replacing like values, so
+				// it doesn't really matter.
+				
+				assert( ebp::fldName <> NULL );
+				lookupLocal
+				( 
+					ebp::fldName, 
+					ebp::fldlcName,
+					ebp::fldHash 
+				);
+				if( eax = NULL ) then
+
+					// If the symbol did not exist report an error and
+					// then enter it into the symbol table to prevent
+					// a disaster down the road:
+
+					HLAerror( "Attempt to override undefined symbol" nl );
+				
+					// Enter the field into the symbol table.
+					
+					enterVar
+					(
+						str.a_cpy( ebp::fldName ),
+						str.a_cpy( ebp::fldlcName ),
+						NULL,
+						al,
+						edx,
+						curOwner,
+						edi,
+						notp_pc,
+						[ebx]
+					);
+					mov( ebp::isPrivate, cl );
+					mov( cl, symEAX.isPrivate );
+
+					// Redo the lookup above, now that we've entered the
+					// symbol into the symbol table:
+
+					assert( ebp::fldName <> NULL );
+					lookupLocal
+					( 
+						ebp::fldName, 
+						ebp::fldlcName,
+						ebp::fldHash 
+					);
+
+				endif;
+				
+				pop( symEAX.offset );
+				pop( edx );
+				mov( edx, symEAX.symType );
+				mov( symEDX.objectSize, ecx );
+				mov( ecx, symEAX.objectSize );
+				pop( ecx );
+				mov( cl, symEAX.pType );
+
+				// Adjust the current offset and record size:				
+
+				mov( ebp::offset, edi );
+				mov( symEDX.objectSize, eax );
+				add( eax, [edi] );
+				
+				mov( ebp::size, edi );
+				canAccess( [edi] );
+				add( eax, [edi] );
+
+				pop( edi );					
+				mustMatchSemicolon();
+				ret();
+			
+			end enterField;
+			
+		begin ruDcls;
+
+			// Save away the field information so we can create
+			// a symbol table entry later:
+			
+			if( tokenECX.alloc ) then
+			
+				mov( tokenECX.trueName, eax );
+				mov( eax, ebp::fldName );
+				mov( tokenECX.lcName, eax );
+				mov( eax, ebp::fldlcName );
+			
+			else
+			
+				str.a_cpy( tokenECX.trueName  );
+				mov( eax, ebp::fldName );
+				str.a_cpy( tokenECX.lcName );
+				mov( eax, ebp::fldlcName );
+			
+			endif;
+			mov( tokenECX.hashValue, eax );
+			mov( eax, ebp::fldHash );
+
+			matchColon();
+			lex( esi );
+
+			////////////////////////////////////////////////////////////
+			//
+			// Deal with <id>:@FORWARD( <id> ) here:
+			
+			if( eax = tkn_at_forward ) then
+
+				matchLParen();
+				raiseErr( @c );
+				
+				lex( esi );
+				if( eax = tkn_globalID ) then
+				
+					makeUndefID( [ecx] );
+					mov( tkn_undefID, eax );
+					
+				elseif( eax = tkn_localID ) then
+				
+					mov( tokenECX.symNode, ebx );
+					if( symEBX.symClass <> Value_ct ) then
+
+						HLAerror
+						( 
+							"Duplicate symbol definition: ", 
+							tokenECX.trueName,
+							nl
+						);
+						makeUndefID( [ecx] );
+						mov( tkn_undefID, eax );
+
+					endif;
+					
+				endif;
+				if( eax = tkn_undefID || eax == tkn_localID ) then
+
+					// Create a TEXT constant from the
+					// field name preceding the ":" token:
+					
+					str.a_cpy( ebp::fldName );
+					mov( eax, ebp::fwdAttr.string_vt );
+					mov( String_pt, ebp::fwdAttr.pType );
+					mov( &string_ste, ebp::fwdAttr.symType );
+					mov( Constant_ct, ebp::fwdAttr.symClass );
+					
+					// Create the text constant entry using
+					// the ID after the @FORWARD.
+					//
+					// Note: if lookupLocal returns non-NULL, then
+					// we've got to have a VAL constant.
+										
+					lookupLocal
+					( 
+						tokenECX.trueName, 
+						tokenECX.lcName,
+						tokenECX.hashValue
+					);
+
+					if( eax = NULL ) then
+					
+						enterConst
+						(
+							tokenECX.trueName, 
+							tokenECX.lcName,
+							NULL,
+							&text_ste,
+							ebp::fwdAttr,
+							curOwner,
+							[ebx]
+						);
+
+					elseif( symEAX.symClass = Value_ct ) then
+
+						setVal
+						(
+							tokenECX.trueName, 
+							tokenECX.lcName,
+							eax,
+							&text_ste,
+							ebp::fwdAttr,
+							curOwner,
+							[ebx]
+						);
+						
+					else
+
+						// Defensive code: condition handled elsewhere
+					
+						HLAerror
+						(
+							"Symbol in @FORWARD must be undefined "
+							"or a VAL symbol"
+							nl
+						);	
+
+
+					endif;
+					
+					// Finish parsing the rest of the
+					// @FORWARD( ID );
+					//             ^^
+					// clause:
+					
+					mustMatchRParen();
+					mustMatchSemicolon();
+					clc();
+					ret();
+
+						
+				else
+				
+					HLAerror
+					( 
+						"Expected an ID inside @FORWARD(xxx), encountered "
+					);
+					dumpQLexeme();
+					freeTkn( [ecx] );
+					resyncOnSemicolon();
+					raise( ex.hlaerr );
+				
+				endif;
+				
+			endif;
+			
+			
+			///////////////////////////////////////////////////////////
+			//
+			// Deal with <id>:record <fields> endrecord; here:
+						
+				
+			if( eax = tkn_record ) then
+			
+				// Create a new RECORD TYPE symbol table entry
+				// into which we can place the fields we're about
+				// to parse:
+				
+				// Sneak this type declaration into the global
+				// symbol table rather than putting it inside the record:
+
+				push( curHashTable );		// Save these, to restore
+				push( curOwner );			//  them later.
+
+				lea( rootHashTable, ebx );	// Point symbol table at
+				mov( ebx, curHashTable );	//  the root symbol table
+				mov( rootOwner, ebx );
+				mov( ebx, curOwner );
+
+				// Generate a name for this record:
+				
+				makeLabel( "@record" );
+				mov( eax, ecx );
+				str.a_cpy( eax );
+				mov( eax, edx );
+				
+				// lookupLocal always fails, we call it to
+				// get the leaf node into EBX:
+				
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				pop( eax );
+				lookupLocal( eax, eax, ebx );
+				
+				enterType
+				(
+					ecx,
+					edx,
+					NULL,
+					Record_pt,
+					&record_ste,
+					curOwner,
+					[ebx]
+				);	
+				push( eax );
+				
+				// Parse the fields of the record:
+
+				parseRecord( eax );
+								
+				// Okay, save pointer to new record as the type:
+				
+				pop( ebp::theType );
+				
+				pop( curOwner );
+				pop( curHashTable );
+				// Enter the field into the record's symbol table:
+				
+				enterField();
+				
+				clc();
+				ret();
+				
+			endif;
+				
+
+				
+			///////////////////////////////////////////////////////////
+			//
+			// Deal with <id>:union <fields> endunion; here:
+						
+			if( eax = tkn_union ) then
+			
+				// Create a new UNION TYPE symbol table entry
+				// into which we can place the fields we're about
+				// to parse:
+				
+				// Sneak this type declaration into the global
+				// symbol table rather than putting it inside the record:
+
+				push( curHashTable );		// Save these, to restore
+				push( curOwner );			//  them later.
+
+				lea( rootHashTable, ebx );	// Point symbol table at
+				mov( ebx, curHashTable );	//  the root symbol table
+				mov( rootOwner, ebx );
+				mov( ebx, curOwner );
+				// Generate a name for this union:
+				
+				makeLabel( "@union" );
+				mov( eax, ecx );
+				str.a_cpy( eax );
+				mov( eax, edx );
+				
+				// lookupLocal always fails, we call it to
+				// get the leaf node into EBX:
+				
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				pop( eax );
+				lookupLocal( eax, eax, ebx );
+				
+				enterType
+				(
+					ecx,
+					edx,
+					NULL,
+					Union_pt,
+					&union_ste,
+					curOwner,
+					[ebx]
+				);
+				push( eax );
+				
+				// Parse the fields of the union:
+
+				parseUnion( eax );
+								
+				// Okay, save pointer to new union as the type:
+				
+				pop( ebp::theType );
+				
+				pop( curOwner );
+				pop( curHashTable );	
+			
+				// Enter the field into the union's symbol table:
+				
+				enterField();
+				
+				clc();
+				ret();
+				
+			endif;
+
+
+				
+			///////////////////////////////////////////////////////////
+			//
+			// Deal with <id>:pointer to <typeID>; here:
+						
+			if( eax = tkn_pointer ) then
+			
+				lex( esi );
+				if( eax <> tkn_to ) then
+				
+					HLAerror
+					( 
+						"Expected 'TO' after 'POINTER', encountered: " 
+					);
+					dumpQLexeme();
+					reuseLastTkn();
+					
+				endif;
+				if( getTypeID() ) then
+				
+					if( eax = &text_ste ) then
+					
+						HLAerror( "TEXT is an illegal pointer base type" nl );
+						mov( &string_ste, eax );
+						
+					endif;
+				
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside 
+					// the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+					// Create a new pointer TYPE symbol table entry
+					// that we can use as a type for the field:
+						   
+					push( ecx );			// Save ptr to base type.
+					makeLabel( "@pointer" );
+					mov( eax, ecx );
+					str.a_cpy( eax );
+					mov( eax, edx );
+					
+					// lookupLocal always fails, we call it to
+					// get the leaf node into EBX:
+					
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					pop( eax );
+					lookupLocal( eax, eax, ebx );
+					
+					enterType
+					(
+						ecx,
+						edx,
+						NULL,
+						Pointer_pt,
+						&pointer_ste,
+						curOwner,
+						[ebx]
+					);
+					pop( ecx );
+					mov( tokenECX.symNode, ebx );
+					mov( ebx, symEAX.baseType );
+					pop( curOwner );
+					pop( curHashTable );
+						
+					
+					// EAX contains the type we're creating a pointer to.
+					// Put it into "theType" and enter the field into
+					// the symbol table.
+					
+					mov( eax, ebp::theType );
+					enterField();
+					clc();
+					ret();
+					
+					
+				else
+				
+					lex( esi );
+					if( eax = tkn_undefID ) then
+					
+						// If the ID is undefined, we'll assume that
+						// it's a forward declaration.  Add it to the
+						// list of pointer/forward declarations we
+						// need to check later:
+						
+						// Sneak this type declaration into the global
+						// symbol table rather than putting it inside 
+						// the record:
+
+						push( curHashTable );		// Save these, to restore
+						push( curOwner );			//  them later.
+
+						lea( rootHashTable, ebx );	// Point symbol table at
+						mov( ebx, curHashTable );	//  the root symbol table
+						mov( rootOwner, ebx );
+						mov( ebx, curOwner );
+						// Create a new pointer TYPE symbol table entry
+						// that we can use as a type for the field:
+							   
+						push( ecx );			// Save ptr to base type.
+						makeLabel( "@pointer" );
+						mov( eax, ecx );
+						str.a_cpy( eax );
+						mov( eax, edx );
+						
+						// lookupLocal always fails, we call it to
+						// get the leaf node into EBX:
+						
+						computeHash( eax );
+						lookupLocal( ecx, edx, eax );
+						
+						enterType
+						(
+							ecx,
+							edx,
+							NULL,
+							Pointer_pt,
+							&pointer_ste,
+							curOwner,
+							[ebx]
+						);
+						pop( ecx );
+						push( eax );
+						addFwdPtr( eax, [ecx], Type_ct );
+						pop( ebp::theType );
+						pop( curOwner );
+						pop( curHashTable );
+						enterField();
+						clc();
+						ret();
+					
+					else
+					
+						HLAerror( "Expected a type ID, found " );
+						dumpQLexeme();
+						freeTkn( [ecx] );
+						resyncOnSemicolon();
+						
+					endif;
+					clc();
+					ret();
+						
+				endif;
+				
+			endif;
+				
+		
+		
+			///////////////////////////////////////////////////////////
+			//
+			// Deal with 
+			// <id>:procedure <optionalparms> ';' <protoOptions> 
+			// here:
+				
+			if( eax = tkn_procedure ) then
+			
+				mov( ebp::offset, ebx );
+				mov( [ebx], ebx );
+				parseProcType
+				( 
+					str.a_cpy( ebp::fldName ), 
+					str.a_cpy( ebp::fldlcName ),
+					ebp::fldHash, 
+					Var_ct,				// This is a record field (VAR)  
+					ebx, 				// Current offset into record.
+					notp_pc, 			// This is not a parameter 
+					startParmsOffs,		// Starting offset for parms
+					NULL,				// Not a member of a segment
+					NULL,				// No static enterSym function needed
+					false				// No initial value for proc ptr.
+				);
+				
+				// Procedure pointers are always four bytes, update
+				// the offset and size parameters accordingly.
+				 
+				mov( ebp::offset, ebx );
+				add( 4, (type dword [ebx]) );
+				mov( ebp::size, ebx );
+				add( 4, (type dword [ebx]) );
+				clc();
+				ret();
+				
+			endif;
+			
+			
+			
+			///////////////////////////////////////////////////////////////
+			//
+			// Better be a type identifier at this point:
+			
+			reuseLastTkn();			
+			if( !getTypeID() ) then
+			
+				HLAerror
+				( 
+					"Expected a type identifier rather than "
+				);
+				dumpQLexeme();
+				ret();
+				
+			endif;
+			if( eax = &text_ste ) then
+			
+				HLAerror( "TEXT is an illegal type here" nl );
+				mov( &string_ste, eax );
+				
+			endif;
+			
+			getBaseIsoType( eax );
+			mov( eax, ebp::theType );
+			
+			optionalBounds();				// Process any array dimensions.
+			mov( eax, ebp::dimensions );
+			if( eax <> NULL ) then
+			
+				// We have an array type.  If this is a multidimensional
+				// array, we need to build anonymous type records and 
+				// link them together:
+				
+				mov( tokenECX.symNode, edx );	// Initialize base type.
+				mov( edx, ebp::arrayType );
+				mov( (type dimensions_t [eax]).arity, ecx );
+				while( ecx > 0 ) do
+				
+					// We need to create a dummy name for
+					// the anonymous array type that we're
+					// about to create.  This is of the form:
+					//
+					//	"@arrayXXX"
+					//
+					// where XXX is some unique numeric value.
+					// Note the '@' at the beginning of the
+					// string, this ensures that the program
+					// can never reference this symbol directly.
+					
+					makeLabel( "@array" );
+
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Array_pt,
+						ebp::arrayType,
+						curOwner,
+						[ebx]
+					);
+					canAccess( [eax] );
+					mov( ebp::arrayType, edx );
+					canAccess( [edx] );
+					mov( symEDX.objectSize, edx );
+					mov( eax, ebp::arrayType );
+					
+					// We need to fill in the array dimensions info here:
+					
+					mov( ebp::dimensions, ebx );
+					canAccess( [ebx] );
+					mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+					mov( ebx, symEAX.numElements );
+					intmul( ebx, edx );
+					mov( edx, symEAX.objectSize );
+					dec( ecx );
+
+					// Restore local symbol table stuff saved above:
+
+					pop( curOwner );
+					pop( curHashTable );
+					
+				endwhile;
+				
+				mov( ebp::arrayType, eax );
+				mov( eax, ebp::theType );
+				
+			endif;
+			
+			// Enter the field into the record's symbol table:
+			
+			enterField();
+			clc();
+			ret();
+			
+		end ruDcls;
+		
+	begin ruvars;
+	
+		// Reset the token queue at the beginning of each field
+		// because we process a lot of tokens for each field and
+		// if there are many fields in the structure, we will blow
+		// away the token queue (max 256 elements).
+		
+		resetTknQ();
+		
+		lex( esi );
+		if( eax = tkn_globalID ) then
+		
+			if( ebp::hasOverride ) then
+			
+				HLAerror
+				( 
+					"'OVERRIDE' symbols must have previous (local) declaration"
+					nl
+				);
+				mov( false, ebp::hasOverride );
+				
+			endif;
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			ruDcls();
+			ret();
+			
+		endif;
+		
+		tryLclID:
+			cmp( eax, tkn_localID );
+			jne tryUndefID;
+			
+			if( !ebp::hasOverride ) then
+			
+				HLAerror( "Duplicate field name in record/union" nl );
+				
+			endif;
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			ruDcls();
+			ret();
+
+		
+		tryUndefID:
+			cmp( eax, tkn_undefID );
+			jne tryOverride;
+			
+			ruDcls();
+			ret();
+
+		
+		tryOverride:
+			cmp( eax, tkn_override );
+			jne tryAlign;
+
+			// We'll cheat.  Just set 'hasOverride' to
+			// true and recursively call this function
+			// to process the overridden variable.
+			
+			push( (type dword ebp::hasOverride ));
+			mov( true, ebp::hasOverride );
+			ruvars();
+			pop( (type dword ebp::hasOverride ));
+			ret();			
+		
+		tryAlign:
+			cmp( eax, tkn_align );
+			jne tryRecord;
+			
+			try
+				matchLParen();
+				raiseErr( @c );
+				constExpr( ebp::alignAttr );
+				raiseErr( @c );
+				mov( ebp::alignAttr.pType, al );
+				xor( edx, edx );
+				if
+				( 
+						al not in Uns8_pt..Int128_pt
+					||	edx <> (type dword ebp::alignAttr.uns128_vt[4])
+					||	edx <> (type dword ebp::alignAttr.uns128_vt[8])
+					|| 	edx <> (type dword ebp::alignAttr.uns128_vt[12])
+				) then
+				
+					// Must be a 32-bit value.  If out of range,
+					// just use the L.O. dword.
+					
+					HLAerror( "Alignment value is out of range" nl );
+					raise( ex.hlaerr );
+					
+				endif;
+				
+				// Compute edx = offset mod ALIGN_expression.
+				// Note, btw, that EDX contains zero at this point.
+				
+				mov( ebp::offset, ebx );
+				mov( [ebx], eax );
+				mod( ebp::alignAttr.uns32_vt );
+				
+				if( edx <> 0 ) then
+				
+					// If the offset is not evenly divisible by
+					// the value specified in the ALIGN expression,
+					// then we need to adjust the offset up so that
+					// the next object is properly aligned:
+					
+					mov( ebp::alignAttr.uns32_vt, eax );
+					sub( edx, eax );
+					add( eax, [ebx] );
+					mov( ebp::size, ebx );
+					add( eax, [ebx] );
+					
+				endif;
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+				stc();
+				ret();
+
+			endtry;
+			clc();
+			ret();
+				
+			
+						
+		
+		tryRecord:
+			cmp( eax, tkn_record );
+			jne tryUnion;
+			
+			// We need to create a dummy symbol table entry
+			// to mark the start of the anonymous record:
+			
+			makeLabel( "@anonRec" );
+			
+			// Call lookupLocal to get the leaf node into EBX:
+			
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx ); 
+			pop( eax );
+			
+			// Enter the anon record type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				AnonRec_pt,
+				NULL,
+				curOwner,
+				[ebx]
+			);
+			
+			// Okay, process the fields in the anonymous record:
+				
+			recunVars
+			( 
+				ebp::symType, 
+				ebp::offset, 
+				ebp::size, 
+				ebp::hasOverride, 
+				false, 
+				ebp::isPrivate 
+			);
+			
+			// We still have to process the "endrecord"
+			// at the end of this anonymous record:
+			
+			lex( esi );
+			if( eax <> tkn_endrecord ) then
+			
+				HLAerror( "Expected 'ENDRECORD', encountered " );
+				dumpQLexeme();
+				resyncOnSemicolon();
+				
+			else
+			
+				getSemicolon();
+				
+			endif;
+			
+			
+			// We need to create a dummy symbol table entry
+			// to mark the end of the anonymous record:
+			
+			makeLabel( "@endAnonRec" );
+			
+			// Call lookupLocal to get the leaf node into EBX:
+			
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx ); 
+			pop( eax );
+			
+			// Enter the end anon record type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				EndAnonRec_pt,
+				NULL,
+				curOwner,
+				[ebx]
+			);
+			
+			
+			clc();
+			ret();
+					
+			
+		tryUnion:
+			cmp( eax, tkn_union );
+			jne notRecunVar;
+		
+			mov( ebp::offset, eax);
+			mov( [eax], eax );
+			mov( eax, ebp::unionOffset );			
+			mov( 0, ebp::unionSize );
+
+			
+			// We need to create a dummy symbol table entry
+			// to mark the start of the anonymous record:
+			
+			makeLabel( "@anonUnion" );
+			
+			// Call lookupLocal to get the leaf node into EBX:
+			
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx ); 
+			pop( eax );
+			
+			// Enter the anon union type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				AnonUnion_pt,
+				NULL,
+				curOwner,
+				[ebx]
+			);
+			
+			// Okay, process the fields in the anonymous union:
+				
+			recunVars
+			( 
+				ebp::symType, 
+				ebp::unionOffset, 
+				ebp::unionSize, 
+				ebp::hasOverride, 
+				true, 
+				ebp::isPrivate 
+			);
+			
+			mov( ebp::offset, ebx );
+			mov( ebp::unionSize, eax );
+			add( eax, [ebx] );
+			
+			mov( ebp::size, ebx );
+			add( eax, [ebx] );
+			
+			// We still have to process the "endunion"
+			// at the end of this anonymous union:
+			
+			lex( esi );
+			if( eax <> tkn_endunion ) then
+			
+				HLAerror( "Expected 'ENDUNION', encountered " );
+				dumpQLexeme();
+				resyncOnSemicolon();
+				
+			else
+			
+				getSemicolon();
+				
+			endif;
+			
+			// We need to create a dummy symbol table entry
+			// to mark the end of the anonymous union:
+			
+			makeLabel( "@endAnonUnion" );
+			
+			// Call lookupLocal to get the leaf node into EBX:
+			
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx ); 
+			pop( eax );
+			
+			// Enter the end anon union type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				EndAnonUnion_pt,
+				NULL,
+				curOwner,
+				[ebx]
+			);
+			
+			clc();
+			ret();
+					
+		
+
+		notRecunVar:
+		
+			// Since we didn't recognize the token,
+			// this must be the end of the record/union declaration.
+			// Return and let the caller deal with the lexme.
+			
+			reuseLastTkn();
+			stc();
+			ret();
+
+	end ruvars;
+
+
+begin recunVars;
+
+	// For unions, we'll keep track of the
+	// maximum size in maxSize.  Start it
+	// at zero bytes.
+
+	mov( 0, maxSize );
+	
+	// NULL out these guys so we can check to see if
+	// we need to free them at the end of this code:
+	
+	mov( NULL, fldName );
+	mov( NULL, fldlcName );
+	
+	// Also for unions, save the starting offset so we
+	// can reset it for each field of the union that we
+	// process:
+	
+	mov( offset, eax );
+	mov( [eax], eax );
+	mov( eax, saveOffset );
+	
+	repeat
+
+		if( isUnion ) then
+		
+			// If we're processing a union (as opposed to a record),
+			// then reset the offset to 'saveOffset' for each variable.
+			// Also reset size to zero so we'll compute the size
+			// of the next field.
+			
+			mov( offset, ebx );
+			canAccess( [ebx] );
+			mov( saveOffset, eax );
+			mov( eax, [ebx] );
+		
+			mov( size, eax );
+			canAccess( [eax] );
+			mov( 0, (type dword [eax]));
+		
+		endif;
+		
+		// Process one field of this union/record:
+		
+		ruvars();
+		pushfd();
+
+		// If it's a union, check to see if this is the
+		// maximum size we've encountered thus far:
+		
+
+		if( isUnion ) then
+		
+			mov( size, eax );
+			canAccess( [eax] );
+			mov( [eax], eax );
+			if( eax > maxSize ) then
+			
+				mov( eax, maxSize );
+				
+			endif;
+			
+		endif;
+		popfd();
+		 
+	until( @c );
+	if( isUnion ) then
+	
+		mov( maxSize, eax );
+		mov( size, ebx );
+		canAccess( [ebx] );
+		mov( eax, [ebx] );
+		
+	endif;
+	if( fldName <> NULL ) then
+	
+		strfree( fldName );
+		strfree( fldlcName );
+		
+	endif;
+		
+end recunVars;
+		
+	
+// Handle the private section of a record down here:
+	
+//proc( "privateRecVars" )
+procedure privateRecVars
+( 
+		symType :symNodePtr_t; 
+	var	offset	:dword;
+	var	size	:dword
+); 
+	@use eax;
+	
+begin privateRecVars;
+
+	lex( esi );
+	if( eax <> tkn_private ) then
+	
+		reuseLastTkn();
+		
+	else
+	
+		matchColon();
+		
+		// Process the private fields.
+		
+		recunVars( symType, offset, size, false, false, true );
+		
+	endif;
+	
+end privateRecVars;
+
+
+
+// Handle parsing the "RECORD" object here:
+			
+//proc( "parseRecord" )
+procedure parseRecord( symType : symNodePtr_t );	
+var
+	size			:dword;
+	offset			:dword;
+	saveMinAlign	:dword;
+	saveMaxAlign	:dword;
+	saveSyms		:hashTablePtr_t;
+	saveOwner		:symNodePtr_t;
+	dummyField		:symNodePtr_t;
+	saveLexLevel	:dword;
+	
+begin parseRecord;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	// Save these global values because this code
+	// is recursive:
+
+	mov( maxRecAlign, saveMaxAlign );
+	mov( minRecAlign, saveMinAlign );
+	
+	mov( 0, size );
+	mov( 0, offset );
+	mov( symType, ebx );
+	canAccess( [ebx] );
+	mov( Record_pt, symEBX.pType );
+	mov( &record_ste, symEBX.symType );
+
+	mov( curHashTable, eax );
+	mov( eax, saveSyms );
+	mov( curOwner, eax );
+	mov( eax, saveOwner );
+	mov( curLexLevel, eax );
+	mov( eax, saveLexLevel );
+	add( recLexLevel, curLexLevel );
+	
+	// Create a local symbol table to hang off the record object to
+	// satisfy the requirement that linearSyms and lastLinear are
+	// not NULL.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( eax, dummyField );				// So we can count the fields, later
+	mov( eax, symEBX.linearSyms );		// These fields must not be NULL.
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ecx );
+
+	str.a_cat( "@", symEBX.trueName );
+	mov( eax, symECX.trueName );
+	str.a_cat( "@", symEBX.lcName );
+	mov( eax, symECX.lcName );
+
+	mov( Placeholder_pt, symECX.pType );
+	mov( &record_ste, symECX.symType );
+	mov( Placeholder_ct, symECX.symClass );
+	mov( NULL, symECX.left );
+	mov( NULL, symECX.right );
+	mov( NULL, symECX.next );
+	mov( NULL, symECX.linearSyms );
+	mov( NULL, symECX.lastLinear );
+	mov( symType, eax );
+	mov( eax, symECX.owner );
+	mov( eax, curOwner );
+	mov( curLexLevel, eax );
+	mov( eax, symECX.lexLevel );
+	mov( 0, symECX.objectSize );
+	mov( false, symECX.isExternal );
+	mov( false, symECX.isPublic );
+	mov( false, symECX.isReferenced );
+	mov( false, symECX.isForward );
+	mov( false, symECX.isPrivate );
+	
+	// Create a hash table for this record:
+	
+	safe_malloc( @size( symNodePtr_t) * recHashSize + @size( hashTable_t ));
+	mov( symType, ecx );
+	mov( eax, symECX.localHash );
+	mov( ecx, hashEAX.owner );
+	push( eax );
+	push( edi );
+	push( ecx );
+	pushfd();
+	cld();
+	mov( recHashSize, ecx );
+	lea( edi, hashEAX.hashTable );
+	xor( eax, eax );
+	rep.stosd();		// Initialize with NULL pointers
+	popfd();
+	pop( ecx );
+	pop( edi );
+	pop( eax );
+	
+	// Set the hash table mask for the record's hash table
+	
+	mov( recHashMask, hashEAX.mask );
+	
+	// Okay, point the global hash table pointer at this new hash table:
+	
+	mov( eax, curHashTable ); 
+	
+	
+	// Okay, process this record:
+
+	recOptions( symType, offset, size );
+	recunVars( symType, offset, size, false, false, false );
+	privateRecVars( symType, offset, size );
+	lex( esi );
+	if( eax <> tkn_endrecord ) then
+	
+		HLAerror( "Expected 'ENDRECORD', encountered " );
+		dumpQLexeme();
+		resyncOnSemicolon();
+		reuseLastTkn();
+		
+	endif;
+	
+	// Set the objectSize field as per the computed size:
+	
+	mov( size, eax );
+	mov( symType, ebx );
+	mov( eax, symEBX.objectSize );
+
+	// Count the number of fields in this record and set the
+	// field index on each field. Note that there is a dummy
+	// entry for the first field, use -1 for its field index value.
+	//
+	// Constant definitions can sneak into a record declaration
+	// (e.g., via FORWARD declarations). This creates problems
+	// when code assumes that variable fields in a record have
+	// contiguous indexes into the record. So we'll cheat and
+	// move all the non-VAR entries to the end of the linear list
+	// for the record.
+
+	push( ebx );
+	push( esi );
+	push( edi );
+
+	mov( NULL, esi );
+	mov( dummyField, ebx );
+	mov( ebx, edi );
+	mov( -1, symEBX.fieldIndex );
+	mov( symEBX.next, ebx );
+	mov( 0, ecx );
+	while( ebx <> NULL ) do
+
+		mov( symEBX.pType, al );
+		mov( ecx, symEBX.fieldIndex );
+		// Kludge for anonymous records and unions-
+		// If we come across one of these, we need to count
+		// the fields between the beginning and end of the 
+		// anonymous record/union and store this into the
+		// fieldCnt field of the start of the record/union.
+		// Note that the AnonRec_pt/EndAnonRec_pt and the
+		// AnonUnion_pt/EndAnonUnion_pt fields always come
+		// in pairs in a context-free fashion (that is, they
+		// are nestable).
+
+		if( al = AnonRec_pt || al = AnonUnion_pt ) then
+
+			push( ebx );	// Save to match against EndAnonRec_pt later
+
+		elseif( al = EndAnonUnion_pt || al = EndAnonRec_pt ) then
+
+			pop( edx );						// Get symbol pushed above.
+			mov( ecx, eax );				
+			sub( symEDX.fieldIndex, eax );	// # of fields is the current
+			dec( eax );						// index, minus the starting
+			mov( eax, symEDX.fieldCnt );	// index, minus 1.
+
+		elseif( symEBX.symClass <> Var_ct && ecx <> -1 ) then
+
+			// Remove this entry from the linear list:
+
+			mov( symEBX.next, eax );
+			mov( eax, (type symNode_t [edi]).next );
+
+			// Link to temporary list, to add back later:
+
+			mov( esi, symEBX.next );
+			mov( ebx, esi );
+			mov( edi, ebx );
+			dec( ecx );
+
+		endif;
+		// Move on to the next field:
+
+		inc( ecx );
+		mov( ebx, edi );
+		mov( symEBX.next, ebx );
+
+	endwhile;
+
+	// If there were any constant symbols, link them to the end
+	// of the record list:
+
+	push( ecx );
+	if( esi <> NULL ) then
+
+		mov( esi, (type symNode_t [edi]).next );
+		while( esi <> NULL ) do
+
+			mov( -1, (type symNode_t [esi]).fieldIndex );
+			mov( (type symNode_t [esi]).next, esi );
+
+		endwhile;
+
+	endif;
+	pop( ecx );
+
+	pop( edi );
+	pop( esi );
+	pop( ebx );
+	mov( ecx, symEBX.fieldCnt );
+
+	// Restore the original symbol table:
+	
+	mov( saveSyms, eax );
+	mov( eax, curHashTable );
+	mov( saveOwner, eax );
+	mov( eax, curOwner );
+	mov( saveLexLevel, eax );
+	mov( eax, curLexLevel );
+
+	// Restore these because they are global (and this
+	// code is recursive):
+
+	mov( saveMinAlign, minRecAlign );
+	mov( saveMaxAlign, maxRecAlign );
+	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end parseRecord;
+
+
+
+
+// Handle parsing the "UNION" object here:
+			
+//proc( "parseUnion" )
+procedure parseUnion( symType : symNodePtr_t );
+var
+	size			:dword;
+	offset			:dword;
+	saveSyms		:hashTablePtr_t;
+	saveOwner		:symNodePtr_t;
+	dummyField		:symNodePtr_t;
+	saveMin			:dword;
+	saveMax			:dword;
+	saveLexLevel	:dword;
+	
+begin parseUnion;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Default alignment values are both 1:
+	
+	mov( minRecAlign, eax );
+	mov( eax, saveMin );
+	mov( maxRecAlign, eax );
+	mov( eax, saveMax );
+	
+	mov( 1, minRecAlign );
+	mov( 1, maxRecAlign );
+	
+	
+	mov( 0, size );
+	mov( 0, offset );
+	mov( symType, ebx );
+	canAccess( [ebx] );
+	mov( Union_pt, symEBX.pType );
+	mov( &union_ste, symEBX.symType );
+
+	mov( curHashTable, eax );
+	mov( eax, saveSyms );
+	mov( curOwner, eax );
+	mov( eax, saveOwner );
+	mov( curLexLevel, eax );
+	mov( eax, saveLexLevel );
+	add( unionLexLevel, curLexLevel );
+	
+	// Create a local symbol table to hang off the union object:
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( eax, dummyField );				// So we can count the fields, later
+	mov( eax, symEBX.linearSyms );
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ecx );
+	
+	str.a_cat( "@", symEBX.trueName );
+	mov( eax, symECX.trueName );
+	str.a_cat( "@", symEBX.lcName );
+	mov( eax, symECX.lcName );
+	
+	mov( Placeholder_pt, symECX.pType );
+	mov( &union_ste, symECX.symType );
+	mov( Placeholder_ct, symECX.symClass );
+	mov( NULL, symECX.left );
+	mov( NULL, symECX.right );
+	mov( NULL, symECX.next );
+	mov( NULL, symECX.linearSyms );
+	mov( NULL, symECX.lastLinear );
+	mov( symType, eax );
+	mov( eax, symECX.owner );
+	mov( eax, curOwner );
+	mov( curLexLevel, eax );
+	mov( eax, symECX.lexLevel );
+	mov( 0, symECX.objectSize );
+	mov( false, symECX.isExternal );
+	mov( false, symECX.isPublic );
+	mov( false, symECX.isReferenced );
+	mov( false, symECX.isForward );
+	mov( false, symECX.isPrivate );
+	
+	
+	// Create a hash table for this union:
+	
+	safe_malloc( @size( symNodePtr_t) * recHashSize + @size( hashTable_t ));
+	mov( symType, ecx );
+	mov( eax, symECX.localHash );
+	mov( ecx, hashEAX.owner );
+	push( eax );
+	push( edi );
+	push( ecx );
+	pushfd();
+	cld();
+	mov( recHashSize, ecx );
+	lea( edi, (type hashTable_t [eax]).hashTable );
+	xor( eax, eax );
+	rep.stosd();		// Initialize with NULL pointers
+	popfd();
+	pop( ecx );
+	pop( edi );
+	pop( eax );
+	
+	// Set the hash table mask for the record's hash table
+	
+	mov( recHashMask, (type hashTable_t [eax]).mask );
+	
+	// Okay, point the global hash table pointer at this new hash table:
+	
+	mov( eax, curHashTable ); 
+	
+	
+	// Okay, process this union:
+
+	recunVars( symType, offset, size, false, true, false );
+
+	lex( esi );
+	if( eax <> tkn_endunion ) then
+	
+		HLAerror( "Expected 'ENDUNION', encountered " );
+		dumpQLexeme();
+		resyncOnSemicolon();
+		
+	endif;
+	
+	// Set the objectSize field as per the computed size:
+
+	mov( size, eax );
+	mov( symType, ebx );
+	canAccess( [ebx] );
+	mov( eax, symEBX.objectSize );
+	
+	// Count the number of fields in this union and set the
+	// field index on each field. Note that there is a dummy
+	// entry for the first field, use -1 for its field index value.
+
+	push( ebx );
+	push( esi );
+	push( edi );
+	mov( NULL, esi );
+	mov( dummyField, ebx );
+	mov( ebx, edi );
+	mov( -1, symEBX.fieldIndex );
+	mov( symEBX.next, ebx );
+	mov( 0, ecx );
+	while( ebx <> NULL ) do
+
+		mov( ecx, symEBX.fieldIndex );
+		mov( symEBX.pType, al );
+
+		// Kludge for anonymous records and unions-
+		// If we come across one of these, we need to count
+		// the fields between the beginning and end of the 
+		// anonymous record/union and store this into the
+		// fieldCnt field of the start of the record/union.
+		// Note that the AnonRec_pt/EndAnonRec_pt and the
+		// AnonUnion_pt/EndAnonUnion_pt fields always come
+		// in pairs in a context-free fashion (that is, they
+		// are nestable).
+
+		if( al = AnonRec_pt || al = AnonUnion_pt ) then
+
+			push( ebx );	// Save to match against later
+
+		elseif( al = EndAnonUnion_pt || al = EndAnonRec_pt ) then
+
+			pop( edx );						// Get symbol pushed above.
+			mov( ecx, eax );				
+			sub( symEDX.fieldIndex, eax );	// # of fields is the current
+			dec( eax );						// index, minus the starting
+			mov( eax, symEDX.fieldCnt );	// index, minus 1.
+
+		elseif( symEBX.symClass <> Var_ct && ecx <> -1 ) then
+
+			// Remove this entry from the linear list:
+
+			mov( symEBX.next, eax );
+			mov( eax, (type symNode_t [edi]).next );
+
+			// Link to temporary list, to add back later:
+
+			mov( esi, symEBX.next );
+			mov( ebx, esi );
+			mov( edi, ebx );
+			dec( ecx );			// This field doesn't count
+
+		endif;
+
+		// Move on to the next field:
+
+		inc( ecx );
+		mov( ebx, edi );
+		mov( symEBX.next, ebx );
+
+	endwhile;
+
+	// If there were any constant symbols, link them to the end
+	// of the union list:
+
+	if( esi <> NULL ) then
+		
+		mov( esi, (type symNode_t [edi]).next );
+		while( esi <> NULL ) do
+
+			// Give these fields an illegal index so we can
+			// complain later if they attempt to reference these
+			// fields:
+
+			mov( -1, (type symNode_t [esi]).fieldIndex );
+			mov( (type symNode_t [esi]).next, esi );
+
+		endwhile;
+
+	endif;
+
+	pop( edi );
+	pop( esi );
+	pop( ebx );
+	mov( ecx, symEBX.fieldCnt );
+	
+	
+	// Restore the original symbol table:
+	
+	mov( saveSyms, eax );
+	mov( eax, curHashTable );
+	mov( saveOwner, eax );
+	mov( eax, curOwner );
+	mov( saveLexLevel, eax );
+	mov( eax, curLexLevel );
+	
+	mov( saveMin, eax );
+	mov( eax, minRecAlign );
+	mov( saveMax, eax );
+	mov( eax, maxRecAlign );
+	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end parseUnion;
+
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+// 
+// parseClass-                                                
+//                                                             
+// We've already seen the "CLASS" lexeme, now parse the "guts"
+// of the declaration and build the TYPE symbol table record entry specified 
+// by the parameter.                    
+//                                                             
+// Inputs:                                                      
+// 	symType-                                                   
+// 			Pointer to the TYPE symbol table entry into        
+// 			which we will install the fields for this          
+// 			class.
+//
+// Grammar:
+//
+//	classDcl -> <classOptions> <clsDcls> <privateClassVars> endclass
+//
+//	classOptions ->
+//			<inherits>
+//		|	<empty string>
+//		
+//
+//	inherits-> inherits '(' <id> ')' ';'
+//
+//	clsDcls -> ( <cfDcls> )*
+//
+//	cfDcls ->
+//			const <classConsts>
+//		|	val <classVals>
+//		|	var <VarDcls>
+//		|	static <clsStaticDcls>
+//		|	storage <clsBssDcls>
+//		|	readonly <clsRODcls>
+//		|	segment <clsSegVars>
+//		|	procedure <classProc>
+//		|	iterator <classIterator>
+//		|	method <classMethod>
+//
+//	privateClassVars ->
+//			private ':' <clsDcls>
+//		|	<empty string>         
+//
+//	orID ->
+//			<id>
+//		|	override <id>
+//
+//
+//	classConsts ::=
+//		(
+//				';'
+//			|	<orID> <cDcls>		// See parseConst
+//		)*
+//		<optionalEndConst>			// See parseConst
+//
+//
+//	classVals ::=
+//		(
+//				';'
+//			|	<orID> <vDcls>		// See parseVal
+//		)*
+//		<optionalEndVal>			// See parseVal
+//
+//
+// staticDcls ::= 
+//		<optStaticAlign> <clsStaticvars> <optEndStatic>	// See parseStatic
+//
+// clsStaticvars ::=
+//		(
+//				';'
+//			|	<orID> ':' <StaticType>			// See parseStatic 
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+//
+// clsBssDcls ::= 
+//		<optBssAlign> <clsBssvars> <optEndStorage>	// See parseStorage
+//
+// clsBssvars ::=
+//		(
+//				';'
+//			|	<orID> ':' 
+//				<BssType> ';' <varOptions> 		// See parseStorage
+//				<optionalExternal>
+//
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+//
+// clsRODcls ::= 
+//		<optROAlign> <clsROvars> <optEndReadOnly>	// See parseReadonly
+//
+// clsROvars ::=
+//		(
+//				';'
+//			|	<orID> ':' <ROType>				// See parseReadonly 
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+//
+// clsSegDcls ::= 
+//		<optSegAlign> <clsSegvars> <optEndSegment>	// See parseSegment
+//
+// clsSegvars ::=
+//		(
+//				';'
+//			|	<orID> ':' <Segype>				// See parseSegment 
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+
+//proc( "parseClass" )
+procedure parseClass( symType : symNodePtr_t );
+var
+	offset			:dword;
+	saveSyms		:hashTablePtr_t;
+	saveOwner		:symNodePtr_t;
+	dummyField		:symNodePtr_t;
+	saveCurOffset	:dword;
+	saveLexLevel	:dword;
+	methodOffset	:uns32;
+	
+	isPrivate	:boolean;
+	thisReg		:register_t;
+	vmtReg		:register_t;
+	
+	
+	// clsOptions-
+	//
+	//	Handles the 'inherits' and @this class option.
+
+	//proc( "clsOptions" )
+	procedure clsOptions
+	( 
+				symType 	:symNodePtr_t; 
+		var		methOfs		:uns32;
+		var		_thisReg	:register_t;
+		var		_vmtReg		:register_t 
+	);
+		@use eax;
+	
+	var
+		inhSym			:symNodePtr_t;
+		startOffset		:dword;
+		hashValue		:dword;
+		methodOffset	:uns32;
+		vmtReg			:register_t;
+		thisReg			:register_t;
+
+		procedure regToInReg( register:dword in eax ); @noframe;
+		begin regToInReg;
+
+			switch( eax )
+
+				case( tkn_eax )
+					mov( _EAX, al );
+				case( tkn_ebx )
+					mov( _EBX, al );
+				case( tkn_ecx )
+					mov( _ECX, al );
+				case( tkn_edx )
+					mov( _EDX, al );
+				case( tkn_esi )
+					mov( _ESI, al );
+				case( tkn_edi )
+					mov( _EDI, al );
+				case( tkn_ebp )
+					mov( _EBP, al );
+				case( tkn_esp )
+					HLAerror
+					(
+						"You may not specify ESP as a register in @THIS" nl 
+					);
+					mov( _ESI, al );
+
+				default
+					HLAerror
+					( 
+						"@this option requires a pair of 32-bit registers" nl 
+					);
+					mov( _ESI, al );
+
+			endswitch;
+			ret();
+
+		end regToInReg;
+		
+	begin clsOptions;
+
+		resetTknQ();
+		mov( methOfs, eax );
+		mov( [eax], eax );
+		mov( eax, methodOffset );
+
+		mov( _ESI, thisReg );	// Default value for the "this" and vmt
+		mov( _EDI, vmtReg );	// registers.
+		lex( esi );
+		if( eax = tkn_inherits ) then
+		
+			matchLParen();
+			raiseErr( @c );
+			lex( esi );
+			mov( tokenECX.symNode, ebx );
+			mov( ebx, inhSym );
+			if
+			(
+					( 
+							eax <> tkn_localID 
+						&&	eax <> tkn_globalID
+					)
+				||	symEBX.symClass <> Type_ct
+				||	symEBX.pType <> Class_pt
+				 
+			) then
+			
+				HLAerror
+				( 
+					"Expected a class type identifier in 'inherits( ",
+					tokenECX.trueName,
+					" )'" 
+					nl 
+				);
+				resyncOnSemicolon();
+				
+			else
+			
+				// Get the ending ")" if the inherits clause
+				// is syntactically correct:
+				
+				mustMatchRParen();
+					
+				// Okay, the inherits option is syntactically and semantically
+				// correct, copy the fields from the inherited class into
+				// the current class.  Do this by stepping through the
+				// linear list associated with the inherited type and
+				// entering each (non-private) field into the current class.
+				
+				mov( symType, ebx );		// Set up the inhType pointer.
+				mov( inhSym, eax );
+				mov( eax, symEBX.inhType );
+				
+				mov( symEAX.linearSyms, ecx );
+				
+				// Note: the first field is always _pVMT_, which we
+				// don't want to inherit because the caller has
+				// already created this field.
+				
+				canAccess( [ecx] );
+				mov( symECX.next, ecx );	// Skip _pVMT_ field.
+				
+				while( ecx <> NULL ) do
+								
+					if( !symECX.isPrivate || symECX.symClass = Var_ct ) then
+					
+						if( symECX.isPrivate ) then
+						
+							lea( edx, "*inherited private*" );
+							lea( eax, "*inherited private*" );
+							
+						else
+										
+							str.a_cpy( symECX.trueName );
+							mov( eax, edx );
+							str.a_cpy( symECX.lcName );
+							
+						endif;
+						
+						// Call lookupLocal to get the leaf node pointer in EBX:
+						
+						push( ecx );
+						push( eax );
+						computeHash( eax );
+						mov( eax, ebx );
+						mov( eax, hashValue );
+						mov( [esp], eax );
+						lookupLocal( edx, eax, ebx );
+						
+						movzx( symECX.symClass, eax );
+						switch( eax );
+						
+							case (Constant_ct )
+							
+								// Copy a CONST object from the inheriting class
+								// to the current class:
+								
+								pop( eax );
+								enterConst
+								(
+									edx,
+									eax,
+									NULL,
+									symECX.symType,
+									symECX.va,
+									curOwner,
+									[ebx]
+								);
+								
+								// Do a deep copy just to be safe because
+								// we don't know where this constant came from.
+								
+								deepCopy
+								( 
+									symECX.va, 
+									symECX.va.pType, 
+									symECX.va.symType,
+									symEAX.va
+								);
+								
+
+							case( Value_ct )
+							
+								// Copy a VAL object from the inheriting class
+								// to the current class:
+								
+								pop( eax );
+								enterVal
+								(
+									edx,
+									eax,
+									NULL,
+									symECX.symType,
+									symECX.va,
+									curOwner,
+									[ebx]
+								);
+								
+								// Must do a deep copy because the values
+								// can get changed and we don't want those
+								// changes affecting ancestor classes:
+								
+								deepCopy
+								( 
+									symECX.va, 
+									symECX.va.pType, 
+									symECX.va.symType,
+									symEAX.va
+								);
+
+							case( Var_ct );
+
+								pop( eax );
+								enterVar
+								(
+									edx,
+									eax,
+									NULL,
+									symECX.pType,
+									symECX.symType,
+									curOwner,
+									symECX.offset,
+									notp_pc,
+									[ebx]
+								);
+								
+								// Set curOffset to the value
+								// of the last VAR symbol we
+								// copy so that we have a current
+								// offset when we're done processing
+								// all the inherited fields:
+								
+								mov( symECX.offset, eax );
+								add( symECX.objectSize, eax );
+								mov( eax, curOffset );
+								
+							case( Static_ct )
+							
+								pop( eax );
+								enterStatic
+								(
+									edx,
+									eax,
+									hashValue,
+									symECX.externName,
+									NULL,
+									symECX.pType,
+									symECX.symType,
+									curOwner,
+									0,
+									&dataSegment,
+									symECX.va,
+									[ebx]
+								);
+								
+							case( Proc_ct, ClassProc_ct )
+							
+								pop( eax );
+								push( ecx );	// Save ptr to proc we're copying.
+								enterProc
+								(
+									edx,
+									eax,
+									hashValue,
+									symECX.externName,
+									ClassProc_pt,
+									curOwner,
+									inhSym,		// The base class.
+									NULL,		// No pointer to intermediate code, yet.
+									[ebx]		// Leaf node pointer.
+								);
+
+								
+								// If this is a forward declaration in the
+								// inherited class, we'll let that class
+								// definition worry about resolution of the
+								// forward symbol.
+
+								mov( false, symEAX.isForward );
+
+								// It can't be private, or we wouldn't
+								// have copied it:
+
+								mov( false, symEAX.isPrivate );
+
+								// It's neither read-only or a parameter:
+
+								mov( false, symEAX.isReadOnly );
+								mov( notp_pc, symEAX.pClass );
+								mov( _none, symEAX.inReg );
+
+								// Copy the procedure options across:
+
+								pop( ebx );	// Retrieve ptr to proc.
+								mov( symEBX.cproc.returnsStr, ecx );
+								mov( ecx, symEAX.cproc.returnsStr );
+								mov( ebx, symEAX.cproc.baseClass );
+								mov( symEBX.cproc.parmSize, ecx );
+								mov( ecx, symEAX.cproc.parmSize );
+								mov( symEBX.cproc.localSize, ecx );
+								mov( ecx, symEAX.cproc.localSize );
+								mov( symEBX.cproc.preserves, ecx );
+								mov( ecx, symEAX.cproc.preserves );
+								mov( symEBX.cproc.callSeq, cl );
+								mov( cl, symEAX.cproc.callSeq );
+								mov( symEBX.cproc.hasFrame, cl );
+								mov( cl, symEAX.cproc.hasFrame );
+								mov( symEBX.cproc.hasDisplay, cl );
+								mov( cl, symEAX.cproc.hasDisplay );
+								mov( symEBX.cproc.alignsStack, cl );
+								mov( cl, symEAX.cproc.alignsStack );
+								mov( symEBX.cproc.useEnter, cl );
+								mov( cl, symEAX.cproc.useEnter );
+		 						mov( symEBX.cproc.useLeave, cl );
+								mov( cl, symEAX.cproc.useLeave );
+								mov( symEBX.cproc.uses, cl );
+								mov( cl, symEAX.cproc.uses );
+
+								mov( symEBX.symClass, cl );
+								mov( cl, symEAX.symClass );
+								mov( symEBX.isExternal, cl );
+								mov( cl, symEAX.isExternal );
+								mov( symEBX.isPublic, cl );
+								mov( cl, symEAX.isPublic );
+								mov( symEBX.isReferenced, cl );
+								mov( cl, symEAX.isReferenced );
+							
+							case( Iterator_ct, ClassIter_ct )
+					
+								pop( eax );
+								push( ecx ); // Save ptr to iterator we're copying.
+								enterProc
+								(
+									edx,
+									eax,
+									hashValue,
+									symECX.externName,
+									ClassIter_pt,
+									curOwner,
+									inhSym,		// The base class.
+									0,			// We'll fill in the offset later.
+									[ebx]		// Leaf node pointer.
+								);
+								
+								
+								// If this is a forward declaration in the
+								// inherited class, we'll let that class
+								// definition worry about resolution of the
+								// forward symbol.
+
+								mov( false, symEAX.isForward );
+
+								// It can't be private, or we wouldn't
+								// have copied it:
+
+								mov( false, symEAX.isPrivate );
+
+								// It's neither read-only or a parameter:
+
+								mov( false, symEAX.isReadOnly );
+								mov( notp_pc, symEAX.pClass );
+								mov( _none, symEAX.inReg );
+
+								// Copy the iterator options across:
+
+								pop( ebx );	// Retrieve ptr to proc.
+								mov( symEBX.symClass, cl );
+								mov( cl, symEBX.symClass );
+								mov( symEBX.cproc.returnsStr, ecx );
+								mov( ecx, symEAX.cproc.returnsStr );
+								mov( ebx, symEAX.cproc.baseClass );
+								mov( symEBX.cproc.parmSize, ecx );
+								mov( ecx, symEAX.cproc.parmSize );
+								mov( symEBX.cproc.localSize, ecx );
+								mov( ecx, symEAX.cproc.localSize );
+								mov( symEBX.cproc.preserves, ecx );
+								mov( ecx, symEAX.cproc.preserves );
+								mov( symEBX.cproc.callSeq, cl );
+								mov( cl, symEAX.cproc.callSeq );
+								mov( symEBX.cproc.hasFrame, cl );
+								mov( cl, symEAX.cproc.hasFrame );
+								mov( symEBX.cproc.hasDisplay, cl );
+								mov( cl, symEAX.cproc.hasDisplay );
+								mov( symEBX.cproc.alignsStack, cl );
+								mov( cl, symEAX.cproc.alignsStack );
+								mov( symEBX.cproc.useEnter, cl );
+								mov( cl, symEAX.cproc.useEnter );
+		 						mov( symEBX.cproc.useLeave, cl );
+								mov( cl, symEAX.cproc.useLeave );
+								mov( symEBX.cproc.uses, cl );
+								mov( cl, symEAX.cproc.uses );
+								
+								mov( symEBX.symClass, cl );
+								mov( cl, symEAX.symClass );
+								mov( symEBX.isExternal, cl );
+								mov( cl, symEAX.isExternal );
+								mov( symEBX.isPublic, cl );
+								mov( cl, symEAX.isPublic );
+								mov( symEBX.isReferenced, cl );
+								mov( cl, symEAX.isReferenced );
+								
+								
+								// Copy the iterator's offset and set this as
+								// the new VMT offset:
+								
+								mov( symEBX.offset, ecx );
+								mov( ecx, symEAX.offset );
+								add( 4, ecx );				// Skip this VMT entry
+								mov( ecx, methodOffset );	// Set for new methods.
+
+							case( Method_ct )
+							
+								pop( eax );
+								push( ecx );	// Save ptr to method we're copying.
+								enterProc
+								(
+									edx,
+									eax,
+									hashValue,
+									symECX.externName,
+									Method_pt,
+									curOwner,
+									inhSym,		// The base class.
+									0,			// We'll fill in the offset later.
+									[ebx]		// Leaf node pointer.
+								);
+								
+								
+								// If this is a forward declaration in the
+								// inherited class, we'll let that class
+								// definition worry about resolution of the
+								// forward symbol.
+
+								mov( false, symEAX.isForward );
+
+								// It can't be private, or we wouldn't
+								// have copied it:
+
+								mov( false, symEAX.isPrivate );
+
+								// It's neither read-only or a parameter:
+
+								mov( false, symEAX.isReadOnly );
+								mov( notp_pc, symEAX.pClass );
+								mov( _none, symEAX.inReg );
+
+								// Copy the method options across:
+
+								pop( ebx );	// Retrieve ptr to proc.
+								mov( symEBX.symClass, cl );
+								mov( cl, symEBX.symClass );
+								mov( symEBX.cproc.returnsStr, ecx );
+								mov( ecx, symEAX.cproc.returnsStr );
+								mov( ebx, symEAX.cproc.baseClass );
+								mov( symEBX.cproc.parmSize, ecx );
+								mov( ecx, symEAX.cproc.parmSize );
+								mov( symEBX.cproc.localSize, ecx );
+								mov( ecx, symEAX.cproc.localSize );
+								mov( symEBX.cproc.preserves, ecx );
+								mov( ecx, symEAX.cproc.preserves );
+								mov( symEBX.cproc.callSeq, cl );
+								mov( cl, symEAX.cproc.callSeq );
+								mov( symEBX.cproc.hasFrame, cl );
+								mov( cl, symEAX.cproc.hasFrame );
+								mov( symEBX.cproc.hasDisplay, cl );
+								mov( cl, symEAX.cproc.hasDisplay );
+								mov( symEBX.cproc.alignsStack, cl );
+								mov( cl, symEAX.cproc.alignsStack );
+								mov( symEBX.cproc.useEnter, cl );
+								mov( cl, symEAX.cproc.useEnter );
+		 						mov( symEBX.cproc.useLeave, cl );
+								mov( cl, symEAX.cproc.useLeave );
+								mov( symEBX.cproc.uses, cl );
+								mov( cl, symEAX.cproc.uses );
+								
+								mov( symEBX.symClass, cl );
+								mov( cl, symEAX.symClass );
+								mov( symEBX.isExternal, cl );
+								mov( cl, symEAX.isExternal );
+								mov( symEBX.isPublic, cl );
+								mov( cl, symEAX.isPublic );
+								mov( symEBX.isReferenced, cl );
+								mov( cl, symEAX.isReferenced );
+								
+								
+								// Copy the method's offset	and set this as
+								// the new VMT offset:
+								
+								mov( symEBX.offset, ecx );
+								mov( ecx, symEAX.offset );
+								add( 4, ecx );				// Skip this VMT entry
+								mov( ecx, methodOffset );	// Set for new methods.
+								
+								
+							case( Placeholder_ct )
+							
+								// Just ignore placeholder items in the inherited
+								// class.
+								
+								pop( eax );
+								
+
+							default
+
+								// Defensive code (shouldn't execute):
+								HLAerror
+								(
+									"Unexpected class type in inherited class for ",
+									symECX.trueName, ": (",
+									(type uns32 eax ),
+									")" nl
+									"(internal HLA error)" nl
+								);
+								pop( eax );
+								
+						endswitch;
+						pop( ecx );
+						
+					endif;
+					mov( symECX.next, ecx );
+					
+				endwhile;
+
+			endif;
+
+
+			// Need to get the next token because of the test for
+			// @this, below:
+			
+			lex( esi );
+
+		endif;
+		
+		
+		if( eax = tkn_at_this ) then
+		
+			// No @this, so just return at this point.
+		
+			matchLParen();
+			raiseErr( @c );
+			lex( esi );
+			regToInReg( eax );
+			mov( al, thisReg );
+
+			// Okay, move on to the second register:
+
+			matchTkn( esi, ':' );
+			if( @c ) then
+
+				HLAerror( "Expected ':' separating registers in @this" nl );
+				resyncOnSemicolon();
+
+			else
+
+				lex( esi );
+				regToInReg( eax );
+				mov( al, vmtReg );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			endif;
+
+		else
+		
+			reuseLastTkn();
+			
+		endif;
+		mov( methOfs, ebx );
+		mov( methodOffset, eax );
+		mov( eax, [ebx] );
+		mov( _vmtReg, ebx );
+		mov( vmtReg, al );
+		mov( al, [ebx] );
+		mov( _thisReg, ebx );
+		mov( thisReg, al );
+		mov( al, [ebx] );
+		
+	end clsOptions;
+	
+	
+	// processClassFields
+	//
+	//	This utility function processes all the possible fields
+	// in the public and private sections of a class.
+	
+	//proc( "processClassFields" )
+	procedure processClassFields
+	( 
+			classSym	:symNodePtr_t; 
+		var	methOfs		:uns32;
+			isPrivate	:boolean 
+	);
+	var
+		methodOffset	:uns32;
+	begin processClassFields;
+	
+		mov( methOfs, eax );
+		mov( [eax], eax );
+		mov( eax, methodOffset );
+		forever
+			
+			lex( esi );
+			if( eax = tkn_const ) then
+			
+				parseConst( isPrivate );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_val ) then
+			
+				parseVal( isPrivate, false );
+				continue;
+			
+
+			endif;
+			
+			if( eax = tkn_var ) then
+			
+				parseClassVar( isPrivate );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_static ) then
+			
+				parseStatic( isPrivate );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_storage ) then
+			
+				parseStorage( isPrivate );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_readonly ) then
+			
+				parseReadOnly( isPrivate );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_segment ) then
+			
+				parseSegment( isPrivate );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_procedure ) then
+			
+				parseClassProto( classSym );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_iterator ) then
+			
+				parseIteratorProto( classSym, methodOffset );
+				continue;
+			
+			endif;
+			
+			if( eax = tkn_method ) then
+			
+				parseMethodProto( classSym, methodOffset );
+				continue;
+			
+			endif;
+			
+			// If we get down here, it's not a field that
+			// would normally appear in a class, so return
+			// to the caller and let them deal with it.
+			
+			reuseLastTkn();
+			break;
+		
+		endfor;
+		mov( methOfs, ebx );
+		mov( methodOffset, eax );
+		mov( eax, [ebx] );
+	
+	end processClassFields;
+		
+	
+begin parseClass;
+
+	pushABCD;
+	
+	mov( symType, ebx );
+	canAccess( [ebx] );
+	mov( Class_pt, symEBX.pType );
+	mov( &class_ste, symEBX.symType );
+
+	mov( 0, methodOffset );		// Offset into VMT for methods.
+	mov( curHashTable, eax );
+	mov( eax, saveSyms );
+	mov( curOwner, eax );
+	mov( eax, saveOwner );
+	mov( curOffset, eax );
+	mov( eax, saveCurOffset );
+	mov( 4, curOffset );		// VAR fields start at offset 4 in class
+								// because we pre-enter the _pVMT_ field.
+	
+	// Class definitions only make sense at lex level one
+	// because class procedures/methods/iterators cannot 
+	// access non-global objects:
+
+	if( curLexLevel <> 1 ) then
+
+		HLAerror( "Class definitions may only appear at lex level 1" nl );
+	endif;
+
+
+	// For classes, use a special lex level:
+	
+	mov( curLexLevel, eax );
+	mov( eax, saveLexLevel );
+	mov( classLexLevel, curLexLevel );
+	
+	// Create a local symbol table to hang off the class object to
+	// satisfy the requirement that linearSyms and lastLinear are
+	// not NULL.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( eax, dummyField );				// So we can count the fields, later
+	mov( eax, symEBX.linearSyms );		// These fields must not be NULL.
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ecx );
+
+	str.a_cpy( "_pVMT_" );
+	mov( eax, symECX.trueName );
+	str.a_cpy( "_pvmt_" );
+	mov( eax, symECX.lcName );
+	mov( Pointer_pt, symECX.pType );
+	mov( &pointer_ste, symECX.symType );
+	mov( Var_ct, symECX.symClass );
+	mov( NULL, symECX.left );
+	mov( NULL, symECX.right );
+	mov( NULL, symECX.next );
+	mov( NULL, symECX.linearSyms );
+	mov( NULL, symECX.lastLinear );
+	mov( symType, eax );
+	mov( eax, symECX.owner );
+	mov( eax, curOwner );
+	mov( classLexLevel, symECX.lexLevel );
+	mov( 0, symECX.objectSize );
+	mov( 0, symECX.offset );
+	mov( false, symECX.isExternal );
+	mov( false, symECX.isPublic );
+	mov( false, symECX.isReferenced );
+	mov( false, symECX.isForward );
+	mov( false, symECX.isPrivate );
+	
+	// Create a hash table for this class:
+	
+	safe_malloc( @size( symNodePtr_t) * clsHashSize + @size( hashTable_t ));
+	mov( symType, ecx );
+	mov( eax, symECX.localHash );
+	mov( ecx, hashEAX.owner );
+	push( eax );
+	push( edi );
+	push( ecx );
+	pushfd();
+	cld();
+	mov( clsHashSize, ecx );
+	lea( edi, hashEAX.hashTable );
+	xor( eax, eax );
+	rep.stosd();		// Initialize with NULL pointers
+	popfd();
+	pop( ecx );
+	pop( edi );
+	pop( eax );
+	
+	// Set the hash table mask for the record's hash table
+	
+	mov( clsHashMask, hashEAX.mask );
+	
+
+	// Okay, point the global hash table pointer at this new hash table:
+
+	mov( eax, curHashTable );
+
+	
+	// Enter the _pVMT_ symbol into the symbol table. Call
+	// lookupLocal to get the leaf node into EBX (the symbol will
+	// not be in the symbol table at this point).
+	
+	push( eax );
+	lookupLocal( "_pVMT_", "_pvmt_", hashFunc( "_pVMT_" ) );
+	mov( dummyField, eax );		// Insert _pVMT_ into the
+	mov( eax, [ebx] );			// hash table.
+	pop( eax );
+	
+	
+	// Okay, look for the "inherits" and "@this" options:
+
+	try
+		clsOptions( symType, methodOffset, thisReg, vmtReg );
+
+	  exception( ex.hlaerr );
+
+		resyncOnSemicolon();
+
+	endtry;
+	
+
+	try
+
+		// Process the public fields of this class:
+		processClassFields( symType, methodOffset, false );
+
+	  exception( ex.hlaerr )
+
+		resyncOnSemicolon();
+
+	endtry;
+	
+	// Process the private fields of this class (if any):
+	
+	lex( esi );	
+	if( eax = tkn_private ) then
+	
+		matchColon();
+		try
+			processClassFields( symType, methodOffset, true );		
+
+
+		  exception( ex.hlaerr );
+
+			resyncOnSemicolon();
+
+		endtry;
+		lex( esi );				// Because follow code expects token in EAX
+			
+	endif;
+
+	if( eax <> tkn_endclass ) then
+	
+		HLAerror( "Expected 'ENDCLASS', encountered " );
+		dumpQLexeme();
+		resyncOnSemicolon();
+		reuseLastTkn();
+		
+	endif;
+	
+	// Set the objectSize field to the value of curOffset:
+	
+	mov( curOffset, eax );
+	mov( symType, ebx );
+	mov( eax, symEBX.objectSize );
+
+	// Set up the thisReg and vmtReg fields:
+
+	mov( thisReg, al );
+	mov( al, symEBX.thisReg );
+	mov( vmtReg, al );
+	mov( al, symEBX.vmtReg );
+
+	// Count the number of fields in this class and set the
+	// field index on each field.
+
+
+	push( ebx );
+	mov( dummyField, ebx );
+	xor( ecx, ecx );
+	while( symEBX.next <> NULL ) do
+
+		mov( ecx, symEBX.fieldIndex );
+		mov( symEBX.pType, al );
+
+		// Move on to the next field:
+
+		inc( ecx );
+		mov( symEBX.next, ebx );
+	endwhile;
+	mov( ecx, symEBX.fieldIndex );
+	pop( ebx );
+	mov( ecx, symEBX.fieldCnt );
+
+	// Restore the original symbol table:
+	
+	mov( saveSyms, eax );
+	mov( eax, curHashTable );
+	mov( saveOwner, eax );
+	mov( eax, curOwner );
+	mov( saveCurOffset, eax );
+	mov( eax, curOffset );
+	mov( saveLexLevel, eax );
+	mov( eax, curLexLevel );
+	
+	popABCD;
+	
+end parseClass;
+
+
+////////////////////////////////////////////////////////////////////
+//
+// parseClassVar-
+//
+//	Special version of parseVar to handle parsing the VAR section
+// of a class, which is slightly different than standard VAR
+// sections. Because of the subtle differences, don't even think
+// about merging this with parseVAR unless you are *very* careful.
+// In HLA v1.0 these two functions started out as one and their
+// combination created all kinds of grief.
+//
+// Grammar:
+//
+// VarDcls ::= <optVarAlign> <vars> <optEndVar>
+//
+// optVarAlign ::=
+//				'[' <constExpr> <optMinExpr> ']' <optVarOffset>
+//			|	<optVarOffset>
+//
+// optVarOffset ::=
+//				<empty string>
+//			|	':=' <constExpr> ';'
+//
+// optMinExpr ::=
+//				<empty string>
+//			|	',' <constExpr>
+//
+// vars ::=
+//		(
+//				';'
+//			|	<ID> ':' <ForVar> ';'
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+// ForVar ::=
+//				<typeID> <optionalBounds>
+//			|	enum '{' <idList> '}'
+//			|	pointer to <ptrTypeID>
+//			|	procedure <optionalParms> ';' <protoOptions> 
+//			|	@forward '(' <fID> ')' ';'
+//			|	record <recStuff> ';'
+//			|	union <recStuff> ';'
+//
+// optEndVar ::=
+//				<empty string>
+//			|	endvar ';'
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the VAR reserved word.
+
+//proc( "parseClassVar" )
+procedure parseClassVar( isPrivate:boolean );
+var
+	varID		:string;
+	varlcID		:string;
+	varHash		:dword;
+	varType		:symNodePtr_t;
+	varToken	:pointer to token_t;
+	dimensions	:dimPtr_t;
+	alignTo		:int32;
+	minAlign	:attr_t;
+	maxAlign	:attr_t;
+	varOffset	:attr_t;
+	alignment	:attr_t;
+	constResult	:attr_t; 
+	varpType	:pType_t;
+
+
+	// optVarAlign - handles the VAR ALIGN options.
+	//
+	//	VAR[align]
+	//  VAR[max,min]
+	//	VAR := offset;
+	//	VAR[align]  := offset;
+	//  VAR[max,min]  := offset;
+
+
+	//proc( "optVarAlign" )
+	procedure optVarAlign; @noframe;
+	begin optVarAlign;
+
+		// check for a "(" or ":=" after the VAR keyword:
+
+		lex( esi );
+		if( eax = '[' ) then
+
+			// Okay, we're expecting an alignment item, which
+			// takes one of the following forms:
+			// [ align ]
+			// [ maxAlign, minAlign ]
+
+			getUnsigned( ebp::maxAlign );
+			if( @nc ) then
+				
+				// Use maxAlign value as minAlign value
+				// because the minimum value is optional.
+
+				mov( ebp::maxAlign.dword_vt, eax );
+				mov( eax, minVarAlign );
+				mov( eax, maxVarAlign );
+
+			endif;
+
+			lex( esi );
+			if( eax = ',' ) then
+
+				// If we see a comma, then we must have
+				// two operands.
+
+				getUnsigned( ebp::minAlign );
+				if( @nc ) then
+
+					mov( ebp::minAlign.dword_vt, eax );
+					mov( eax, minVarAlign );
+
+				endif;
+				lex( esi );
+			
+			endif;
+			if( eax <> ']' ) then
+
+				HLAerror( "Expected a right bracket (']')" nl );
+
+			else
+
+				lex( esi );
+
+			endif;
+
+		endif;
+
+		// Check to see if we're setting the offset for this
+		// VAR section:
+
+		if( eax = tkn_assign ) then
+
+			getInteger( ebp::varOffset );
+			mov( ebp::varOffset.dword_vt, curOffset );
+			matchTkn( esi, ';' );
+			if( @c ) then
+
+				HLAerror( "Syntax error, expected a ';'" nl );
+				reuseLastTkn();
+
+			endif;
+
+		else
+
+			reuseLastTkn();
+
+		endif;
+		ret();
+
+	end optVarAlign;
+
+
+
+	// Handle the type portion of a VAR declaration.
+
+	//proc( "forVar" )
+	procedure forVar; @noframe;
+	begin forVar;
+
+		if( getTypeID() ) then
+		
+			if( eax = &text_ste ) then
+			
+				HLAerror( "TEXT is an illegal type here" nl );
+				mov( &string_ste, eax );
+				
+			endif;
+		
+			mov( eax, ebp::varType );
+			optionalBounds();
+			mov( eax, ebp::dimensions );
+			if( eax <> NULL ) then
+
+				// We have an array type.  We need to build anonymous 
+				// type records for all array dimension and link them
+				// together:
+				
+				mov( (type dimensions_t [eax]).arity, ecx );
+				repeat
+				
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+					// We need to create a dummy name for
+					// the anonymous array type that we're
+					// about to create.  This is of the form:
+					//
+					//	" arrayXXX"
+					//
+					// where XXX is some unique numeric value.
+					// Note the '@' at the beginning of the
+					// string, this ensures that the program
+					// can never reference this symbol directly.
+					
+					makeLabel( "@array" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Array_pt,
+						ebp::varType,
+						curOwner,
+						[ebx]
+					);
+					mov( ebp::varType, edx );
+					mov( symEDX.objectSize, edx );
+					mov( eax, ebp::varType );
+					
+					// We need to fill in the array dimensions info here:
+					
+					mov( ebp::dimensions, ebx );
+					mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+					mov( ebx, symEAX.numElements );
+					intmul( ebx, edx );
+					mov( edx, symEAX.objectSize );
+					dec( ecx );
+
+					// Restore pointer to class' local table.
+
+					pop( curOwner );
+					pop( curHashTable );
+					
+				until( @z );
+				
+
+			endif;
+			clc();
+			ret();
+		
+		endif;
+		
+		// It wasn't a type identifier, so look for the other things
+		// that can appear in a VAR section after a "id:" sequence:
+		
+		lex( esi );
+		if( eax = tkn_enum ) then
+		
+			// Sneak this type declaration into the global
+			// symbol table rather than putting it inside the record:
+
+			push( curHashTable );		// Save these, to restore
+			push( curOwner );			//  them later.
+
+			lea( rootHashTable, ebx );	// Point symbol table at
+			mov( ebx, curHashTable );	//  the root symbol table
+			mov( rootOwner, ebx );
+			mov( ebx, curOwner );
+
+			// We need to create a dummy name for
+			// the anonymous enumerate type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@enumXXX"
+			//
+			// where XXX is some unique numeric value.
+			// Note the '@' at the beginning of the
+			// string, this ensures that the program
+			// can never reference this symbol directly.
+			
+			makeLabel( "@enum" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Enum_pt,
+				&enum_ste,
+				curOwner,
+				[ebx]
+			);
+			mov( eax, ebp::varType );
+			
+			// Go construct the constants for this anonymous
+			// enumerated type:
+			
+			buildEnumType( [eax] );
+
+			pop( curOwner );
+			pop( curHashTable );
+			ret();
+			
+		endif;
+			
+				
+		if( eax = tkn_at_forward ) then
+
+			// Process the remainder of the FORWARD clause:
+
+			matchLParen();
+			raiseErr( @c );
+			
+			// Grab the identifier:
+
+			lex( esi );
+			if( eax = tkn_globalID ) then
+			
+				makeUndefID( [ecx] );
+				mov( tkn_undefID, eax );
+				
+			elseif( eax = tkn_localID ) then
+			
+				mov( tokenECX.symNode, ebx );
+				if( symEBX.symClass <> Value_ct ) then
+
+					HLAerror
+					( 
+						"Duplicate symbol definition: ", 
+						tokenECX.trueName,
+						nl
+					);
+					makeUndefID( [ecx] );
+					mov( tkn_undefID, eax );
+
+				endif;
+				
+			endif;
+			if( eax = tkn_undefID || eax = tkn_localID ) then
+
+				str.a_cpy( ebp::varID );
+				mov( eax, ebp::constResult.string_vt );
+				mov( String_pt, ebp::constResult.pType );
+				mov( &string_ste, ebp::constResult.symType );
+				mov( Constant_ct, ebp::constResult.symClass );
+				mov( 0, ebp::constResult.numElements );
+
+				// Create the text constant entry using
+				// the ID after the @FORWARD.
+				//
+				// Note: if lookupLocal returns non-NULL, then
+				// we've got to have a VAL constant.
+									
+				lookupLocal
+				( 
+					tokenECX.trueName, 
+					tokenECX.lcName,
+					tokenECX.hashValue
+				);
+
+				if( eax = NULL ) then
+				
+					enterConst
+					(
+						tokenECX.trueName, 
+						tokenECX.lcName,
+						NULL,
+						&text_ste,
+						ebp::constResult,
+						curOwner,
+						[ebx]
+					);
+
+				elseif( symEAX.symClass = Value_ct ) then
+
+					setVal
+					(
+						tokenECX.trueName, 
+						tokenECX.lcName,
+						eax,
+						&text_ste,
+						ebp::constResult,
+						curOwner,
+						[ebx]
+					);
+					
+				else
+				
+					// Defensive code, shouldn't really execute
+					HLAerror
+					(
+						"Symbol in @FORWARD must be undefined "
+						"or a VAL symbol"
+						nl
+					);	
+
+
+				endif;
+				
+				mov( tokenECX.trueName, eax );
+				mov( eax, ebp::varID );
+				mov( tokenECX.lcName, eax );
+				mov( eax, ebp::varlcID );
+				mov( tokenECX.hashValue, eax );
+				mov( eax, ebp::varHash );
+				
+				mov( &text_ste, ebp::varType );
+				
+			else
+			
+				HLAerror
+				( 
+					"Expected an identifier, encountered "
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+				raise( ex.hlaerr );
+			
+			endif;
+			mustMatchRParen();
+			clc();
+			ret();
+			
+		endif;
+		
+		///////////////////////////////////////////
+		//	
+		// Handle <id> : pointer to <typeID>; here:					
+			
+		if( eax = tkn_pointer ) then
+
+			// We'll need a type symbol for this guy:
+			// Sneak this type declaration into the global
+			// symbol table rather than putting it inside the record:
+
+			push( curHashTable );		// Save these, to restore
+			push( curOwner );			//  them later.
+
+			lea( rootHashTable, ebx );	// Point symbol table at
+			mov( ebx, curHashTable );	//  the root symbol table
+			mov( rootOwner, ebx );
+			mov( ebx, curOwner );
+			// We need to create a dummy name for
+			// the anonymous pointer type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@pointer"
+			
+			makeLabel( "@pointer" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Pointer_pt,
+				NULL,		// No base type, yet.
+				curOwner,
+				[ebx]
+			);
+			mov( eax, ebp::varType );
+			pop( curOwner );
+			pop( curHashTable );
+		
+			lex( esi );
+			if( eax <> tkn_to ) then
+			
+				HLAerror( "Expected 'TO' after 'POINTER'" nl );
+				reuseLastTkn();
+				mov( ebp::varType, ebx );
+				mov( &pointer_ste, symEBX.baseType );
+				mov( Pointer_pt, symEBX.pType );
+				mov( 4, symEBX.objectSize );
+				stc();
+				ret();
+				
+			endif;
+			if( getTypeID() ) then
+			
+				if( eax = &text_ste ) then
+				
+					HLAerror( "TEXT is an illegal type here" nl );
+					mov( &string_ste, eax );
+					
+				endif;
+				mov( ebp::varType, ebx );
+				mov( eax, symEBX.baseType );
+				mov( Pointer_pt, symEBX.pType );
+				mov( 4, symEBX.objectSize );
+									
+			else
+			
+				lex( esi );
+				if( eax = tkn_undefID ) then
+				
+					// If the ID is undefined, we'll assume that
+					// it's a forward declaration.  Add it to the
+					// list of pointer/forward declarations we
+					// need to check later:
+					
+					mov( ebp::varType, ebx );
+					mov( &pointer_ste, symEBX.baseType );
+					mov( Pointer_pt, symEBX.pType );
+					mov( 4, symEBX.objectSize );
+					addFwdPtr( ebp::varType, [ecx], Type_ct );
+				
+				else
+				
+					HLAerror( "Expected a type ID, found " );
+					dumpQLexeme();
+					resyncOnSemicolon();
+					mov( ebp::varType, ebx );
+					mov( &pointer_ste, symEBX.baseType );
+					mov( Pointer_pt, symEBX.pType );
+					mov( 4, symEBX.objectSize );
+					stc();
+					ret();
+					
+				endif;
+					
+			endif;
+			clc();
+			ret();
+			
+		endif;
+
+
+
+		//////////////////////////////////////////////////
+		//	
+		// Handle <id> :  record <fields> endrecord; here:
+		
+		if( eax = tkn_record ) then
+
+			// Sneak this type declaration into the global
+			// symbol table rather than putting it inside the record:
+
+			push( curHashTable );		// Save these, to restore
+			push( curOwner );			//  them later.
+
+			lea( rootHashTable, ebx );	// Point symbol table at
+			mov( ebx, curHashTable );	//  the root symbol table
+			mov( rootOwner, ebx );
+			mov( ebx, curOwner );
+
+			// We'll need a type symbol for this guy:
+			// We need to create a dummy name for
+			// the anonymous record type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@record"
+			
+			makeLabel( "@record" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Record_pt,
+				NULL,		// No base type, yet.
+				curOwner,
+				[ebx]
+			);
+			mov( eax, ebp::varType );
+			pop( curOwner );
+			pop( curHashTable );
+			// Process the actual record:
+
+			parseRecord( ebp::varType );
+			clc();
+			ret();
+			
+		endif;
+						
+			
+			
+		////////////////////////////////////////////////
+		//	
+		// Handle <id> :  union <fields> endunion; here:
+		
+		if( eax = tkn_union ) then
+		
+			// Sneak this type declaration into the global
+			// symbol table rather than putting it inside the record:
+
+			push( curHashTable );		// Save these, to restore
+			push( curOwner );			//  them later.
+
+			lea( rootHashTable, ebx );	// Point symbol table at
+			mov( ebx, curHashTable );	//  the root symbol table
+			mov( rootOwner, ebx );
+			mov( ebx, curOwner );
+
+			// We'll need a type symbol for this guy:
+			// We need to create a dummy name for
+			// the anonymous union type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@union"
+			
+			makeLabel( "@union" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Union_pt,
+				NULL,		// No base type, yet.
+				curOwner,
+				[ebx]
+			);
+			mov( eax, ebp::varType );
+			pop( curOwner );
+			pop( curHashTable );
+			// Process the actual union:
+
+			parseUnion( ebp::varType );
+			clc();
+			ret();
+			
+		endif;
+			
+		
+		///////////////////////////////////////////////////////////
+		//
+		// Deal with 
+		// <id>:procedure <optionalparms> ';' <protoOptions> 
+		// here:
+			
+		if( eax = tkn_procedure ) then
+		
+			mov( Proc_pt, ebp::varpType );
+			mov( &procedure_ste, ebp::varType );
+			clc();
+			ret();
+			
+		endif;
+		
+	
+		HLAerror
+		( 
+			"Expected a type identifier after the ':' "
+			"but encountered " 
+		);
+		dumpQLexeme();
+		stc();
+		ret();
+
+	end forVar;
+
+begin parseClassVar;
+
+	optVarAlign();
+	forever
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next var declaration.
+
+		// Handle the var identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				tokenECX.trueName, 
+				nl 
+			);
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, varID );
+			mov( tokenECX.lcName, varlcID );
+			mov( tokenECX.hashValue, varHash );
+			
+			// Okay, we've got to process a VAR declaration here.
+			// Begin by initializing the type to nothing.
+			
+			mov( NULL, varType );
+			mov( ecx, varToken );
+			
+			// Grab the ':'
+			
+			matchTkn( esi, ':' );
+			if( @c ) then
+			
+				HLAerror( "Expected a ':', encountered " );
+				dumpQLexeme();
+				resyncOnSemicolon();
+				stc();
+				
+			else
+			
+				forVar();
+
+			endif;
+			if( @nc ) then
+
+				if( varType <> &text_ste ) then
+			
+					// Set the type of this object:
+					
+					mov( varType, ebx );
+					mov( symEBX.pType, al );
+					mov( al, varpType );
+
+					// Before entering the variable into the symbol table,
+					// let's align it as specified by the minAlign, maxAlign
+					// and tempVarAlign variables:
+
+					mov( tempVarAlign, eax );
+					mov( eax, alignTo );
+					if( eax = 0 ) then
+					
+						// If tempVarAlign is zero, then use the
+						// values found in maxVarAlign and minVarAlign.
+						// If tempVarAlign is non-zero, then we've
+						// just seen an align directive and it overrides
+						// the min/maxVarAlign values.
+						
+						// If the object size is less than minVarAlign,
+						// set alignTo to minVarAlign. If the object size
+						// is greater than maxVarAlign, then set alignTo to
+						// maxVarAlign. If minVarAlign < object size < maxVarAlign
+						// then set the alignTo value to the object's size.
+
+						mov( symEBX.objectSize, eax );
+						mov( eax, alignTo );
+						if( eax < minVarAlign ) then
+
+							mov( minVarAlign, eax );
+							mov( eax, alignTo );
+
+						endif;
+						if( eax > maxVarAlign ) then
+
+							mov( maxVarAlign, eax );
+							mov( eax, alignTo );
+
+						endif;
+
+					endif;
+
+					// Compute the alignment value here:
+					
+					mov( curOffset, eax );
+					if( alignTo > 1 ) then
+
+						xor( edx, edx );
+						div( alignTo );
+						if( edx <> 0 ) then
+
+							// Add in whatever offset is necessary
+							// to reduce curOffset to the next boundary
+							// specified by the alignment (alignTo):
+							
+							sub( alignTo, edx );
+							sub( edx, curOffset );
+
+						endif;
+
+					endif;
+					mov( 0, tempVarAlign );	// Reset ALIGN value for next VAR.
+
+					// If it was a procedure variable, handle that
+					// specially.
+					
+					if( varpType = Proc_pt ) then
+					
+						parseProcType
+						( 
+							varID,
+							varlcID,
+							varHash, 
+							Var_ct,		// This is an auto/VAR object  
+							curOffset, 	// Current offset into activation record
+							notp_pc, 	// This is not a parameter 
+							startParmsOffs,	// Starting offset for parms
+							NULL,		// This is not associated with a segment
+							NULL,		// No "enterSym" needed.
+							false 		// No initial value for proc ptr.
+						);
+						mov( eax, varType );
+						mov( Procptr_pt, symEAX.pType );
+
+					else
+					
+						// Enter the var object into the symbol table:
+						// The symbol is undefined at the local level,
+						// so the following call always returns false.
+						// We call it here to get the leaf node (in ebx)
+						// to which we must link the new symbol from.
+
+						lookupLocal( varID, varlcID, varHash );
+						enterVar
+						(
+							varID,
+							varlcID,
+							NULL,
+							varpType,
+							varType,
+							curOwner,
+							curOffset,
+							notp_pc,	// This isn't a parameter.
+							[ebx]
+						);
+						mov( isPrivate, bl );
+						mov( bl, symEAX.isPrivate );
+						matchSemicolon();
+						
+					endif;
+
+					// We need to compute the offset of the next
+					// VAR object. To do this, we need to add
+					// the object's size to curOffset:
+					
+					mov( varType, ebx );
+					mov( symEBX.objectSize, eax );
+					add( eax, curOffset );
+
+				endif;
+			
+				
+			else
+			
+				resyncOnSemicolon();
+				
+			endif;
+
+		elseif( eax = tkn_align ) then
+		
+			matchLParen();
+			raiseErr( @c );
+			getUnsigned( alignment );
+			if( @nc ) then
+
+				mov( alignment.dword_vt, eax );
+				mov( eax, tempVarAlign );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			endif;
+									
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a VAR section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+
+	// Handle the optional endvar down here:
+
+	if( eax = tkn_endvar ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+
+end parseClassVar;
+
+
+end parseRecUnCls;

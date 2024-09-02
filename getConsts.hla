@@ -1,0 +1,3332 @@
+unit getConsts;
+
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getCsetConst-
+//
+//	Called by the term procedure when it encounters the '{' symbol
+// indicating the start of a character set constant.  This procedure
+// builds the character set constant and stores it in the field specified
+// by attr.  Note that this procedure works for both Cset and XCSet objects.
+// The choice of the two is made by the appearance of any characters whose
+// ASCII code is in the range $80..$FF (forcing an XCset type).
+//
+// Raises an ex.hlaerr exception if there is a syntax error in the constant.
+// Raises an ex.hlaerr exception if the second value is less than the first.
+// Returns with the carry flag clear if it sucessfully processes a cset const. 
+
+//proc( "getCsetConst" )
+procedure getCsetConst( var attr:attr_t );
+var
+	charExpr	:attr_t;
+	
+begin getCsetConst;
+	
+	// Initialize the CSET and XCSET fields to the empty set:
+	
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	xor( eax, eax );
+	mov( eax, attrEBX.dword_vt[0*4] );
+	mov( eax, attrEBX.dword_vt[1*4] );
+	mov( eax, attrEBX.dword_vt[2*4] );
+	mov( eax, attrEBX.dword_vt[3*4] );
+	mov( eax, attrEBX.dword_vt[4*4] );
+	mov( eax, attrEBX.dword_vt[5*4] );
+	mov( eax, attrEBX.dword_vt[6*4] );
+	mov( eax, attrEBX.dword_vt[7*4] );
+	
+	// Start off assuming it's a CSET rather than an XCset:
+	
+	mov( Cset_pt, attrEBX.pType );
+	mov( &cset_ste, attrEBX.symType );
+	mov( Constant_ct, attrEBX.symClass );
+
+	
+	// Okay, we've already seen the '{', now start processing the
+	// guts of the cset constant:
+	// Begin by checking for an empty character set:
+
+	lex( esi );
+	if( eax <> '}' ) then
+
+		reuseLastTkn();	// Wasn't a '}', so reuse the token.
+		forever
+		
+			lea( eax, charExpr );
+			constExpr( [eax] );
+			
+			// Okay, we got a valid constant expression.  Let's verify that
+			// its a character constant:
+
+			if( charExpr.pType  not in Char_pt..XChar_pt ) then
+			
+				HLAerror
+				( 
+					"Expected a character constant in cset constant list "
+					"but encountered '" 
+				);
+				dumpLexeme();
+				HLAerror2( "'" nl );
+				raise( ex.hlaerr );
+				
+			else
+			
+				// Check to see if the character is an xchar and update
+				// isXCset accordingly:
+				
+				movzx( charExpr.char_vt, eax );
+				if( al >= #$80 ) then
+				
+					mov( attr, ebx );
+					canAccess( [ebx] );
+					mov( XCset_pt, attrEBX.pType );
+					mov( &xcset_ste, attrEBX.symType );
+				
+				endif;
+				
+			endif;
+				
+			// Add the current character to the set (note that the Cset
+			// and XCset fields overlap, so writing to CSet also writes
+			// to the appropriate bit in XCSet):
+			
+			mov( attr, ebx );
+			canAccess( [ebx] );
+			bts( eax, attrEBX.cset_vt );
+			push( eax );		// Save in case we have a range.
+			
+			// Call the lexer to check for a '}', ',', or '..' token:
+			
+			lex( esi );
+			if( eax = tkn_dotDot ) then
+			
+				// Get the character expression after the ".."
+				
+				lea( eax, charExpr );
+				constExpr( [eax] );
+				
+				// Okay, we got a second constant expression.  Let's verify that
+				// its a character constant:
+				
+				if( charExpr.pType not in Char_pt..XChar_pt ) then
+				
+					HLAerror
+					( 
+						"Expected a character constant in cset constant list "
+						"but encountered '" 
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+					
+				else
+				
+					// Check to see if the character is an xchar and update
+					// isXCset accordingly:
+					
+					movzx( charExpr.char_vt, eax );
+					if( al >= #$80 ) then
+					
+						mov( attr, ebx );
+						mov( XCset_pt, attrEBX.pType );
+						mov( &xcset_ste, attrEBX.symType );
+					
+					endif;
+					
+				endif;
+				
+				// Okay, now set all the bits in the character set between
+				// [esp] and eax:
+				
+				pop( edx );
+				if( edx > eax ) then
+				
+					HLAerror
+					( 
+						"End of character range ($", 
+						dl, 
+						") is less than the start of the range ($", 
+						al, 
+						")" 
+						nl 
+					);
+					raise( ex.hlaerr );
+					
+				endif;
+				mov( attr, ebx );
+				canAccess( [ebx] );
+				while( edx <= eax ) do
+				
+					bts( edx, attrEBX.cset_vt );
+					inc( edx );
+					
+				endwhile;
+				push( eax );	// Because of stack clean-up below.
+				lex( esi );		// Get next token (should be ',' or '}').
+			
+			endif;
+			
+			
+			pop( edx );		// Clean up the stack.
+			
+			if( eax = '}' ) then
+			
+				clc();
+				break;
+				
+			endif;
+			if( eax <> ',' ) then
+			
+				HLAerror
+				( 
+					"Syntax error in cset expression, "
+					"encountered '" 
+				);
+				dumpLexeme();
+				HLAerror2( "'" nl );
+				raise( ex.hlaerr );
+								
+			endif;
+					
+		endfor;
+		
+	endif;	
+
+end getCsetConst;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getStrConst-
+//
+//	Called from the term procedure when the lexer encounters a string constant.
+// HLA allows the construction of string constants via concatenation
+// (juxtaposition) of a list of string and character constants.  E.g., if
+// HLA encounters the following in a source file:
+//
+//	"Hello" #$20 "World"
+//
+// then the expression evaluator creates the single string "Hello World"
+// from this sequence.  It is the purpose of "getStrConst" to handle this
+// processing.
+//
+// Input:
+//
+//	attr-
+//		Points at the attr_t object where the resulting string is to
+//		be stored.  Also note that attr already contains the left-most
+//		string of the sequence (this was created by the term procedure).
+//
+// Output:
+//
+//	[attr]-
+//		Points at the attr_t object containing the full string produced
+//		by this procedure (which may be the same as the input string
+//		if there were no juxtaposed string or character constants).
+//
+//	carry-
+//		****Set if there was an error processing the string constant,
+//		Clear if no error.
+//	
+//	Modified: now raises an ex.hlaerr exception if there was a syntax error
+
+//proc( "getStrConst" )
+procedure getStrConst( var attr:attr_t );
+begin getStrConst;
+
+	forever
+	
+		// Grab the next token following the string/character we just
+		// matched.
+		
+		lex( esi );
+
+		// Is the current token a character or a string?
+
+		if( eax = tkn_charConst ) then
+
+			// Is the current token a char or xchar?
+
+			if( tokenECX.attr.pType in Char_pt..XChar_pt ) then
+		
+				// Check to see if our original "string" is actually
+				// a character.  If so, convert it (plus the current
+				// character) to a string:
+				
+				mov( attr, ebx );
+				canAccess( [ebx] );
+				if( attrEBX.pType in Char_pt..XChar_pt ) then
+				
+					// Prev: char/xchar, Current: char/xchar, result: string.
+
+					stralloc( 3 );
+					mov( attrEBX.char_vt, dl );
+					mov( dl, [eax] );
+					mov( tokenECX.attr.char_vt, dl );
+					mov( dl, [eax+1] );
+					mov( 0, (type byte [eax+2]) );
+					mov( 2, (type str.strRec [eax]).length  );
+					mov( eax, attrEBX.string_vt );
+					
+					// Okay, change the original type from character to string:
+					
+					mov( String_pt, attrEBX.pType );
+					mov( &string_ste, attrEBX.symType );
+					
+				elseif( attrEBX.pType = Unicode_pt ) then			 
+
+					// Prev: unicode, Current: char/xchar, result: ustring.
+
+					// Current object is a straight character,
+					// Last object was a unicode character.
+					// Create a unicode string from them.
+
+					stralloc( 5 );
+					mov( attrEBX.unicode_vt, dx );
+					mov( dx, [eax] );
+					movzx( tokenECX.attr.char_vt, dx );
+					mov( dx, [eax+2] );
+					mov( 0, (type byte [eax+4]));
+					mov( 4, (type str.strRec [eax]).length );
+					mov( eax, attrEBX.string_vt );
+					
+					// Okay, change the original type from character 
+					// to wstring:
+					
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+			
+			
+				elseif( attrEBX.pType = String_pt ) then
+				
+					// Prev: string, Current: char/xchar, result: string.
+
+					// Compute the length of the new string as
+					// the length of the original string plus one
+					// and allocate storage for the new string:
+					
+					mov( attrEBX.string_vt, edx );
+					canAccess( [edx] );
+					mov
+					( 
+						(type str.strRec [edx]).length, 
+						edx 
+					);
+					inc( edx );
+					stralloc( edx );
+					
+					// Copy the original string to the new string:
+
+					str.cpy( attrEBX.string_vt, eax );
+					
+					// Free storage for original string:
+
+					strfree( attrEBX.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Okay, copy the current character to the end of the string,
+					// zero terminate, and adjust the length:
+
+					mov( tokenECX.attr.char_vt, cl );
+					mov( cl, [eax+edx-1] );
+					mov( 0, (type byte [eax+edx]) );
+					inc( (type str.strRec [eax]).length );
+
+				elseif( attrEBX.pType = UString_pt ) then 
+
+					// Prev: ustring, Current: char/xchar, result: ustring.
+				
+					// Compute the length of the new string as
+					// the length of the original string plus two
+					// and allocate storage for the new string:
+					
+					mov( attrEBX.string_vt, edx );
+					canAccess( [edx] );
+					mov
+					( 
+						(type str.strRec [edx]).length, 
+						edx 
+					);
+					add( 2, edx );
+					stralloc( edx );
+					
+					// Copy the original string to the new string:
+
+					str.cpy( attrEBX.string_vt, eax );
+					
+					// Free storage for original string:
+
+					strfree( attrEBX.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Okay, copy the current character to the end of the 
+					// string (converting it to unicode as we do this),
+					// zero terminate, and adjust the length:
+
+					movzx( tokenECX.attr.char_vt, cx );
+					mov( cx, [eax+edx-2] );
+					mov( 0, (type byte [eax+edx]) );
+					add( 2, (type str.strRec [eax]).length );
+
+
+				else	// Unexpected data type!
+
+					// Defensive code: actual error handled elsewhere.
+
+					HLAerror
+					( 
+						"Unexpected data type when concatenating strings"
+						nl
+						"(Internal HLA error)"
+						nl
+					);
+					raise( ex.hlaerr );
+					
+				endif;
+				
+
+
+
+			elseif( tokenECX.attr.pType = Unicode_pt ) then 
+		
+				// Check to see if our original "string" is actually
+				// a character.  If so, convert it (plus the current
+				// unicode character) to a wstring:
+				
+				mov( attr, ebx );
+				canAccess( [ebx] );
+				if( attrEBX.pType in Char_pt..XChar_pt ) then
+				
+					// Prev: char/xchar, Current: unicode, result: ustring.
+
+					stralloc( 5 );
+					movzx( attrEBX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( tokenECX.attr.unicode_vt, dx );
+					mov( dx, [eax+2] );
+					mov( 0, (type byte [eax+4]) );
+					mov( 4, (type str.strRec [eax]).length  );
+					mov( eax, attrEBX.string_vt );
+					
+					// Okay, change the original type from character to wstring:
+					
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+					
+				elseif( attrEBX.pType = Unicode_pt ) then			 
+
+					// Prev: unicode, Current: unicode, result: ustring.
+
+					stralloc( 5 );
+					mov( attrEBX.unicode_vt, dx );
+					mov( dx, [eax] );
+					mov( tokenECX.attr.unicode_vt, dx );
+					mov( dx, [eax+2] );
+					mov( 0, (type byte [eax+4]));
+					mov( 4, (type str.strRec [eax]).length );
+					mov( eax, attrEBX.string_vt );
+					
+					// Okay, change the original type from character 
+					// to wstring:
+					
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+			
+			
+				elseif( attrEBX.pType = String_pt ) then
+				
+					// Prev: string, Current: unicode, result: ustring.
+
+
+					// Compute the length of the new string as
+					// the length of the original string times two
+					// (because we have to convert it to unicode) plus two
+					// and allocate storage for the new string:
+					
+					push( ecx );
+					mov( attrEBX.string_vt, edx );
+					canAccess( [edx] );
+					mov
+					( 
+						(type str.strRec [edx]).length, 
+						edx 
+					);
+					mov( edx, ecx );
+					lea( edx, [ecx+edx+2] );
+					stralloc( edx );
+					
+
+					// Copy the original string to the new string,
+					// converting to unicode while we do this:
+
+					push( esi );
+					push( edi );
+					push( edx );
+					mov( attrEBX.string_vt, esi );
+					canAccess( [esi] );
+					mov( eax, edi );
+					if( ecx <> 0 ) then
+
+						repeat
+
+							movzx( (type byte [esi]), dx );
+							mov( dx, [edi] );
+							add( 2, edi );
+							inc( esi );
+							dec( ecx );
+
+						until( @z );
+					
+					endif;
+					pop( edx );
+					pop( esi );
+					pop( edi );
+					
+					// Free storage for original string:
+
+					strfree( attrEBX.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Okay, copy the current character to the end of the string,
+					// zero terminate, and adjust the length:
+
+					pop( ecx );
+					mov( tokenECX.attr.unicode_vt, cx );
+					mov( cx, [eax+edx-2] );
+					mov( 0, (type byte [eax+edx]) );
+					add( 2, (type str.strRec [eax]).length );
+
+					// Okay, change the original type from string 
+					// to wstring:
+					
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+
+				elseif( attrEBX.pType = UString_pt ) then 
+				
+					// Prev: ustring, Current: unicode, result: ustring.
+
+					// Compute the length of the new string as
+					// the length of the original string plus two
+					// and allocate storage for the new string:
+					
+					mov( attrEBX.ustring_vt, edx );
+					canAccess( [edx] );
+					mov
+					( 
+						(type str.strRec [edx]).length, 
+						edx 
+					);
+					add( 2, edx );
+					stralloc( edx );
+					
+					// Copy the original wstring to the new string:
+
+					str.cpy( attrEBX.ustring_vt, eax );
+					
+					// Free storage for original string:
+
+					strfree( attrEBX.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Okay, copy the current character to the end of the 
+					// string (converting it to unicode as we do this),
+					// zero terminate, and adjust the length:
+
+					mov( tokenECX.attr.unicode_vt, cx );
+					mov( cx, [eax+edx-2] );
+					mov( 0, (type byte [eax+edx]) );
+					add( 2, (type str.strRec [eax]).length );
+
+				else	// Unexpected data type!
+
+					// Defensive code: actual error handled elsewhere
+
+					HLAerror
+					( 
+						"Unexpected data type when concatenating strings"
+						nl
+						"(Internal HLA error)"
+						nl
+					);
+					raise( ex.hlaerr );
+					
+				endif;
+
+
+			else
+
+				// Defensive code: actual error handled elsewhere
+
+				HLAerror
+				( 
+					"Unexpected data type when concatenating strings"
+					nl
+					"(Internal HLA error)"
+					nl
+				);
+				raise( ex.hlaerr );
+					
+			endif; 
+			
+		
+		elseif( eax = tkn_strConst ) then
+		
+			if( tokenECX.attr.pType = String_pt ) then
+
+				// Check to see if our original "string" is actually
+				// a character.  If so, convert it to a string and then
+				// concatentate the current string to it:
+
+				mov( attr, ebx );
+				canAccess( [ebx] );
+				if( attrEBX.pType in Char_pt..XChar_pt ) then
+				
+					// Prev: char/xchar, Current: string, result: string.
+
+					// Compute the length of the new string as the
+					// length of the original string plus one and
+					// then allocate storage for the resulting string:
+					
+					mov( tokenECX.attr.string_vt, edx );
+					canAccess( [edx] );
+					mov( (type str.strRec [edx]).length, edx );
+					inc( edx );
+					stralloc( edx );
+					
+					mov( attrEBX.char_vt, bl );
+					mov( bl, [eax] );
+					mov( 1, (type str.strRec [eax]).length );
+					str.cat( tokenECX.attr.string_vt, eax );
+
+					// Free the storage associated with the old string:
+
+					strfree( tokenECX.attr.string_vt );
+					
+					// Okay, change the original type from character to string:
+					
+					mov( attr, ebx );
+					canAccess( [ebx] );
+					mov( eax, attrEBX.string_vt );
+					mov( String_pt, attrEBX.pType );
+					mov( &string_ste, attrEBX.symType );
+					
+
+				elseif( attrEBX.pType = Unicode_pt ) then			 
+			
+					// Prev: unicode, Current: string, result: ustring.
+
+					// Compute the length of the new string as
+					// the length of the original string times two
+					// (because we have to convert it to unicode) plus two
+					// and allocate storage for the new string:
+					
+					push( ecx );
+					push( esi );
+					push( edi );
+					mov( tokenECX.attr.string_vt, edx );
+					canAccess( [edx] );
+					mov( ecx, esi );
+					mov
+					( 
+						(type str.strRec [edx]).length, 
+						edx 
+					);
+					mov( edx, ecx );
+					push( edx );
+					lea( edx, [ecx+edx+2] );
+					stralloc( edx );
+
+					// Copy the unicode character to the start of the
+					// string:
+
+					mov( attrEBX.unicode_vt, [eax] );
+					
+					// Copy the original string to the new string,
+					// converting to unicode while we do this:
+
+					mov( (type token_t [esi]).attr.string_vt, esi );
+					lea( edi, [eax+2] );	// Skip unicode char
+					if( ecx <> 0 ) then
+
+						repeat
+
+							movzx( (type byte [esi]), dx );
+							mov( dx, [edi] );
+							add( 2, edi );
+							inc( esi );
+							dec( ecx );
+
+						until( @z );
+					
+					endif;
+					pop( edx );
+					pop( edi );
+					pop( esi );
+					pop( ecx );
+					
+					// Free storage for original string:
+
+					strfree( tokenECX.attr.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Okay, zero terminate, and set the length:
+
+					mov( 0, (type byte [eax+edx]) );
+					mov( edx, (type str.strRec [eax]).length );
+
+					// Set the type to ustring:
+
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+
+
+				elseif( attrEBX.pType = String_pt ) then			 
+			
+					// Prev: string, Current: string, result: string.
+				
+					str.a_cat
+					( 
+						attrEBX.string_vt,
+						tokenECX.attr.string_vt
+					);
+					
+					// Free the original and new strings and then
+					// save the new string we've created as the
+					// attribute:
+					
+ 
+					strfree( attrEBX.string_vt );
+					strfree( tokenECX.attr.string_vt );
+					mov( eax, attrEBX.string_vt );
+
+				elseif( attrEBX.pType = UString_pt ) then
+			
+					// Prev: ustring, Current: string, result: ustring.
+
+					// Compute the length of the new string as
+					// the length of the original string plus two
+					// times the length of the current string (because
+					// we have to convert it to unicode), and then
+					// allocate storage for the new string:
+					
+					mov( tokenECX.attr.string_vt, edx );
+					canAccess( [edx] );
+					mov( (type str.strRec [edx]).length, edx );
+					mov( attrEBX.ustring_vt, eax );
+					canAccess( [eax] );
+					mov( (type str.strRec [eax]).length, eax );
+					lea( edx, [eax+edx*2] );
+					stralloc( edx );
+
+					// Copy the unicode string to the start of the
+					// string:
+
+					str.cpy( attrEBX.ustring_vt, (type string eax) );
+					
+					// Copy the current string to the new string,
+					// converting to unicode while we do this:
+
+					push( esi );
+					push( edi );
+					push( edx );  // Save length for later
+					push( ecx );  // Save current token pointer.
+
+					// Get start of ansi string into ESI
+					// and it's length into ECX:
+
+					mov( tokenECX.attr.string_vt, esi );
+					canAccess( [esi] );
+					mov( (type str.strRec [esi]).length, ecx );
+
+					// Compute the insertion point into the new ustring:
+
+					mov( (type str.strRec [eax]).length, edx );
+					lea( edi, [eax+edx] );
+
+					// Copy the characters, converting them to unicode
+					// while copying.
+
+					if( ecx <> 0 ) then
+
+						repeat
+
+							movzx( (type byte [esi]), dx );
+							mov( dx, [edi] );
+							add( 2, edi );
+							inc( esi );
+							dec( ecx );
+
+						until( @z );
+					
+					endif;
+					pop( ecx );
+					pop( edx );
+					pop( edi );
+					pop( esi );
+					
+					// Free storage for original strings:
+
+					strfree( attrEBX.string_vt );
+					strfree( tokenECX.attr.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Okay, zero terminate, and set the length:
+
+					mov( 0, (type byte [eax+edx]) );
+					mov( edx, (type str.strRec [eax]).length );
+
+					// Set the type to ustring:
+
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+
+
+				else
+
+					// Defensive code: actual error handled elsewhere
+
+					HLAerror
+					( 
+						"Unexpected data type when concatenating strings"
+						nl
+						"(Internal HLA error)"
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				
+
+
+			elseif( tokenECX.attr.pType = UString_pt ) then
+
+				// Check to see if our original "string" is actually
+				// a character.  If so, convert it to a string and then
+				// concatentate the current string to it:
+
+				mov( attr, ebx );
+				canAccess( [ebx] );
+				if( attrEBX.pType in Char_pt..XChar_pt ) then
+				
+					// Prev: char/xchar, Current: ustring, result: ustring.
+
+					// Compute the length of the new string as the
+					// length of the original string plus two and
+					// then allocate storage for the resulting string:
+					
+					mov( tokenECX.attr.string_vt, edx );
+					mov( (type str.strRec [edx]).length, edx );
+					add( 2, edx );
+					stralloc( edx );
+					
+					movzx( attrEBX.char_vt, bx );
+					mov( bx, [eax] );
+					mov( 2, (type str.strRec [eax]).length );
+					str.cat( tokenECX.attr.string_vt, eax );
+					
+					// Okay, change the original type from character to ustring:
+					
+					mov( attr, ebx );
+					canAccess( [ebx] );
+					mov( eax, attrEBX.string_vt );
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+					
+
+				elseif( attrEBX.pType = Unicode_pt ) then			 
+			
+					// Prev: unicode, Current: ustring, result: ustring.
+
+					// Compute the length of the new string as the
+					// length of the original string plus two and
+					// then allocate storage for the resulting string:
+					
+					mov( tokenECX.attr.string_vt, edx );
+					canAccess( [edx] );
+					mov( (type str.strRec [edx]).length, edx );
+					add( 2, edx );
+					stralloc( edx );
+					
+					mov( attrEBX.unicode_vt, bx );
+					mov( bx, [eax] );
+					mov( 2, (type str.strRec [eax]).length );
+					str.cat( tokenECX.attr.string_vt, eax );
+
+					strfree( tokenECX.attr.string_vt );
+					
+					// Okay, change the original type from character to ustring:
+					
+					mov( attr, ebx );
+					canAccess( [ebx] );
+					mov( eax, attrEBX.string_vt );
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+					
+
+				elseif( attrEBX.pType = String_pt ) then			 
+			
+					// Prev: string, Current: ustring, result: ustring.
+
+					// Compute the length of the new string as
+					// the length of the current string plus two
+					// times the length of the previous string (because
+					// we have to convert it to unicode), and then
+					// allocate storage for the new string:
+					
+					mov( tokenECX.attr.ustring_vt, edx );
+					mov( (type str.strRec [edx]).length, edx );
+					mov( attrEBX.string_vt, eax );
+					mov( (type str.strRec [eax]).length, eax );
+					lea( edx, [edx+eax*2] );
+					stralloc( edx );
+					
+					// Copy the previous string to the new string,
+					// converting to unicode while we do this:
+
+					push( esi );
+					push( edi );
+					push( edx );  // Save length for later
+					push( ecx );  // Save current token pointer.
+
+					// Get start of ansi string into ESI
+					// and it's length into ECX:
+
+					mov( attrEBX.string_vt, esi );
+					mov( (type str.strRec [esi]).length, ecx );
+					shl( 1, ecx );
+					mov( ecx, (type str.strRec [eax]).length );
+
+					// Set the insertion point into the new ustring:
+
+					mov( eax, edi );
+
+					// Copy the characters, converting them to unicode
+					// while copying.
+
+					if( ecx <> 0 ) then
+
+						repeat
+
+							movzx( (type byte [esi]), dx );
+							mov( dx, [edi] );
+							add( 2, edi );
+							inc( esi );
+							sub( 2, ecx );
+
+						until( @z );
+					
+					endif;
+					pop( ecx );
+					pop( edx );
+					pop( edi );
+					pop( esi );
+
+					// Concatenate the unicode string to the end of the
+					// string:
+
+					str.cat( tokenECX.attr.ustring_vt, (type string eax) );
+
+					
+					// Free storage for original strings:
+
+					strfree( attrEBX.string_vt );
+					strfree( tokenECX.attr.string_vt );
+					
+					// Replace original string by the new string we created:
+					
+					mov( eax, attrEBX.string_vt );
+
+					// Set the type to ustring:
+
+					mov( UString_pt, attrEBX.pType );
+					mov( &ustring_ste, attrEBX.symType );
+
+				
+				elseif( attrEBX.pType = UString_pt ) then
+			
+					// Prev: ustring, Current: ustring, result: ustring.
+			
+					str.a_cat
+					( 
+						attrEBX.string_vt,
+						tokenECX.attr.string_vt
+					);
+					
+					// Free the original and new strings and then
+					// save the new string we've created as the
+					// attribute:
+					
+					strfree( attrEBX.string_vt );
+					strfree( tokenECX.attr.string_vt );
+					mov( eax, attrEBX.string_vt );
+
+
+				else
+
+					// Defensive code: actual error handled elsewhere
+
+					HLAerror
+					( 
+						"Unexpected data type when concatenating strings"
+						nl
+						"(Internal HLA error)"
+						nl
+					);
+					raise( ex.hlaerr );
+					
+				endif;
+				
+			else
+
+				// Defensive code: actual error handled elsewhere
+
+				HLAerror
+				( 
+					"Unexpected data type when concatenating strings"
+					nl
+					"(Internal HLA error)"
+					nl
+				);
+				raise( ex.hlaerr );
+			endif;
+		
+		else
+		
+			reuseLastTkn();
+			break;
+			
+		endif;
+		
+	endfor;
+
+	// Must clean up H.O. bits of the constant we return:
+
+	mov( attr, ebx );
+	xor( eax, eax );
+	mov( eax, attrEBX.dword_vt[4] );
+	mov( eax, attrEBX.dword_vt[8] );
+	mov( eax, attrEBX.dword_vt[12] );
+	mov( eax, attrEBX.dword_vt[16] );
+	mov( eax, attrEBX.dword_vt[20] );
+	mov( eax, attrEBX.dword_vt[24] );
+	mov( eax, attrEBX.dword_vt[28] );
+	clc();
+
+end getStrConst;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// getElement-
+//
+//	Recursive procedure that processes all the elements of the array
+// constant.  Recursively calls itself for each constant in the list
+// and then allocates storage for the entire array at the end of the
+// list.  On the recursive returns, this code fills in the elements
+// of the allocated array with the data it parsed.
+//
+// Input:
+//
+//	elementCnt-
+//			Pointer to the variable that counts the total number
+//			of array elements.
+//
+//	terminalChar-
+//			Dword-extended character value used to terminate the
+//			list of constants (usually ']' or ';')
+//
+// Returns:
+//
+//	EAX-
+//		getElement returns a pointer to the array on the final
+//		(recursive) return.  On intermediate recursive returns,
+//		EAX points at the current array element to initialize
+//		with the constant parsed prior to the recursive call.
+//
+// Raises-
+//	ex.hlaerr:
+//		If there was a syntax error.
+//
+//	ex.hlaerr:
+//		If there was an error in the constant expression.
+ 
+//proc( "getElement" )
+procedure getElement( var elementCnt: uns32; terminalChar:dword ); @nodisplay;
+var
+	curElement	:uns32;
+	curCount	:uns32;
+	element		:attr_t;
+	
+begin getElement;
+
+	// Get the current constant expression:
+	
+	constExpr( element );	// Can raise ex.hlaerr!
+	
+	// Update the element count.  Note that if the current constant
+	// was an array constant, we will merge the elements of that
+	// constant with the array we are building.
+	
+	mov( elementCnt, ebx );
+	canAccess( [ebx] );
+	mov( [ebx], eax );
+	mov( eax, curElement );
+	if( element.pType = Array_pt ) then
+
+		mov( element.numElements, eax );
+		mov( eax, curCount );
+		add( eax, [ebx] );
+		
+	else
+	
+		// If it's just a scalar, increment the element
+		// count by one:
+		
+		mov( 1, curCount );
+		inc( (type uns32 [ebx]) );
+		
+	endif;
+	
+	lex( esi );
+	if( eax = ',' ) then
+	
+		// Handle the first through next-to-last elements
+		// of the array:
+		
+		getElement( elementCnt, terminalChar );		// Parse current value.
+
+		// Compute the size of the current element (which may
+		// be an array constant) and then subtract this from
+		// the current pointer to obtain the address of the
+		// element into which we're going to store the data.
+		//
+		// Note: this code assumes @size( attr_t ) is evenly
+		// divisible by four.
+		
+		
+		intmul( @size( attr_t ), curCount, ecx );
+		sub( ecx, eax );				// Address of current element
+		
+		push( esi );					// Copy the data from "element"
+		push( edi );					//  to the array.
+		mov( eax, edi );
+		shr( 2, ecx );					// Compute # of dwords.
+		if( element.pType = Array_pt ) then
+		
+			mov( element.arrayValues_vt, esi );
+			
+		else
+		
+			lea( esi, element );
+			
+		endif;
+		cld();
+		rep.movsd();
+		pop( edi );
+		pop( esi );
+		
+	else
+	
+		// Handle the last element of the array down here.
+		
+		if( eax <> terminalChar ) then
+	
+			HLAerror
+			( 
+				"Syntax error, expected ",
+				(type char terminalChar),
+				" at end of array constant" 
+				nl 
+			);
+			reuseLastTkn();
+			raise( ex.hlaerr );
+			
+		endif;
+		
+		// Okay, we'll presume we've seen the last array element.
+		// So allocate the storage for the array of objects and
+		// begin copying the data into the array as we return
+		// from the recursive invocations of this code.
+		
+		mov( elementCnt, ebx );
+		canAccess( [ebx] );
+		intmul( @size( attr_t ), (type dword [ebx]), ebx );
+		malloc( ebx );
+
+		// Point EAX at the last element of the array:
+		
+		add( ebx, eax );
+		intmul( @size( attr_t ), curCount, ecx );
+		sub( ecx, eax );
+		
+		// Copy the data to the last element of the array:
+		
+		push( esi );
+		push( edi );
+		shr( 2, ecx );
+		mov( eax, edi );
+		if( element.pType = Array_pt ) then
+		
+			mov( element.arrayValues_vt, esi );
+			
+		else
+		
+			lea( esi, element );
+			
+		endif;
+		cld();
+		rep.movsd();
+		pop( edi );
+		pop( esi );
+		
+	endif;
+	
+	// If we just copied a sub-array into the current
+	// array we're building, then free the storage
+	// associated with the sub-array because we made
+	// a copy of the data (do not do a "deep" deallocation
+	// because we need to keep any storage allocated
+	// for fields of the elements of this array).
+	
+	if( element.pType = Array_pt ) then
+
+		free( element.symType );
+		free( element.arrayValues_vt );
+		
+	endif;
+
+end getElement;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// getArrayConst-
+//
+//	Called from the term procedure when the lexer encounters an array constant.
+//
+// Input:
+//
+//	attr-
+//		Points at the attr_t object where the resulting array is to
+//		be stored.
+//
+//		Note that this procedure always creates a dummy array type
+//		in memory (doesn't bother placing it in the symbol table, though).
+//		It is the caller's responsibility to free the storage associated
+//		with this symNode_t structure when the caller is through with the
+//		array (or type) data.
+//
+// Output:
+//
+//	[attr]-
+//		Points at the attr_t object containing the array produced
+//		by this procedure.
+//
+// Raises-
+//	ex.hlaerr-
+//		If there is an error processing a constant expression
+//
+//	ex.hlaerr-
+//		If there is a syntax error.
+
+
+
+//proc( "getArrayConst" )
+procedure getArrayConst( var array:attr_t ); @nodisplay;
+var
+	elementCnt	:uns32;
+	arrayPtr	:pointer to attr_t;
+	arraypType	:pType_t;
+	arrayType	:symNodePtr_t;
+	dummyAttr	:attr_t;
+	
+static(4)
+	dummyName	:str.strvar( 32 );
+	
+begin getArrayConst;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	mov( 0, elementCnt );
+	getElement( elementCnt, dword(']') );	// Can raise ex.hlaerr or ex.hlaerr
+	mov( eax, arrayPtr );
+	canAccess( [eax] );
+	
+	if( elementCnt > 0 ) then
+	
+		// Determine the base type of the array here.
+		// Step through each element of the array and
+		// determine (1) the ultimate base type of the
+		// entire array, and (2) if the elements of
+		// this array have compatible types.
+		
+		lea( ebx, [eax+@size(attr_t)] );	// Point ebx at 2nd element
+		mov( attrEAX.symType, ecx );		// Get starting type.
+		mov( ecx, arrayType );
+		mov( attrEAX.pType, cl );
+		mov( cl, arraypType );
+		for( mov( 1, ecx ); ecx < elementCnt; inc( ecx )) do
+		
+			// If we're dealing with scalar types, handle the
+			// promotion here (for speed).
+			
+			movzx( arraypType, eax );
+			movzx( attrEBX.pType, edx );
+			
+			// See if the types are the same.
+						
+			if( al = dl ) then
+			
+				// If the types are the same, and they're both
+				// primitive types, then they're trivially
+				// compatible.  If the pTypes are the same but
+				// they are not primitive types, then there
+				// are some special cases to consider:
+				//
+				//	(1) All pointers are compatible.
+				//	(2) Records and unions use name equivalence
+				//		(that is, they are compatible they are the
+				//		 same base record/union type).
+				//	(3) Procedures use name equivalence (should change
+				//		this to structure equivalence as some point).
+				//	(4) All other types use name equivalence (the
+				//		type pointers must be pointing at the same
+				//		object).
+				
+				if( !isPrimitive( al )) then
+
+					if
+					( 
+							al = Record_pt 
+						||	al = Union_pt
+						||	al = Procptr_pt 
+					) then
+
+						// Records, unions, and procedures must be 
+						// name compatible.
+						
+						mov( attrEBX.symType, edx );
+						if( edx <> arrayType ) then
+
+							HLAerror
+							( 
+								"Type mismatch error (array elements "
+								"must be the same record type)"
+								nl 
+							);
+							push( esi );
+							push( edi );
+							mov( @size( attr_t ) div 4, ecx );
+							mov( false_stp, esi );
+							mov( array, edi );
+							cld();
+							rep.movsd();
+							pop( edi );
+							pop( esi );
+							raise( ex.hlaerr );
+
+						endif;
+					elseif( al <> Pointer_pt ) then
+					
+						// Defensive code: this may not be possible.
+						HLAerror( "Type mismatch error" nl );
+						push( esi );
+						push( edi );
+						mov( @size( attr_t ) div 4, ecx );
+						mov( false_stp, esi );
+						mov( array, edi );
+						cld();
+						rep.movsd();
+						pop( edi );
+						pop( esi );
+						raise( ex.hlaerr );
+						
+					endif;
+					
+				endif;
+							
+			else
+			
+				// If the pTypes are not equal, then compute the
+				// resultant type via table lookup:
+				
+				intmul( numpTypes, edx );				
+				movzx( typeChkMap[ eax + edx ], edx );
+				mov( dl, arraypType );
+				if( dl = Error_pt ) then
+				
+					HLAerror( "Type mismatch error" nl );
+					raise( ex.hlaerr );
+					
+				else
+				
+					mov( pToT[ edx*4 ], edx );
+					mov( edx, arrayType );
+					
+				endif;
+				
+			endif;
+			add( @size( attr_t ), ebx );			
+		
+		endfor;
+
+		// Now that we've figured out what the type needs to be,
+		// if the types are coercable then go through the array
+		// one more type and coerce each element to the new type.
+		//
+		//	If there was a type mismatch error, we've got to deallocate
+		// the storage associated with this array and create a dummy
+		// array with "safe" values to prevent problems occurring
+		// downstream in the code.
+		
+		mov( arraypType, al );
+		if( al <> Record_pt && al <> Union_pt ) then
+
+			if( al <> Error_pt ) then
+			
+				// Build a dummy attribute variable with the new
+				// type so we can call coerceOperands to do the
+				// conversion:
+				
+				mov( al, dummyAttr.pType );
+				mov( arrayType, ebx );
+				mov( ebx, dummyAttr.symType );
+				mov( Constant_ct, dummyAttr.symClass );
+				xor( ebx, ebx );
+				mov( ebx, dummyAttr.numElements );
+				mov( ebx, (type dword dummyAttr.uns128_vt[0]) );
+				mov( ebx, (type dword dummyAttr.uns128_vt[4]) );
+				mov( ebx, (type dword dummyAttr.uns128_vt[8]) );
+				mov( ebx, (type dword dummyAttr.uns128_vt[12]) );
+				
+				mov( arrayPtr, ebx );
+				for( mov( 0, ecx ); ecx < elementCnt; inc( ecx )) do
+				
+					// Only bother doing the conversion if the types
+					// are actually different:
+					
+					mov( attrEBX.pType, al );
+					if( al <> arraypType ) then
+					
+						// Since there isn't an arithmetic operator associated
+						// with this coercion, we'll just pass a comma as the
+						// third operand to coerceOperands.
+
+						coerceOperands( dummyAttr, attrEBX, ',' );
+						if( @c ) then
+
+							// coerceOperands had an error.
+
+							raise( ex.hlaerr );
+
+						endif;
+					
+					endif;
+					add( @size( attr_t ), ebx );
+				
+				endfor;
+			
+			else
+			
+				// There was a type mismatch error that we couldn't
+				// correct.  March through the array and free each
+				// object, then convert it's type to BYTE (just to
+				// be on the safe side).
+				
+				mov( arrayPtr, ebx );
+				canAccess( [ebx] );
+				for( mov( 0, ecx ); ecx < elementCnt; inc( ecx )) do
+				
+					freeAttr( [ebx] );
+					mov( Byte_pt, attrEBX.pType );
+					mov( &byte_ste, attrEBX.symType );
+					mov( Constant_ct, attrEBX.symClass );
+					mov( 0, attrEBX.numElements );
+					add( @size( attr_t ), ebx );
+					
+				endfor;
+				raise( ex.hlaerr );
+				
+			
+			endif;
+		
+		endif;
+		
+		// Sneak this type declaration into the global
+		// symbol table rather than putting it inside the record:
+
+		push( curHashTable );		// Save these, to restore
+		push( curOwner );			//  them later.
+
+		lea( rootHashTable, ebx );	// Point symbol table at
+		mov( ebx, curHashTable );	//  the root symbol table
+		mov( rootOwner, ebx );
+		mov( ebx, curOwner );
+
+		// We need to create a dummy name for
+		// the anonymous array type that we're
+		// about to create.  This is of the form:
+		//
+		//	"@arrayXXX"
+		//
+		// where XXX is some unique numeric value.
+		// Note the '@' at the beginning of the
+		// string, this ensures that the program
+		// can never reference this symbol directly.
+		
+		makeLabel( "@arrayConst" );
+		// lookupLocal is called just to compute the leaf
+		// node value in EBX:
+
+		push( eax );
+		computeHash( eax );
+		mov( eax, ebx );
+		mov( [esp], eax );
+		lookupLocal( eax, eax, ebx );
+		pop( eax );
+
+		// Create a symbol table entry for the anonymous
+		// type:
+		
+		enterType
+		(
+			eax,
+			eax,
+			NULL,
+			Array_pt,
+			arrayType,
+			curOwner,
+			[ebx]
+		);
+
+		canAccess( [eax] );
+		mov( eax, attrEBX.symType );
+		mov( elementCnt, ecx );
+		mov( ecx, symEAX.numElements );
+		intmul( symEAX.objectSize, ecx );
+		mov( ecx, symEAX.objectSize );
+
+		// Okay, now that we've built the data type, let's
+		// construct the array constant entry:
+
+		mov( array, ecx );
+		canAccess( [ecx] );
+		mov( eax, attrECX.symType );
+		
+		mov( elementCnt, eax );
+		mov( eax, attrECX.numElements );
+		mov( Array_pt, attrECX.pType );
+		mov( Constant_ct, attrECX.symClass );
+		mov( arrayPtr, eax );
+		mov( eax, attrECX.arrayValues_vt );
+		
+		pop( curOwner );
+		pop( curHashTable );
+		
+		
+	else
+	
+		// There was an empty list within the '[' and ']' brackets.
+		// Report an error and return a dummy constant.
+		//
+		// Logically, this code should never execute since the expression
+		// evaluator always creates a dummy entry if the list is empty.
+		// This code is here for defensive purposes -- in case the
+		// program changes in the future.
+		
+		// Defensive code: error handled elsewhere.
+
+		HLAerror
+		( 
+			"Illegal array constant - expected at least one element" 
+			nl 
+		);
+		push( esi );
+		push( edi );
+		mov( @size( attr_t ) div 4, ecx );
+		mov( false_stp, esi );
+		mov( array, edi );
+		cld();
+		rep.movsd();
+		pop( edi );
+		pop( esi );
+		raise( ex.hlaerr );
+		
+	endif;
+	
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+			
+end getArrayConst;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getRecordConst-
+//
+//	Called from the term procedure when the lexer encounters a record constant.
+//
+// Input:
+//
+//	attr-
+//		Points at the attr_t object where the resulting record is to
+//		be stored.
+//
+// Output:
+//
+//	[attr]-
+//		Points at the attr_t object containing the record produced
+//		by this procedure.
+//
+//	carry-
+//		Set if there was an error, clear if success.
+
+
+//proc( "getRecordConst" )
+procedure getRecordConst
+( 
+	recValues		:attrPtr_t; 
+	theType			:symNodePtr_t
+); 
+	@nodisplay;
+
+var
+	fieldCnt	:uns32;
+	fieldArray	:attrPtr_t;
+	
+	// getFields-
+	//
+	//	Procedure that processes all the fields of the record
+	// constant.  Recursively calls itself for each constant in the list
+	// and then allocates storage for the entire record at the end of the
+	// list.  On the recursive returns, this code fills in the fields
+	// of the allocated storage with the data it parsed.
+	//
+	// Inputs:
+	//	fieldList-
+	//		Pointer to the linear symbol table list of the fieldList in
+	//		the record we're going to process.
+	//
+	//	fieldCnt-
+	//		Number of fields in the record object (also, this specifies
+	// 		the number of entries in the "fieldList" array).
+	//
+	//	fieldArray-
+	//		A pointer to an array of attr_t objects that will hold the
+	//		values this procedure processes.
+	//
+	// Raises an exception if there is an error.
+	 
+	procedure getFields
+	( 
+			fieldList		:symNodePtr_t; 
+			fieldCnt		:dword; 
+			fieldArray		:attrPtr_t
+	);
+		@nodisplay;
+
+	var
+		numAnonFields	:uns32;
+	
+	begin getFields;
+
+		assert( fieldList <> NULL );
+		assert( fieldArray <> NULL );
+		// Note that records/unions always have at least one field.
+
+		forever
+		
+			mov( fieldList, ebx );		// Pointer to linear list of record fields.
+			mov( fieldArray, ecx );		// Current field value.
+			if( symEBX.pType = AnonRec_pt ) then
+
+				// syntactically, we'd best see "record:[" here:
+
+				lex( esi );
+				if( eax <> tkn_record ) then
+
+					HLAerror( "Expected an anonymous record constant" nl );
+					raise( ex.hlaerr );
+
+				endif;
+				lex( esi );
+				if( eax <> ':' ) then
+
+					HLAerror
+					(
+						"Syntax error, expected 'record:[field list]' "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+
+				endif;
+				lex( esi );
+				if( eax <> '[' ) then
+
+					HLAerror
+					(
+						"Syntax error, expected 'record:[field list]' "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+
+				endif;
+
+				// Recursively call getFields to process the fields
+				// of this anonymous record:
+				
+				mov( fieldList, ebx );
+				canAccess( [ebx] );
+				mov( symEBX.fieldCnt, eax );	// Compute # of fields in
+				sub( eax, fieldCnt );			// anon record.
+				dec( fieldCnt );				// Adjust for anon fields.
+				mov( symEBX.next, ebx );		// Skip anon field
+				mov( ebx, fieldList );
+
+				mov( fieldArray, ecx );
+				canAccess( [ecx] );
+				mov( AnonRec_pt, attrECX.pType );
+				add( @size( attr_t ), ecx );	// Skip AnonRec_pt field.
+
+				getFields( ebx, eax, ecx );
+				mov( symEBX.next, ebx );		// Skip EndAnonRec_pt field.
+				mov( ebx, fieldList );
+				add( @size( attr_t ), ecx );	// Skip EndAnonRec field.
+				mov( EndAnonRec_pt, attrECX.pType );
+				mov( ecx, fieldArray );
+		
+				// We've processed all the fields we're expecting, now we'd
+				// best see the closing ']' character:
+
+				lex( esi );
+				if( eax <> ']' ) then
+
+					HLAerror
+					( 
+						"Syntax error in record constant, expected ']', "
+						"found '"
+					);
+					dumpLexeme();
+					HLAerror2
+					(
+						"'" 
+						nl
+						"(Possibly too many fields in constant)"
+						nl 
+					);
+					reuseLastTkn();
+					raise( ex.hlaerr );
+
+				endif;
+				
+
+			elseif( symEBX.pType = AnonUnion_pt ) then
+
+				// Adjust fieldCnt because we're going to skip over
+				// all the fields in this anonymous union when we're done:
+
+				mov( symEBX.fieldCnt, eax );
+				add( 2, eax );
+				mov( eax, numAnonFields );
+				dec( eax );					// 'cause we dec later.
+				sub( eax, fieldCnt );
+
+				// syntactically, we'd best see "union.field:[" here:
+
+				lex( esi );
+				if( eax <> tkn_union ) then
+
+					HLAerror( "Expected an anonymous union constant" nl );
+					raise( ex.hlaerr );
+
+				endif;
+				lex( esi );
+				if( eax <> '.' ) then
+
+					HLAerror
+					(
+						"Syntax error, expected 'UNION.field:[expr]' "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+
+				endif;
+				lex( esi );
+				if( ebx <> ID_tc ) then
+
+					HLAerror
+					(
+						"Syntax error, expected 'UNION.field:[expr]' "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+
+				endif;
+				push( ecx );	// Save ID token
+
+				lex( esi );
+				if( eax <> ':' ) then
+
+					HLAerror
+					(
+						"Syntax error, expected 'UNION.field:[expr]' "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+
+				endif;
+				lex( esi );
+				if( eax <> '[' ) then
+
+					HLAerror
+					(
+						"Syntax error, expected 'UNION.field:[expr]' "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					raise( ex.hlaerr );
+
+				endif;
+
+
+				// Search for the corresponding field in the anonymous
+				// union list. Anonymous unions are usually small. 
+				// So the following linear search isn't going to hurt 
+				// too much:
+
+				mov( [esp], ecx );				// Retrieve ID token address.
+				mov( tokenECX.trueName, edx );	// Get ptr to ID name.
+				mov( fieldList, ebx );			// Ptr to fields in union.
+				mov( fieldArray, ecx );			// Counts the fields.
+				while
+				(
+						symEBX.pType <> EndAnonUnion_pt
+					&&	str.ne( edx, symEBX.trueName )
+				) do
+
+					mov( symEBX.next, ebx );
+					add( @size( attr_t ), ecx );
+
+				endwhile;
+				
+				// If we hit the end of the anon union's field list,
+				// then the specified ID is not in the anon union.
+				// This is an error.
+				
+				if( symEBX.pType = EndAnonUnion_pt ) then
+
+					HLAerror
+					( 
+						"Undefined symbol (field of anonymous union): ",
+						(type string edx ),
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+
+				// Free the data assocated with type field ID token:
+				
+				pop( eax );
+				freeTkn( attrEAX );
+				
+				// Okay, the symbol matches one of the fields in the
+				// anonymous union. Set up the field array as follows:
+				//
+				//	1.	The entry corresponding to the AnonUnion_pt
+				//		field has pType AnonUnion_pt and it's symType
+				//		field points at the symbol table entry for the
+				//		current field for the union. It's fieldCnt field
+				//		specifies the total number of fields for this
+				//		union (including the Anon*_pt fields).
+				//
+				//	2.	The corresponding entry in the fieldArray list
+				//		will hold the value.
+				//
+				//	3.	The remaining entries, up to the EndAnonUnion_pt
+				//		entry, are unused.
+
+				mov( fieldArray, edx );
+				mov( AnonUnion_pt, attrEDX.pType );
+				mov( ebx, attrEDX.itsField );
+				mov( ecx, attrEDX.curField_vt );
+				mov( numAnonFields, eax );
+				mov( eax, attrEDX.numFields );
+
+				push( ebx );			// Save ptr to current field
+				push( ecx );			// Save ptr to current value.
+
+				constExpr( [ecx] );	// Get the value.
+				pop( ecx );
+				pop( ebx );
+
+				// Check the type:
+
+				if( !makeCompatible( symEBX.symType, [ecx] )) then
+
+					HLAerror
+					(
+						"Type mismatch in union constant, field ",
+						symEBX.trueName,
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+
+				// Skip past the fields:
+
+				mov( fieldArray, ecx );
+				canAccess( [ecx] );
+				mov( fieldList, ebx );
+				canAccess( [ebx] );
+
+				// Skip past the fields in the type declaration:
+
+				while( symEBX.pType <> EndAnonUnion_pt ) do
+
+					mov( symEBX.next, ebx );
+					canAccess( [ebx] );
+					add( @size( attr_t ), ecx );
+
+				endwhile;
+				mov( ecx, fieldArray );
+				mov( ebx, fieldList );
+
+		
+				// We've processed all the fields we're expecting, now we'd
+				// best see the closing ']' character:
+
+				lex( esi );
+				if( eax <> ']' ) then
+
+					HLAerror
+					( 
+						"Syntax error in union constant, expected ']', "
+						"found '"
+					);
+					dumpLexeme();
+					HLAerror2
+					(
+						"'" 
+						nl
+						"(Possibly too few fields in constant)"
+						nl 
+					);
+					reuseLastTkn();
+					raise( ex.hlaerr );
+
+				endif;
+				
+				
+
+			else
+
+				// Okay, just a standard field (not an anonymous record/union):
+
+				constExpr( [ecx] );
+
+				// Check the type of this constant against the field's type:
+
+				mov( fieldList, ebx );
+				mov( fieldArray, ecx );
+
+				if( !makeCompatible( symEBX.symType, [ecx] )) then
+
+					HLAerror
+					(
+						"Type mismatch in record constant, field ",
+						symEBX.trueName,
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+
+			endif;
+			
+			// Should we be done processing fields?
+
+			dec( fieldCnt );
+			breakif( @z );
+
+			// Okay, we expect another field, check for a comma
+			// separator.
+
+			lex( esi );
+			if( eax <> ',' ) then
+
+				HLAerror
+				( 
+					"Syntax error in record constant, expected ',', "
+					"encountered '"
+				);
+				dumpLexeme();
+				HLAerror2
+				( 
+					"'" 
+					nl
+					"(Possibly too few fields in constant)"
+					nl 
+				);
+				raise( ex.hlaerr );
+
+			endif;
+			
+			// Move on to the next field:
+
+			mov( fieldList, ebx );
+			canAccess( [ebx] );
+			mov( symEBX.next, ebx );
+			mov( ebx, fieldList );
+			add( @size( attr_t ), fieldArray );
+
+		endfor;
+		mov( fieldList, ebx );
+		mov( fieldArray, ecx );
+		clc();
+				
+	end getFields;
+
+	
+begin getRecordConst;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// We've see the '<typeID>:' already, now we've got to
+	// check for '[' followed by a list of field values and a
+	// closing ']'.
+	
+	lex( esi );
+	if( eax = '[' ) then
+
+		// We need to allocate an array of fields where
+		// 'getFields' can put the values it processes:
+
+		mov( theType, ebx );
+		canAccess( [ebx] );
+		mov( symEBX.fieldCnt, eax );
+		intmul( @size( attr_t ), eax );
+		safe_malloc( eax );
+		mov( eax, fieldArray );
+
+		// Call getFields to recursively fetch (and check)
+		// each of the fields in the record constant:
+
+		mov( symEBX.fieldCnt, ecx );
+		mov( ecx, fieldCnt );
+		mov( symEBX.linearSyms, ebx );	// Need to skip first (dummy) entry!
+		canAccess( [ebx] );
+		getFields( symEBX.next, ecx, eax );
+		
+		// We've processed all the fields we're expecting, now we'd
+		// best see the closing ']' character:
+
+		lex( esi );
+		if( eax <> ']' ) then
+
+			HLAerror
+			( 
+				"Syntax error in record constant, expected ']', found '"
+			);
+			dumpLexeme();
+			HLAerror2
+			(
+				"'" 
+				nl
+				"(Possibly too many fields in constant)"
+				nl 
+			);
+			reuseLastTkn();
+			raise( ex.hlaerr );
+
+		else
+		 
+	
+			// We need to return an attribute for the object we just
+			// created in recValues:
+			
+			mov( recValues, ebx );
+			canAccess( [ebx] );
+			mov( fieldCnt, ecx );
+			mov( ecx, attrEBX.numFields );
+			mov( Record_pt, attrEBX.pType );
+			mov( Constant_ct, attrEBX.symClass );
+			mov( fieldArray, eax );
+			mov( eax, attrEBX.fieldValues_vt );
+			mov( theType, eax );
+			mov( eax, attrEBX.symType );
+
+		endif;
+
+	else
+	
+		// If we don't come across the opening '[' character, then
+		// we've got an error:
+		
+		HLAerror( "Illegal record constant, expected '[', encountered '" );
+		dumpLexeme();
+		HLAerror2( "'" nl );
+		reuseLastTkn();
+		raise( ex.hlaerr );
+
+	endif;
+	clc();	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+			
+end getRecordConst;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getUnionConst-
+//
+//	Called from the term procedure when the lexer encounters a union constant.
+// Note that up to this point we've seen:
+//
+//		unionTypeName.
+//
+// Following this should be:
+//
+//		fieldname:[ constant_for_that_field ]
+//
+// Input:
+//
+//	unValues-
+//		Points at the attr_t object where the resulting constant is to
+//		be stored.
+//
+//	theType-
+//		Pointer to the symbol table entry for the unionTypeName.
+//
+// Output:
+//
+//	[unValues]-
+//		Points at the attr_t object containing the union produced
+//		by this procedure.
+//
+//	carry flag-
+//		Set if there was an error, clear if success.
+
+
+//proc( "getUnionConst" )
+procedure getUnionConst
+( 
+	var unValues	:attr_t; 
+	theType			:symNodePtr_t 
+); 
+	@nodisplay;
+var
+	lcName		:string;
+	theField	:symNodePtr_t;
+
+begin getUnionConst;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	begin BailIfBadUnion;
+	
+		// We've see the '<typeID>.' already, now we've got to
+		// get the field name.
+
+		lex( esi );
+		if( ebx <> ID_tc ) then
+		
+			HLAerror
+			( 
+				"Expected a field ID following the union type name" nl 
+			);
+			raise( ex.hlaerr );
+			
+		endif;
+		
+		// See if the identifier is an actual field of the union.
+		
+		mov( theType, eax );
+		canAccess( [eax] );
+		lookupLocalIn
+		( 
+			tokenECX.trueName, 
+			tokenECX.lcName,
+			tokenECX.hashValue, 
+			symEAX.localHash
+		);
+		mov( eax, theField );
+		if( eax = NULL ) then
+		
+			mov( theType, eax );
+			canAccess( [eax] );
+			HLAerror
+			( 
+				tokenECX.trueName, 
+				" is not a field of ",
+				symEAX.trueName,
+				nl
+			);
+			raise( ex.hlaerr );
+			
+		endif;
+
+		// We expect a ':' at this point:
+
+		lex( esi );
+		if( eax <> ':' ) then
+
+			HLAerror( "Expected ':' in union constant" nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+		// check for '[' followed by a list of field values and a
+		// closing ']'.
+		
+		lex( esi );
+		if( eax = '[' ) then
+		
+			constExpr( unValues );
+			
+			// We put the constant into unValues, but really
+			// we need to allocate separate storage for it and
+			// put the constant data in the allocated storage:
+			
+			mov( unValues, ebx );
+			canAccess( [ebx] );
+			mov( @size( attr_t ), ecx );
+			malloc( ecx );
+			push( esi );
+			push( edi );
+			mov( eax, edi );
+			mov( ebx, esi );
+			rep.movsb();
+			pop( edi );
+			pop( esi );
+			
+			// Now we need to set the unValues object up to
+			// refer to the thing we've just created:
+			
+			mov( eax, attrEBX.fieldValues_vt );
+			mov( theField, eax );
+			mov( eax, attrEBX.curField_vt );
+			mov( theType, eax );
+			mov( eax, attrEBX.symType );
+			mov( Union_pt, attrEBX.pType );
+			mov( Constant_ct, attrEBX.symClass );
+			mov( 1, attrEBX.numFields );				
+		
+			lex( esi );
+			if( eax <> ']' ) then
+			
+				HLAerror
+				( 
+					"Syntax error in union constant, expected ']'" 
+					nl 
+				);
+				raise( ex.hlaerr );
+				
+			endif;
+									
+		else
+		
+			// If we don't come across the opening '[' character, then
+			// we've got an error:
+			
+			HLAerror
+			( 
+				"Illegal union constant, expected '[', encountered '" 
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			reuseLastTkn();
+			raise( ex.hlaerr );
+
+		endif;	
+		
+	end BailIfBadUnion;
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+			
+end getUnionConst;
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// doConstCoercion-
+//
+//	This procedure handles type coercion of the form
+//
+//	typeID( const_expr )
+//
+//	If possible coerce the expression to the specified type
+// and return that value as the new attribute value.
+
+//proc( "doConstCoercion" )
+procedure doConstCoercion( var attr:attr_t; theType:symNodePtr_t );
+begin doConstCoercion;
+
+	// Switch off the "typeID" passed in from the caller:
+	
+	mov( theType, eax );
+	canAccess( [eax] );
+	movzx( symEAX.pType, eax );
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	zeroAttr( attrEBX );
+	switch( eax )
+
+		case( Byte_pt )			//0
+			constExpr( attrEBX );
+			byteFunc( attr );
+	
+		case( Word_pt )
+			constExpr( attrEBX );
+			wordFunc( attr );
+		   
+		case( DWord_pt )
+			constExpr( attrEBX );
+			dwordFunc( attr );
+		  
+		case( QWord_pt )
+			constExpr( attrEBX );
+			qwordFunc( attr );
+		  
+		case( TByte_pt )
+			constExpr( attrEBX );
+			tbyteFunc( attr );
+		  
+		case( LWord_pt )
+			constExpr( attrEBX );
+			lwordFunc( attr );
+
+		case( Uns8_pt )
+			constExpr( attrEBX );
+			uns8Func( attr );
+		   
+		case( Uns16_pt )
+			constExpr( attrEBX );
+			uns16Func( attr );
+		  
+		case( Uns32_pt )
+			constExpr( attrEBX );
+			uns32Func( attr );
+
+		case( Uns64_pt )
+			constExpr( attrEBX );
+			uns64Func( attr );
+					  
+		case( Uns128_pt )
+			constExpr( attrEBX );
+			uns128Func( attr );
+
+		case( Int8_pt )
+			constExpr( attrEBX );
+			int8Func( attr );
+		   
+		case( Int16_pt )
+			constExpr( attrEBX );
+			int16Func( attr );
+		  
+		case( Int32_pt )
+			constExpr( attrEBX );
+			int32Func( attr );
+		  
+		case( Int64_pt )
+			constExpr( attrEBX );
+			int64Func( attr );
+		  
+		case( Int128_pt )
+			constExpr( attrEBX );
+			int128Func( attr );
+					
+		case( Real32_pt )
+			constExpr( attrEBX );
+			real32Func( attr );
+		 
+		case( Real64_pt )
+			constExpr( attrEBX );
+			real64Func( attr );
+		 
+		case( Real80_pt )
+			constExpr( attrEBX );
+			real80Func( attr );
+		 
+		case( Boolean_pt )
+			constExpr( attrEBX );
+			booleanFunc( attr );
+
+		case( Char_pt )
+			constExpr( attrEBX );
+			charFunc( attr );
+		   
+		case( XChar_pt )
+			constExpr( attrEBX );
+			xcharFunc( attr );
+		  
+		case( Unicode_pt )
+			constExpr( attrEBX );
+			unicodeFunc( attr );
+
+		case( String_pt )
+
+			// Parse a constant expression as the parameter for this function.
+			// Note: set "ForceString" to true across call so we don't expand
+			// text objects inside a "string(--)" function call.
+
+			push( (type dword ForceString) );
+			mov( true, ForceString );
+			constExpr( attr );
+			pop( eax );
+			mov( al, ForceString );
+			//stringFunc( attr ); 
+		 
+		case( UString_pt )
+
+			// Parse a constant expression as the parameter for this function.
+			// Note: set "ForceString" to true across call so we don't expand
+			// text objects inside a "string(--)" function call.
+
+			push( (type dword ForceString) );
+			mov( true, ForceString );
+			constExpr( attr );
+			pop( eax );
+			mov( al, ForceString );
+			//ustringFunc( attr ); 
+
+		case( Utf8_pt )
+
+			// Parse a constant expression as the parameter for this function.
+			// Note: set "ForceString" to true across call so we don't expand
+			// text objects inside a "string(--)" function call.
+
+			push( (type dword ForceString) );
+			mov( true, ForceString );
+			constExpr( attr );
+			pop( eax );
+			mov( al, ForceString );
+			//utf8Func( attr ); 
+
+		case( Cset_pt )
+			constExpr( attrEBX );
+			//csetFunc( attr ); 
+		   
+		case( XCset_pt )
+			defaultAttr( attrEBX );
+			constExpr( attrEBX );
+			//xcsetFunc( attr ); 
+		
+		default
+		
+			mov( theType, eax );
+			canAccess( [eax] );
+			HLAerror
+			( 
+				"No such type conversion function (",
+				symEAX.trueName,
+				")" nl
+			);
+			raise( ex.hlaerr );
+			
+	endswitch;
+	
+end doConstCoercion;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// constCoercion-
+//
+//	Similar to "doConstCoercion" except that the caller has already
+// processed the constant expression (whose value is sitting in attr upon
+// entry to this code).
+//
+// Note one major difference between this routine and doConstCoercion --
+// doConstCoercion can successfully convert TEXT objects to string, this
+// routine cannot (the TEXT object has already been expanded and processed).
+//proc( "constCoercion" )
+procedure constCoercion( var attr:attr_t; theType:symNodePtr_t );
+begin constCoercion;
+
+	// Switch off the "typeID" passed in from the caller:
+	
+	mov( theType, eax );
+	canAccess( [eax] );
+	movzx( symEAX.pType, eax );
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	switch( eax )
+
+		case( Byte_pt )			//0
+			byteFunc( attrEBX ); 
+	
+		case( Word_pt )
+			wordFunc( attrEBX ); 
+		   
+		case( DWord_pt )
+			dwordFunc( attrEBX ); 
+		  
+		case( QWord_pt )
+			qwordFunc( attrEBX ); 
+		  
+		case( TByte_pt )
+			tbyteFunc( attrEBX ); 
+		  
+		case( LWord_pt )
+			lwordFunc( attrEBX ); 
+
+		case( Uns8_pt )
+			uns8Func( attrEBX ); 
+		   
+		case( Uns16_pt )
+			uns16Func( attrEBX ); 
+		  
+		case( Uns32_pt )
+			uns32Func( attrEBX ); 
+
+		case( Uns64_pt )
+			uns64Func( attrEBX ); 
+		  
+		case( Uns128_pt )
+			uns128Func( attrEBX ); 
+
+		case( Int8_pt )
+			int8Func( attrEBX ); 
+		   
+		case( Int16_pt )
+			int16Func( attrEBX ); 
+		  
+		case( Int32_pt )
+			int32Func( attrEBX ); 
+		  
+		case( Int64_pt )
+			int64Func( attrEBX ); 
+		  
+		case( Int128_pt )
+			int128Func( attrEBX ); 
+					
+		case( Real32_pt )
+			real32Func( attrEBX ); 
+		 
+		case( Real64_pt )
+			real64Func( attrEBX ); 
+		 
+		case( Real80_pt )
+			real80Func( attrEBX ); 
+		 
+		case( Boolean_pt )
+			booleanFunc( attrEBX ); 
+
+		case( Char_pt )
+			charFunc( attrEBX ); 
+		   
+		case( XChar_pt )
+			xcharFunc( attrEBX ); 
+		  
+		case( Unicode_pt )
+			unicodeFunc( attrEBX ); 
+
+		case( String_pt )
+
+			stringFunc( attrEBX ); 
+		 
+		case( Utf8_pt )
+
+			utf8Func( attrEBX ); 
+		 
+		case( UString_pt )
+
+			ustringFunc( attrEBX ); 
+
+		case( Cset_pt )
+			csetFunc( attrEBX ); 
+		   
+		case( XCset_pt )
+			xcsetFunc( attrEBX ); 
+		
+		default
+		
+			mov( theType, eax );
+			canAccess( [eax] );
+			HLAerror
+			( 
+				"No such type conversion function (",
+				symEAX.trueName,
+				")" nl
+			);
+			raise( ex.hlaerr );
+			
+	endswitch;
+	
+end constCoercion;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// processConstID() -
+//
+//	The lexer has just encountered an identifier. The caller wants to know
+// if a "." or a "[" follows this ID and wants this function to walk through
+// the symbol table to grab the specific entry for the fully qualified symbol.
+// Note that the identifier we've just encountered *was* a constant identifier.
+// Therefore, this must be a record, union, or array constant.
+//
+//	Because a record/union/array constant cannot contain class objects or
+// namespace objects, it is also the case that any objects in the "." or "[]"
+// chain must also be record/union/array objects.
+//
+// Inputs:
+//
+//	baseConst-	Pointer to attr_t area that holds the constant data.
+//	baseSym-	Pointer to base symbol.
+//	attr-		Pointer to location where we'll store the result.
+//
+// Returns carry clear if successful.
+//
+// Raises ex.hlaerr if there was an error.
+
+//proc( "processConstID" )
+procedure processConstID
+( 
+	var baseConst		:attr_t; 
+	var baseSym			:symNode_t;
+	var	attr			:attr_t;
+	var	baseName		:string 
+);
+var
+	index		:dword;
+	lastType	:symNodePtr_t;
+	arrayType	:symNodePtr_t;
+	arrayIndex	:attr_t;
+	dummyAttr	:attr_t;
+
+	procedure computeAttrIndex( curIndex:uns32; var symType:symNode_t ); 
+		@returns( "eax" );
+	begin computeAttrIndex;
+
+		push( ebx );
+		mov( symType, ebx );
+		canAccess( [ebx] );
+		mov( 1, eax );
+		if( symEBX.pType = Array_pt ) then
+
+			computeAttrIndex( symEBX.numElements, symEBX.baseType );
+
+		endif;
+		intmul( curIndex, eax );
+		pop( ebx );
+
+	end computeAttrIndex;
+
+begin processConstID;
+
+	pushABCD;
+	begin exitprocessConstID;
+
+		lex( esi );
+		if( eax = '.' ) then
+
+			// We've just seen a "." token, this means that the
+			// previous symbol had better be a record or union object.
+
+			mov( baseSym, eax );
+			canAccess( [eax] );
+			str.a_cpy( symEAX.trueName );
+			mov( baseName, ebx );
+
+			canAccess( [ebx] );
+			mov( eax, [ebx] );
+			parseDotName( baseSym, val ebx );
+
+			// Okay, recursively process anything that follows.
+			// Because we just processed a field,
+			// we need to index into the fieldValues_vt array based 
+			// on the index of the selected field in the record/union:
+
+			mov( baseSym, edx );
+			canAccess( [edx] );
+			if( symEDX.pType = Union_pt ) then
+
+				push( eax );
+				mov( symEDX.va.curField_vt, edx );
+				canAccess( [edx] );
+
+				if( str.ne( symEDX.trueName, symEAX.trueName )) then
+
+					pop( eax );
+					HLAerror
+					(
+						"Union field '",
+						symEAX.trueName,
+						"' is current uninitialized, '",
+						symEDX.trueName,
+						"' is currently in use"
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				pop( eax );
+
+			endif;
+			mov( symEAX.fieldIndex, edx );
+			if( edx = -1 ) then
+
+				HLAerror
+				( 
+					'''', 
+					symEAX.trueName, 
+					"' is not an accessible field"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+			intmul( @size( attr_t ), edx );
+			mov( baseConst, ebx );
+			canAccess( [ebx] );
+			add( attrEBX.fieldValues_vt, edx );
+			processConstID( [edx], symEAX, attr, baseName );
+
+		elseif( eax = '[' || eax = '(' ) then // Array index.
+			
+			// As we've encountered a "(" symbol, the previous
+			// identifier had better have been an array constant.
+
+			mov( baseSym, eax );
+			canAccess( [eax] );
+			if( symEAX.pType <> Array_pt ) then
+
+				HLAerror
+				( 
+					"Unexpected '(' following ",
+					symEAX.trueName,
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+
+			// Get pointer to base type so we can process
+			// the array elements.
+
+			mov( symEAX.baseType, eax );
+			mov( eax, arrayType );
+			mov( eax, lastType );
+
+			mov( 0, index );
+			forever
+			
+				// Determine if the current dimension even exists in the array:
+
+				mov( arrayType, ebx );
+				canAccess( [ebx] );
+				if( symEBX.pType <> Array_pt ) then
+
+					HLAerror
+					( 
+						"Object is not an array (or too many dimensions)"
+						nl
+					);
+					raise( ex.hlaerr );
+				endif;
+
+				// Okay, get the corresponding constant from the array
+				// dimensions list:
+
+				try
+					
+					constExpr( arrayIndex );
+
+				  exception( ex.hlaerr );
+
+					HLAerror
+					( 
+						"Expected a constant array index expression"
+						nl
+					);
+					raise( ex.hlaerr );
+				endtry;
+
+				// Make sure the array index is a small integer:
+
+				mov( arrayIndex.pType, dl );
+				if( !isSmallNum( dl )) then
+
+					HLAerror
+					( 
+						"Expected a small integer value as array index"
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+
+				// Okay, the index looks great up to this point,
+				// see if it's within bounds:
+
+				mov( arrayIndex.dword_vt, eax );
+				mov( arrayType, ebx );
+				canAccess( [ebx] );
+				if( eax >= symEBX.numElements ) then
+
+					HLAerror
+					(
+						"Array index (",
+						(type uns32 eax),
+						") is out of bounds (max ",
+						(type uns32 symEBX.numElements),
+						")" nl
+					);
+					raise( ex.hlaerr );
+				endif;
+
+				// Okay, compute the current index into the array:
+
+				computeAttrIndex( eax, symEBX.baseType );
+				add( eax, index );
+
+				// Move on to the next array dimension type:
+
+				mov( ebx, lastType );
+				canAccess( [ebx] );
+				mov( symEBX.baseType, ebx );
+				mov( ebx, arrayType );
+
+				// Look for another array dimension value or
+				// the end of the list:
+
+				lex( esi );
+				breakif( eax = ']' || eax = ')' );
+				if( eax <> ',' ) then
+
+					HLAerror( "Expected ',' or ')' but instead found " );
+					dumpQLexeme();
+					HLAerror2( nl );
+					raise( ex.hlaerr );
+				endif;
+
+			endfor;
+
+			// Compute the index into the array:
+
+			intmul( @size( attr_t ), index, eax );
+			mov( baseConst, ecx );
+			canAccess( [ecx] );
+			add( attrECX.arrayValues_vt, eax );
+			// If we have an array slice, then we need to
+			// create a dummy attribute to pass to processConstID,
+			// otherwise we can just pass the element we've just
+			// selected:
+
+			mov( arrayType, ebx );
+			canAccess( [ebx] );
+			if( symEBX.pType = Array_pt ) then
+
+				mov( eax, dummyAttr.arrayValues_vt );
+				mov( symEBX.numElements, eax );
+				mov( eax, dummyAttr.numElements );
+				mov( Array_pt, dummyAttr.pType );
+				mov( Type_ct, dummyAttr.symClass );
+				lea( eax, dummyAttr );
+				mov( lastType, ebx );
+
+			endif;	
+			
+			// Fake the array indexes by simply concatenating "()"
+			// to the current base name:
+			
+			push( eax );
+			mov( baseName, ecx );
+			strDup2( [ecx], 2 );
+			str.cat( "()", eax );
+			str.free( [ecx] );
+			mov( eax, [ecx] );
+			pop( eax );		
+
+			// Process anything following the array index:
+			
+			//              const  sym    attr
+
+			processConstID( [eax], [ebx], attr, baseName );
+			
+		else // No "." or "(" following the ID, so just return the ID's value
+
+			// Let's make a copy of it's data and
+			// return that as the attribute value.
+
+			mov( baseConst, ecx );
+			canAccess( [ecx] );
+			mov( baseSym, ebx );
+			canAccess( [ebx] );
+			movzx( symEBX.pType, edx );
+			if( symEBX.symType <> NULL ) then
+
+				mov( symEBX.symType, ebx );
+
+			endif;
+			mov( attr, eax );
+			canAccess( [eax] );
+			deepCopy
+			(
+				[ecx],
+				dl,
+				[ebx],
+				attrEAX
+			);
+			mov( attr, eax );
+			mov
+			( 
+				Constant_ct, 
+				attrEAX.symClass 
+			);
+			setSmallestSize( attrEAX );
+			reuseLastTkn();
+
+		endif;
+		clc();
+
+	end exitprocessConstID;
+	popABCD;
+
+end processConstID;
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// The following are used by the lexer (among others)
+//
+//
+//////////////////////////////////////////////////////////////////////////////
+//
+// Type checking functions:
+//
+//	These functions return carry clear if successful, carry set if error.
+//	On success, they return the particular data they were asked to fetch.
+//	On error, they return a zero as the attribute value.
+//
+// getString - Fetches an expression and verifies that it's a string.
+// getInteger- Processes an expression and verifies that it's a small integer.
+// getUnsigned- Processes an expression and verifies that it's a small unsigned.
+// getChar-		Processes an expression and verifies that it's a character.
+// getCset-		Processes an expression and verifies that it's a character set.
+
+//proc( "getString" )
+procedure getString( var attr:attr_t );
+var
+	error	:boolean;
+begin getString;
+	
+	pushABCD;
+	mov( false, error );	// Assume no error.
+	try
+
+			constExpr( attr );
+			mov( attr, ebx );
+			canAccess( [ebx] );
+			
+			// If we find a unicode string, then
+			// convert it to an ANSI string:
+			
+			if( attrEBX.pType = UString_pt ) then
+
+				unicodeToAnsi( attrEBX.string_vt );
+				raiseErr( @c );
+				mov( String_pt, attrEBX.pType );
+				mov( &string_ste, attrEBX.symType );
+
+			endif;
+
+			if( attrEBX.pType <> String_pt && attrEBX.pType <> Utf8_pt ) then
+
+				HLAerror( "Expected a string expression, encountered type: " );
+				movzx( attrEBX.pType, eax );
+				mov( pToT[eax*4], eax );
+				HLAerror2( symEAX.trueName, nl );
+				raise( ex.hlaerr );
+
+			endif;
+
+			// Okay, we've succesfully grabbed a string expression:
+
+
+	  exception( ex.hlaerr );
+
+		freeAttr( attr );
+		defaultAttr( attr );
+		mov( true, error );
+
+	endtry;
+	popABCD;
+	shr( 1, error );	// Move error into carry flag.
+
+end getString;
+
+
+
+
+
+//proc( "getChar" )
+procedure getChar( var attr:attr_t );
+var
+	error	:boolean;
+begin getChar;
+	
+	pushABCD;
+	mov( false, error );
+	try
+
+		constExpr( attr );
+		mov( attr, ebx );
+		canAccess( [ebx] );
+		if( attrEBX.pType <> Char_pt ) then
+
+			HLAerror( "Expected a char expression, encountered type: " );
+			movzx( attrEBX.pType, eax );
+			mov( pToT[eax*4], eax );
+			HLAerror2( symEAX.trueName, nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+		// Okay, we've succesfully grabbed a character expression:
+
+
+	  exception( ex.hlaerr );
+		freeAttr( attr );
+		defaultAttr( attr );
+		mov( true, error );
+
+	endtry;
+	popABCD;
+	shr( 1, error );	// Move error into carry flag.
+
+end getChar;
+
+
+
+
+
+//proc( "getCset" )
+procedure getCset( var attr:attr_t );
+var
+	error	:boolean;
+begin getCset;
+	
+	pushABCD;
+	mov( false, error );
+	try
+
+		constExpr( attr );
+		mov( attr, ebx );
+		canAccess( [ebx] );
+		if( attrEBX.pType <> Cset_pt ) then
+
+			HLAerror( "Expected a cset expression, encountered type: " );
+			movzx( attrEBX.pType, eax );
+			mov( pToT[eax*4], eax );
+			HLAerror2( symEAX.trueName, nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+		// Okay, we've succesfully grabbed a cset expression:
+
+
+	  exception( ex.hlaerr );
+		freeAttr( attr );
+		defaultAttr( attr );
+
+	endtry;
+	popABCD;
+	shr( 1, error );	// Move error into carry flag.
+
+end getCset;
+
+
+
+
+//proc( "getInteger" )
+procedure getInteger( var attr:attr_t );
+var
+	error	:boolean;
+begin getInteger;
+	
+	pushABCD;
+	mov( false, error );	// Assume no error.
+	try
+
+		constExpr( attr );
+
+		// First, see if the expression we parsed above
+		// is an integer numeric type:
+		
+		mov( attr, ebx );
+		canAccess( [ebx] );
+		if( !isNumber( attrEBX.pType )) then
+
+			HLAerror( "Expected an integer expression, encountered type: " );
+			movzx( attrEBX.pType, eax );
+			mov( pToT[eax*4], eax );
+			HLAerror2( symEAX.trueName, nl );
+			raise( ex.hlaerr );
+
+		endif;
+		
+		// Now, verify tht the value is 32-bits or less:
+		
+		mov( attrEBX.dword_vt, eax );
+		cdq();
+		if
+		(
+				edx <> attrEBX.dword_vt[4]
+			||	edx <> attrEBX.dword_vt[8]
+			||	edx <> attrEBX.dword_vt[12]
+		) then
+		
+			HLAerror( "Expected a small integer expression, type is " );	
+			movzx( attrEBX.pType, eax );
+			mov( pToT[eax*4], eax );
+			HLAerror2( symEAX.trueName, nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+	  exception( ex.hlaerr );
+		freeAttr( attr );
+		defaultAttr( attr );
+		mov( true, error );
+	endtry;
+	popABCD;
+	shr( 1, error );	// Move error status into carry flag.
+
+end getInteger;
+
+
+
+//proc( "getUnsigned" )
+procedure getUnsigned( var attr:attr_t );
+var
+	error	:boolean;
+begin getUnsigned;
+	
+	pushABCD;
+	mov( false, error );	// Assume no error
+	try
+
+		constExpr( attr );
+
+		// Check to see if the above parsed expression
+		// is an integer type:
+		
+		mov( attr, ebx );
+		canAccess( [ebx] );
+		if( !isNumber( attrEBX.pType )) then
+
+			HLAerror
+			( 
+				"Expected a non-negative integer expression, "
+				"encountered type: " 
+			);
+			movzx( attrEBX.pType, eax );
+			mov( pToT[eax*4], eax );
+			HLAerror2( symEAX.trueName, nl );
+			raise( ex.hlaerr );
+
+		endif;
+		
+		// Set the return unsigned type, as appropriate:
+		
+		movzx( attrEBX.pType, eax );
+		switch( eax )
+
+			case
+			( 
+				Byte_pt,
+				Uns8_pt
+			)
+
+				mov( attrEBX.byte_vt, al );
+				zeroAttr( [ebx] );
+				mov( al, attrEBX.byte_vt );
+				mov( Uns8_pt, attrEBX.pType );
+				mov( &uns8_ste, attrEBX.symType );
+
+			case
+			(
+				Word_pt,
+				Uns16_pt
+			)
+
+				mov( attrEBX.word_vt, ax );
+				zeroAttr( [ebx] );
+				mov( ax, attrEBX.word_vt );
+				mov( Uns16_pt, attrEBX.pType );
+				mov( &uns16_ste, attrEBX.symType );
+
+			case
+			(
+				DWord_pt,
+				Uns32_pt
+			)
+
+				mov( attrEBX.dword_vt, eax );
+				zeroAttr( [ebx] );
+				mov( eax, attrEBX.dword_vt );
+				mov( Uns32_pt, attrEBX.pType );
+				mov( &uns32_ste, attrEBX.symType );
+
+
+			case( Int8_pt )
+
+				movsx( attrEBX.byte_vt, eax );
+				if( (type int8 al) < 0 ) then
+
+					HLAerror
+					( 
+						"Expected a small non-negative integer, "
+						"encountered ",
+						(type int8 al ),
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				zeroAttr( [ebx] );
+				mov( eax, attrEBX.dword_vt );
+				mov( Uns8_pt, attrEBX.pType );
+				mov( &uns8_ste, attrEBX.symType );
+				
+			case( Int16_pt )
+
+				movsx( attrEBX.word_vt, eax );
+				if( (type int8 ah) < 0 ) then
+
+					HLAerror
+					( 
+						"Expected a small non-negative integer, "
+						"encountered ",
+						(type int16 ax ),
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				zeroAttr( [ebx] );
+				mov( eax, attrEBX.dword_vt );
+				mov( Uns16_pt, attrEBX.pType );
+				mov( &uns16_ste, attrEBX.symType );
+				
+			case( Int32_pt )
+
+				if( attrEBX.int32_vt < 0 ) then
+
+					HLAerror
+					( 
+						"Expected a small non-negative integer, "
+						"encountered ",
+						attrEBX.int32_vt,
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				zeroAttr( [ebx] );
+				mov( eax, attrEBX.dword_vt );
+				mov( Uns32_pt, attrEBX.pType );
+				mov( &uns32_ste, attrEBX.symType );
+
+		endswitch;
+		
+		// Verify that the result fits into 32 bits or less:
+							
+		mov( attrEBX.dword_vt, eax );
+		cdq();
+		if
+		(
+				edx <> attrEBX.dword_vt[4]
+			||	edx <> attrEBX.dword_vt[8]
+			||	edx <> attrEBX.dword_vt[12]
+		) then
+		
+			HLAerror( "Expected a small unsigned expression, type is " );	
+			movzx( attrEBX.pType, eax );
+			mov( pToT[eax*4], eax );
+			HLAerror2( symEAX.trueName, nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+	  exception( ex.hlaerr );
+		freeAttr( attr );
+		defaultAttr( attr );
+		mov( true, error );
+
+	endtry;
+	popABCD;
+	shr( 1, error );	// Move error status into carry flag.
+
+end getUnsigned;
+
+
+
+end getConsts;

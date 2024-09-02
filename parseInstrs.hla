@@ -1,0 +1,3310 @@
+// parseStmts.hla
+//
+//	This is the parser for the HLA v2.0 compiler.
+
+unit parseInstrUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+#includeonce( "codegen.hhf" )
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// parseInstr-
+//
+//	Parses machine instructions.
+//
+// On entry:
+//
+//	EAX - Contains machine instruction token.
+
+procedure parseInstr( codeRec:internalCodePtr_t; prefixes:word );
+var
+	cnt			:int32;
+
+	shortRet	:boolean;
+
+
+	procedure unhandledInstr;
+	begin unhandledInstr;
+
+		stdout.put( "Unhandled instruction: '" );
+		dumpLexeme();
+		HLAerror2( "'" nl );
+
+		mov( edi, ecx );	// returns = ""
+		mov( edi, edx );
+
+
+	end unhandledInstr;
+
+
+	// emitPrefixes-
+	//
+	//	Emits the prefix bytes for an instruction, where the prefix
+	// values are in the "prefixes" bit map. Assumes that EAX points
+	// at an internalCode_t record. Returns ECX containing the number
+	// of prefix bytes emitted.
+
+	procedure emitPrefixes;	@noframe;
+	begin emitPrefixes;
+
+		push( ebx ); 
+		xor( ecx, ecx );	// Initialize instruction length
+
+		movzx( ebp::prefixes, ebx );
+		mov( bx, intCodeEAX.prefixes );
+
+		// If there are no prefixes, quickly return:
+
+		if( ebx = 0 ) then
+
+			mov( ebx, ecx );
+			pop( ebx );
+			ret();
+
+		endif;
+
+		// Is there a group one prefix?
+
+		test( g1Prefixes_c, ebx );
+		if( @nz ) then
+
+			test( lockPrefix_c, ebx );
+			if( @nz ) then
+
+				mov( lock_c, intCodeEAX.instrCode[0] );
+				add( 1, ecx );
+				test( (!lockPrefix_c & g1Prefixes_c), ebx );
+				jnz BadPrefixCombination;
+
+			else
+
+				test( repPrefix_c, ebx );
+				if( @nz ) then
+
+					mov( rep_c, intCodeEAX.instrCode[0] );
+					add( 1, ecx );
+					test( (!repPrefix_c & g1Prefixes_c), ebx );
+					jnz BadPrefixCombination;
+
+				else
+
+					test( repePrefix_c, ebx );
+					if( @nz ) then
+
+						mov( repe_c, intCodeEAX.instrCode[0] );
+						add( 1, ecx );
+						test( (!repePrefix_c & g1Prefixes_c), ebx );
+						jnz BadPrefixCombination;
+
+					else
+
+						// Must be repne prefix:
+
+						mov( repne_c, intCodeEAX.instrCode[0] );
+						add( 1, ecx );
+
+					endif;
+
+				endif;
+
+			endif;
+
+		endif;
+
+
+
+		// Is there a group two prefix?
+
+		test( g2Prefixes_c, ebx );
+		if( @nz ) then
+
+			test( csegPrefix_c, ebx );
+			if( @nz ) then
+
+				mov( cseg_c, intCodeEAX.instrCode[ecx] );
+				add( 1, ecx );
+				test( (!csegPrefix_c & g2Prefixes_c), ebx );
+				jnz BadPrefixCombination;
+
+			else
+
+				test( dsegPrefix_c, ebx );
+				if( @nz ) then
+
+					mov( dseg_c, intCodeEAX.instrCode[ecx] );
+					add( 1, ecx );
+					test( (!dsegPrefix_c & g2Prefixes_c), ebx );
+					jnz BadPrefixCombination;
+
+				else
+
+					test( esegPrefix_c, ebx );
+					if( @nz ) then
+
+						mov( eseg_c, intCodeEAX.instrCode[ecx] );
+						add( 1, ecx );
+						test( (!esegPrefix_c & g2Prefixes_c), ebx );
+						jnz BadPrefixCombination;
+
+					else
+
+						test( fsegPrefix_c, ebx );
+						if( @nz ) then
+
+							mov( fseg_c, intCodeEAX.instrCode[ecx] );
+							add( 1, ecx );
+							test( (!fsegPrefix_c & g2Prefixes_c), ebx );
+							jnz BadPrefixCombination;
+
+						else
+
+							test( gsegPrefix_c, ebx );
+							if( @nz ) then
+
+								mov( gseg_c, intCodeEAX.instrCode[ecx] );
+								add( 1, ecx );
+								test( (!gsegPrefix_c & g2Prefixes_c), ebx );
+								jnz BadPrefixCombination;
+
+							else
+
+								test( ssegPrefix_c, ebx );
+								if( @nz ) then
+
+									mov( sseg_c, intCodeEAX.instrCode[ecx] );
+									add( 1, ecx );
+									test( (!ssegPrefix_c & g2Prefixes_c), ebx );
+									jnz BadPrefixCombination;
+
+								else
+
+									test( brTknPrefix_c, ebx );
+									if( @nz ) then
+
+										mov
+										(
+											brTaken_c, 
+											intCodeEAX.instrCode[ecx] 
+										);
+										add( 1, ecx );
+										test
+										(
+											(!brTknPrefix_c & g2Prefixes_c), 
+											ebx 
+										);
+										jnz BadPrefixCombination;
+
+									else
+
+										// Must be branch not taken prefix
+
+
+										mov
+										(
+											brNotTaken_c, 
+											intCodeEAX.instrCode[ecx] 
+										);
+										add( 1, ecx );
+
+									endif;
+
+								endif;
+
+							endif;
+
+						endif;
+
+					endif;
+
+				endif;
+
+			endif;
+
+		endif;
+
+		// Is there a group three (operand size) prefix:
+
+		test( sizePrefix_c, ebx );
+		if( @nz ) then
+
+			mov( oprndSize_c, intCodeEAX.instrCode[ecx] );
+			add( 1, ecx );
+
+		endif;
+
+
+		// Is there a group four (address size) prefix:
+
+		test( adrsPrefix_c, ebx );
+		if( @nz ) then
+
+			mov( adrsSize_c, intCodeEAX.instrCode[ecx] );
+			add( 1, ecx );
+
+		endif;
+
+		// If we get to this point, we've successfully emitted
+		// all of the prefix bytes.
+
+		pop( ebx );
+		ret();
+
+		// Drop down here if there was an error:
+
+
+
+		BadPrefixCombination:
+			HLAerror
+			( 
+				"Illegal combination of prefixes on instruction" nl 
+			);
+			pop( ebx );
+			ret();
+
+	end emitPrefixes;
+
+
+
+
+
+	// putImplied1-
+	//
+	//	Emits the internal code format for a one-byte implied addressing
+	// mode instruction.
+
+	procedure putImplied1
+	(
+		intCodeRec	:internalCodePtr_t in eax; 
+		token		:dword in ebx;
+		validPrfxs	:dword in ecx; 
+		objectCode	:dword in edx
+	);
+		@noframe;
+
+	begin putImplied1;
+
+		and( ebp::prefixes, cx );
+		if( cx <> ebp::prefixes ) then
+
+	   		HLAerror( "Invalid instruction prefix" nl );
+
+		endif;
+
+		emitPrefixes();		// Emit the prefix bytes for this instruction.
+		mov( bx, intCodeEAX.instrTkn );
+		mov( dl, intCodeEAX.instrCode[ecx] );
+		add( 1, ecx );
+		mov( ecx, intCodeEAX.length );
+
+		mov( implied_c, intCodeEAX.srcOperand.mode );
+		mov( implied_c, intCodeEAX.destOperand.mode );
+		mov( -2, intCodeEAX.cntOperand );	// Signify field not in use
+
+		optionalEmptyParens();
+
+		mov( edi, ecx );	// returns = ""
+		mov( edi, edx );
+
+		ret();
+
+	end putImplied1;
+
+
+
+	// putImplied2-
+	//
+	//	Emits the internal code format for a two-byte implied addressing
+	// mode instruction.
+
+	procedure putImplied2
+	(
+		intCodeRec	:internalCodePtr_t in eax; 
+		token		:dword in ebx;
+		validPrfxs	:dword in ecx; 
+		objectCode	:dword in edx
+	);
+		@noframe;
+
+	begin putImplied2;
+
+
+		and( ebp::prefixes, cx );
+		if( cx <> ebp::prefixes ) then
+
+	   		HLAerror( "Invalid instruction prefix" nl );
+
+		endif;
+		emitPrefixes();		// Emit the prefix bytes for this instruction.
+
+		mov( bx, intCodeEAX.instrTkn );
+		mov( dx, (type word intCodeEAX.instrCode[ecx]) );
+		add( 2, ecx );
+		mov( ecx, intCodeEAX.length );
+
+		mov( implied_c, intCodeEAX.srcOperand.mode );
+		mov( implied_c, intCodeEAX.destOperand.mode );
+		mov( -2, intCodeEAX.cntOperand );	// Signify field not in use
+
+		optionalEmptyParens();
+
+		mov( edi, ecx );	// returns = ""
+		mov( edi, edx );
+
+		ret();
+
+	end putImplied2;
+
+
+
+
+
+
+	// putOneByte-
+	//
+	//	Emits the internal code format for a one-byte instruction.
+
+	procedure putOneByte
+	(
+		intCodeRec	:internalCodePtr_t in eax; 
+		token		:dword in ebx;
+		validPrfxs	:dword in ecx; 
+		objectCode	:dword in edx
+	);
+		@noframe;
+
+	begin putOneByte;
+
+		and( ebp::prefixes, cx );
+		if( cx <> ebp::prefixes ) then
+
+	   		HLAerror( "Invalid instruction prefix" nl );
+
+		endif;
+		emitPrefixes();		// Emit the prefix bytes for this instruction.
+
+		mov( bx, intCodeEAX.instrTkn );
+		mov( dl, intCodeEAX.instrCode[ecx] );
+		add( 1, ecx );
+		mov( ecx, intCodeEAX.length );
+
+		// Initialize this to default values, they must be filled in
+		// by the caller if non-default values are necessary:
+
+		mov( implied_c, intCodeEAX.srcOperand.mode );
+		mov( implied_c, intCodeEAX.destOperand.mode );
+		mov( -2, intCodeEAX.cntOperand );	// Signify field not in use
+
+		// It is also the caller's responsibility to set the "returns" string.
+
+		ret();
+
+	end putOneByte;
+
+
+
+
+
+
+	// putTwoByte-
+	//
+	//	Emits the internal code format for a two-byte instruction.
+
+	procedure putTwoByte
+	(
+		intCodeRec	:internalCodePtr_t in eax; 
+		token		:dword in ebx;
+		validPrfxs	:dword in ecx; 
+		objectCode	:dword in edx
+	);
+		@noframe;
+
+	begin putTwoByte;
+
+		and( ebp::prefixes, cx );
+		if( cx <> ebp::prefixes ) then
+
+	   		HLAerror( "Invalid instruction prefix" nl );
+
+		endif;
+		emitPrefixes();		// Emit the prefix bytes for this instruction.
+
+		mov( bx, intCodeEAX.instrTkn );
+		mov( dx, (type word intCodeEAX.instrCode[ecx]) );
+		add( 2, ecx );
+		mov( ecx, intCodeEAX.length );
+
+		// Initialize this to default values, they must be filled in
+		// by the caller if non-default values are necessary:
+
+		mov( implied_c, intCodeEAX.srcOperand.mode );
+		mov( implied_c, intCodeEAX.destOperand.mode );
+		mov( -2, intCodeEAX.cntOperand );	// Signify field not in use
+
+		// It is also the caller's responsibility to set the "returns" string.
+
+		ret();
+
+	end putTwoByte;
+
+
+
+
+
+
+
+	// putThreeByte-
+	//
+	//	Emits the internal code format for a three-byte instruction.
+
+	procedure putThreeByte
+	(
+		intCodeRec	:internalCodePtr_t in eax; 
+		token		:dword in ebx;
+		validPrfxs	:dword in ecx; 
+		objectCode	:dword in edx
+	);
+		@noframe;
+
+	begin putThreeByte;
+
+		and( ebp::prefixes, cx );
+		if( cx <> ebp::prefixes ) then
+
+	   		HLAerror( "Invalid instruction prefix" nl );
+
+		endif;
+		emitPrefixes();		// Emit the prefix bytes for this instruction.
+
+		mov( bx, intCodeEAX.instrTkn );
+		mov( edx, (type dword intCodeEAX.instrCode[ecx]) );
+		add( 3, ecx );
+		mov( ecx, intCodeEAX.length );
+
+		// Initialize this to default values, they must be filled in
+		// by the caller if non-default values are necessary:
+
+		mov( implied_c, intCodeEAX.srcOperand.mode );
+		mov( implied_c, intCodeEAX.destOperand.mode );
+		mov( -2, intCodeEAX.cntOperand );	// Signify field not in use
+
+		// It is also the caller's responsibility to set the "returns" string.
+
+		ret();
+
+	end putThreeByte;
+
+
+
+
+
+begin parseInstr;
+
+	push( eax );			// Save instruction token.
+	mov( codeRec, eax );	// See if the internal code record is pre-allocated
+	if( eax = NULL ) then
+
+		createIntRec();		// Leaves ptr to internalCode_t in EAX
+		mov( eax, codeRec );
+
+	endif;
+	pop( ebx );				// Retrieve instruction token.
+
+	switch( ebx )
+
+		// Set hll.useBubbleSort true if the cases are mostly sorted
+		// (faster compile time!)
+
+		//>?hll.useBubbleSort := true;	// hll conflict
+
+		case( tkn_aaa )
+		
+			putImplied1( eax, _aaa, 0, $37 );
+
+		case( tkn_aad )
+
+			putImplied2( eax, _aad, 0, $0ad6 );
+		
+		case( tkn_aam )
+		
+			putImplied2( eax, _aam, 0, $0ad4 );
+			
+		case( tkn_aas )
+		
+			putImplied1( eax, _aas, 0, $3f );
+
+		case( tkn_adc )
+		
+			unhandledInstr();
+
+		case( tkn_add )
+		
+			unhandledInstr();
+
+		case( tkn_addpd )
+		
+			unhandledInstr();
+
+		case( tkn_addps )
+		
+			unhandledInstr();
+
+		case( tkn_addss )
+		
+			unhandledInstr();
+
+		case( tkn_and )
+		
+			unhandledInstr();
+
+		case( tkn_andnpd )
+		
+			unhandledInstr();
+
+		case( tkn_andnps )
+		
+			unhandledInstr();
+
+		case( tkn_andpd )
+		
+			unhandledInstr();
+
+		case( tkn_andps )
+		
+			unhandledInstr();
+
+		case( tkn_arpl )
+		
+			unhandledInstr();
+
+		case( tkn_bound )
+		
+			unhandledInstr();
+
+		case( tkn_bsf )
+		
+			unhandledInstr();
+
+		case( tkn_bsr )
+		
+			unhandledInstr();
+
+		case( tkn_bswap )
+
+			getLParen();
+			mov( codeRec, eax );
+			getReg32( intCodeEAX.destOperand );
+			or( %1100_1000, al );
+			mov( al, dh );
+			mov( $f, dl );
+			putTwoByte( codeRec, _bswap, 0, edx );
+			getRParen();
+		
+
+		case( tkn_bt )
+		
+			unhandledInstr();
+
+		case( tkn_btc )
+		
+			unhandledInstr();
+
+		case( tkn_btr )
+		
+			unhandledInstr();
+
+		case( tkn_bts )
+		
+			unhandledInstr();
+
+		case( tkn_call )
+		
+			unhandledInstr();
+
+		case( tkn_cbw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1( eax, _cbw, sizePrefix_c, $98 );
+
+		case( tkn_cdq )
+		
+			putImplied1( eax, _cdq, 0, $99 );
+
+		case( tkn_clc )
+		
+			putImplied1( eax, _clc, 0, $f8 );
+
+		case( tkn_cld )
+		
+			putImplied1( eax, _cld, 0, $fc );
+
+		case( tkn_clflush )
+		
+			unhandledInstr();
+
+		case( tkn_cli )
+		
+			putImplied1( eax, _cli, 0, $fa );
+
+		case( tkn_clts )
+		
+			putImplied2( eax, _clts, 0, $060f );
+
+		case( tkn_cmc )
+		
+			putImplied1( eax, _cmc, 0, $f5 );
+
+		case( tkn_cmova )
+		
+			unhandledInstr();
+
+		case( tkn_cmovae )
+		
+			unhandledInstr();
+
+		case( tkn_cmovb )
+		
+			unhandledInstr();
+
+		case( tkn_cmovbe )
+		
+			unhandledInstr();
+
+		case( tkn_cmovc )
+		
+			unhandledInstr();
+
+		case( tkn_cmove )
+		
+			unhandledInstr();
+
+		case( tkn_cmovg )
+		
+			unhandledInstr();
+
+		case( tkn_cmovge )
+		
+			unhandledInstr();
+
+		case( tkn_cmovl )
+		
+			unhandledInstr();
+
+		case( tkn_cmovle )
+		
+			unhandledInstr();
+
+		case( tkn_cmovna )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnae )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnb )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnbe )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnc )
+		
+			unhandledInstr();
+
+		case( tkn_cmovne )
+		
+			unhandledInstr();
+
+		case( tkn_cmovng )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnge )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnl )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnle )
+		
+			unhandledInstr();
+
+		case( tkn_cmovno )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnp )
+		
+			unhandledInstr();
+
+		case( tkn_cmovns )
+		
+			unhandledInstr();
+
+		case( tkn_cmovnz )
+		
+			unhandledInstr();
+
+		case( tkn_cmovo )
+		
+			unhandledInstr();
+
+		case( tkn_cmovp )
+		
+			unhandledInstr();
+
+		case( tkn_cmovpe )
+		
+			unhandledInstr();
+
+		case( tkn_cmovpo )
+		
+			unhandledInstr();
+
+		case( tkn_cmovs )
+		
+			unhandledInstr();
+
+		case( tkn_cmovz )
+		
+			unhandledInstr();
+
+		case( tkn_cmp )
+		
+			unhandledInstr();
+
+		case( tkn_cmpeqpd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpeqps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpeqsd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpeqss )
+		
+			unhandledInstr();
+
+		case( tkn_cmplepd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpleps )
+		
+			unhandledInstr();
+
+		case( tkn_cmplesd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpless )
+		
+			unhandledInstr();
+
+		case( tkn_cmpltpd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpltps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpltsd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpltss )
+		
+			unhandledInstr();
+
+		case( tkn_cmpneqpd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpneqps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpneqsd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpneqss )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnlepd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnleps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnlesd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnless )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnltpd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnltps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnltsd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpnltss )
+		
+			unhandledInstr();
+
+		case( tkn_cmpordpd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpordps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpordsd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpordss )
+		
+			unhandledInstr();
+
+		case( tkn_cmppd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpsb )
+		
+			putImplied1
+			( 
+				eax, 
+				_cmpsb, 
+				repePrefix_c | repnePrefix_c, 
+				$a6 
+			);
+
+		case( tkn_cmpsd )
+		
+			putImplied1
+			( 
+				eax, 
+				_cmpsd, 
+				repePrefix_c | repnePrefix_c, 
+				$a7 
+			);
+
+		case( tkn_cmpss )
+		
+			unhandledInstr();
+
+		case( tkn_cmpsw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_cmpsw, 
+				repePrefix_c | repnePrefix_c | sizePrefix_c, 
+				$a7 
+			);
+
+		case( tkn_cmpunordpd )
+		
+			unhandledInstr();
+
+		case( tkn_cmpunordps )
+		
+			unhandledInstr();
+
+		case( tkn_cmpunordsd )
+		
+			unhandledInstr();
+
+		case( tkn_comunordss )
+		
+			unhandledInstr();
+
+		case( tkn_cmpxchg )
+		
+			unhandledInstr();
+
+		case( tkn_cmpxchg8b )
+		
+			unhandledInstr();
+
+		case( tkn_comisd )
+		
+			unhandledInstr();
+
+		case( tkn_comiss )
+		
+			unhandledInstr();
+
+		case( tkn_cpuid )
+		
+			putImplied2
+			( 
+				eax, 
+				_cpuid, 
+				0, 
+				$a20f 
+			);
+
+		case( tkn_cvtdq2pd )
+		
+			unhandledInstr();
+
+		case( tkn_cvtdq2pq )
+		
+			unhandledInstr();
+
+		case( tkn_cvtdq2ps )
+		
+			unhandledInstr();
+
+		case( tkn_cvtpd2dq )
+		
+			unhandledInstr();
+
+		case( tkn_cvtpd2pi )
+		
+			unhandledInstr();
+
+		case( tkn_cvtpd2ps )
+		
+			unhandledInstr();
+
+		case( tkn_cvtpi2pd )
+		
+			unhandledInstr();
+
+		case( tkn_cvtpi2ps )
+		
+			unhandledInstr();
+
+		case( tkn_cvtpi2ss )
+		
+			unhandledInstr();
+
+		case( tkn_cvtps2dq )
+		
+			unhandledInstr();
+
+		case( tkn_cvtps2pd )
+		
+			unhandledInstr();
+
+		case( tkn_cvtps2pi )
+		
+			unhandledInstr();
+
+		case( tkn_cvtsd2si )
+		
+			unhandledInstr();
+
+		case( tkn_cvtsd2ss )
+		
+			unhandledInstr();
+
+		case( tkn_cvtsi2sd )
+		
+			unhandledInstr();
+
+		case( tkn_cvtsi2ss )
+		
+			unhandledInstr();
+
+		case( tkn_cvtss2sd )
+		
+			unhandledInstr();
+
+		case( tkn_cvtss2si )
+		
+			unhandledInstr();
+
+		case( tkn_cvttpd2dq )
+		
+			unhandledInstr();
+
+		case( tkn_cvttpd2pi )
+		
+			unhandledInstr();
+
+		case( tkn_cvttps2dq )
+		
+			unhandledInstr();
+
+		case( tkn_cvttps2pi )
+		
+			unhandledInstr();
+
+		case( tkn_cvttsd2si )
+		
+			unhandledInstr();
+
+		case( tkn_cvttss2si )
+		
+			unhandledInstr();
+
+		case( tkn_cwd )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1( eax, _cwd, sizePrefix_c, $99 );
+
+
+		case( tkn_cwde )
+		
+			putImplied1( eax, _cwde, 0, $98 );
+
+		case( tkn_daa )
+		
+			putImplied1( eax, _daa, 0, $27 );
+
+		case( tkn_das )
+		
+			putImplied1( eax, _das, 0, $2f );
+
+		case( tkn_dec )
+		
+			unhandledInstr();
+
+		case( tkn_div )
+		
+			unhandledInstr();
+
+		case( tkn_divpd )
+		
+			unhandledInstr();
+
+		case( tkn_divps )
+		
+			unhandledInstr();
+
+		case( tkn_divsd )
+		
+			unhandledInstr();
+
+		case( tkn_divss )
+		
+			unhandledInstr();
+
+		case( tkn_emms )
+		
+			putImplied2( eax, _emms, 0, $770f );
+
+		case( tkn_enter )
+		
+			unhandledInstr();
+
+		case( tkn_f2xm1 )
+		
+			unhandledInstr();
+
+		case( tkn_fabs )
+		
+			unhandledInstr();
+
+		case( tkn_fadd )
+		
+			unhandledInstr();
+
+		case( tkn_faddp )
+		
+			unhandledInstr();
+
+		case( tkn_fbld )
+		
+			unhandledInstr();
+
+		case( tkn_fbstp )
+		
+			unhandledInstr();
+
+		case( tkn_fchs )
+		
+			unhandledInstr();
+
+		case( tkn_fclex )
+		
+			unhandledInstr();
+
+		case( tkn_fcmova )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovae )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovb )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovbe )
+		
+			unhandledInstr();
+
+		case( tkn_fcmove )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovna )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovnae )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovnb )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovnbe )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovne )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovnu )
+		
+			unhandledInstr();
+
+		case( tkn_fcmovu )
+		
+			unhandledInstr();
+
+		case( tkn_fcom )
+		
+			unhandledInstr();
+
+		case( tkn_fcomi )
+		
+			unhandledInstr();
+
+		case( tkn_fcomip )
+		
+			unhandledInstr();
+
+		case( tkn_fcomp )
+		
+			unhandledInstr();
+
+		case( tkn_fcompp )
+		
+			unhandledInstr();
+
+		case( tkn_fcos )
+		
+			unhandledInstr();
+
+		case( tkn_fdecstp )
+		
+			unhandledInstr();
+
+		case( tkn_fdiv )
+		
+			unhandledInstr();
+
+		case( tkn_fdivp )
+		
+			unhandledInstr();
+
+		case( tkn_fdivr )
+		
+			unhandledInstr();
+
+		case( tkn_fdivrp )
+		
+			unhandledInstr();
+
+		case( tkn_ffree )
+		
+			unhandledInstr();
+
+		case( tkn_fiadd )
+		
+			unhandledInstr();
+
+		case( tkn_ficom )
+		
+			unhandledInstr();
+
+		case( tkn_ficomp )
+		
+			unhandledInstr();
+
+		case( tkn_fidiv )
+		
+			unhandledInstr();
+
+		case( tkn_fidivr )
+		
+			unhandledInstr();
+
+		case( tkn_fild )
+		
+			unhandledInstr();
+
+		case( tkn_fimul )
+		
+			unhandledInstr();
+
+		case( tkn_fincstp )
+		
+			unhandledInstr();
+
+		case( tkn_finit )
+		
+			unhandledInstr();
+
+		case( tkn_fist )
+		
+			unhandledInstr();
+
+		case( tkn_fistp )
+		
+			unhandledInstr();
+
+		case( tkn_fisub )
+		
+			unhandledInstr();
+
+		case( tkn_fisubr )
+		
+			unhandledInstr();
+
+		case( tkn_fld )
+		
+			unhandledInstr();
+
+		case( tkn_fld1 )
+		
+			unhandledInstr();
+
+		case( tkn_fldcw )
+		
+			unhandledInstr();
+
+		case( tkn_fldenv )
+		
+			unhandledInstr();
+
+		case( tkn_fldl2e )
+		
+			unhandledInstr();
+
+		case( tkn_fldl2t )
+		
+			unhandledInstr();
+
+		case( tkn_fldlg2 )
+		
+			unhandledInstr();
+
+		case( tkn_fldln2 )
+		
+			unhandledInstr();
+
+		case( tkn_fldpi )
+		
+			unhandledInstr();
+
+		case( tkn_fldz )
+		
+			unhandledInstr();
+
+		case( tkn_fmul )
+		
+			unhandledInstr();
+
+		case( tkn_fmulp )
+		
+			unhandledInstr();
+
+		case( tkn_fnop )
+		
+			unhandledInstr();
+
+		case( tkn_fpatan )
+		
+			unhandledInstr();
+
+		case( tkn_fprem )
+		
+			unhandledInstr();
+
+		case( tkn_fprem1 )
+		
+			unhandledInstr();
+
+		case( tkn_fptan )
+		
+			unhandledInstr();
+
+		case( tkn_frndint )
+		
+			unhandledInstr();
+
+		case( tkn_frstor )
+		
+			unhandledInstr();
+
+		case( tkn_fsave )
+		
+			unhandledInstr();
+
+		case( tkn_fscale )
+		
+			unhandledInstr();
+
+		case( tkn_fsin )
+		
+			unhandledInstr();
+
+		case( tkn_fsincos )
+		
+			unhandledInstr();
+
+		case( tkn_fsqrt )
+		
+			unhandledInstr();
+
+		case( tkn_fst )
+		
+			unhandledInstr();
+
+		case( tkn_fstcw )
+		
+			unhandledInstr();
+
+		case( tkn_fstenv )
+		
+			unhandledInstr();
+
+		case( tkn_fstp )
+		
+			unhandledInstr();
+
+		case( tkn_fstsw )
+		
+			unhandledInstr();
+
+		case( tkn_fsub )
+		
+			unhandledInstr();
+
+		case( tkn_fsubp )
+		
+			unhandledInstr();
+
+		case( tkn_fsubr )
+		
+			unhandledInstr();
+
+		case( tkn_fsubrp )
+		
+			unhandledInstr();
+
+		case( tkn_ftst )
+		
+			unhandledInstr();
+
+		case( tkn_fucom )
+		
+			unhandledInstr();
+
+		case( tkn_fucomi )
+		
+			unhandledInstr();
+
+		case( tkn_fucomip )
+		
+			unhandledInstr();
+
+		case( tkn_fucomp )
+		
+			unhandledInstr();
+
+		case( tkn_fucompp )
+		
+			unhandledInstr();
+
+		case( tkn_fwait )
+		
+			unhandledInstr();
+
+		case( tkn_fxam )
+		
+			unhandledInstr();
+
+		case( tkn_fxch )
+		
+			unhandledInstr();
+
+		case( tkn_fxrstor )
+		
+			unhandledInstr();
+
+		case( tkn_fxsave )
+		
+			unhandledInstr();
+
+		case( tkn_fxtract )
+		
+			unhandledInstr();
+
+		case( tkn_fyl2x )
+		
+			unhandledInstr();
+
+		case( tkn_fyl2xp1 )
+		
+			unhandledInstr();
+
+		case( tkn_hlt )
+		
+			putImplied1( eax, _hlt, 0, $f4 );
+
+		case( tkn_idiv )
+		
+			unhandledInstr();
+
+		case( tkn_imod )
+		
+			unhandledInstr();
+
+		case( tkn_imul )
+		
+			unhandledInstr();
+
+		case( tkn_in )
+		
+			unhandledInstr();
+
+		case( tkn_inc )
+		
+			unhandledInstr();
+
+		case( tkn_insb )
+		
+			putImplied1
+			( 
+				eax, 
+				_insb, 
+				repPrefix_c, 
+				$6c 
+			);
+
+		case( tkn_insd )
+		
+			putImplied1
+			( 
+				eax, 
+				_insd, 
+				repPrefix_c, 
+				$6d 
+			);
+
+		case( tkn_insw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_insw, 
+				repPrefix_c | sizePrefix_c, 
+				$6d 
+			);
+
+		case( tkn_int )
+		
+			getLParen();
+			getCntOperand();
+			mov( eax, cnt );
+			getRParen();
+			mov( cnt, edx );		// Retrieve cnt value
+			mov( codeRec, eax );	// Retrieve code ptr value
+			if( edx >= 256 ) then
+
+				HLAerror
+				( 
+					"INT(",
+					(type int32 edx),
+					") constant must be in the range 0..255" nl
+				);
+				mov( 3, edx );	// Fake INT(3)
+
+			endif;
+			mov( dl, dh );
+			if( dl = 3 ) then
+
+				// INT(3) is a special one-byte opcode for BRK.
+
+				putImplied1
+				( 
+					eax, 
+					_int, 
+					0, 
+					$cc 
+				);
+				
+			else
+
+				// $cd is the standard two-byte INT instruction:
+
+				mov( $cd, dl );
+				putImplied2
+				( 
+					eax, 
+					_int, 
+					0, 
+					edx 
+				);
+
+			endif;
+			mov( cnt, edx );
+			mov( codeRec, eax );
+			mov( edx, intCodeEAX.cntOperand );
+
+
+		case( tkn_intmul )
+		
+			unhandledInstr();
+
+		case( tkn_into )
+		
+			putImplied1( eax, _into, 0, $ce );
+
+		case( tkn_invd )
+		
+			putImplied2( eax, _invd, 0, $080f );
+
+		case( tkn_invlpg )
+		
+			unhandledInstr();
+
+		case( tkn_iret )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1( eax, _iret, sizePrefix_c, $cf );
+
+		case( tkn_iretd )
+		
+			putImplied1( eax, _iretd, 0, $cf );
+
+		case( tkn_ja )
+		
+			unhandledInstr();
+
+		case( tkn_jae )
+		
+			unhandledInstr();
+
+		case( tkn_jb )
+		
+			unhandledInstr();
+
+		case( tkn_jbe )
+		
+			unhandledInstr();
+
+		case( tkn_jc )
+		
+			unhandledInstr();
+
+		case( tkn_jcxz )
+		
+			unhandledInstr();
+
+		case( tkn_je )
+		
+			unhandledInstr();
+
+		case( tkn_jecxz )
+		
+			unhandledInstr();
+
+		case( tkn_jf )
+		
+			unhandledInstr();
+
+		case( tkn_jg )
+		
+			unhandledInstr();
+
+		case( tkn_jge )
+		
+			unhandledInstr();
+
+		case( tkn_jl )
+		
+			unhandledInstr();
+
+		case( tkn_jle )
+		
+			unhandledInstr();
+
+		case( tkn_jmp )
+		
+			unhandledInstr();
+
+		case( tkn_jna )
+		
+			unhandledInstr();
+
+		case( tkn_jnae )
+		
+			unhandledInstr();
+
+		case( tkn_jnb )
+		
+			unhandledInstr();
+
+		case( tkn_jnbe )
+		
+			unhandledInstr();
+
+		case( tkn_jnc )
+		
+			unhandledInstr();
+
+		case( tkn_jne )
+		
+			unhandledInstr();
+
+		case( tkn_jng )
+		
+			unhandledInstr();
+
+		case( tkn_jnge )
+		
+			unhandledInstr();
+
+		case( tkn_jnl )
+		
+			unhandledInstr();
+
+		case( tkn_jnle )
+		
+			unhandledInstr();
+
+		case( tkn_jno )
+		
+			unhandledInstr();
+
+		case( tkn_jnp )
+		
+			unhandledInstr();
+
+		case( tkn_jns )
+		
+			unhandledInstr();
+
+		case( tkn_jnz )
+		
+			unhandledInstr();
+
+		case( tkn_jo )
+		
+			unhandledInstr();
+
+		case( tkn_jp )
+		
+			unhandledInstr();
+
+		case( tkn_jpe )
+		
+			unhandledInstr();
+
+		case( tkn_jpo )
+		
+			unhandledInstr();
+
+		case( tkn_js )
+		
+			unhandledInstr();
+
+		case( tkn_jt )
+		
+			unhandledInstr();
+
+		case( tkn_jz )
+		
+			unhandledInstr();
+
+		case( tkn_lahf )
+		
+			putImplied1( eax, _lahf, 0, $9f );
+
+		case( tkn_lar )
+		
+			unhandledInstr();
+
+		case( tkn_ldmxcsr )
+		
+			unhandledInstr();
+
+		case( tkn_lds )
+		
+			unhandledInstr();
+
+		case( tkn_lea )
+		
+			unhandledInstr();
+
+		case( tkn_leave )
+		
+			putImplied1( eax, _leave, 0, $c9 );
+
+		case( tkn_les )
+		
+			unhandledInstr();
+
+		case( tkn_lfence )
+		
+			unhandledInstr();
+
+		case( tkn_lfs )
+		
+			unhandledInstr();
+
+		case( tkn_lgdt )
+		
+			unhandledInstr();
+
+		case( tkn_lgs )
+		
+			unhandledInstr();
+
+		case( tkn_lidt )
+		
+			unhandledInstr();
+
+		case( tkn_lldt )
+		
+			unhandledInstr();
+
+		case( tkn_lmsw )
+		
+			unhandledInstr();
+
+		case( tkn_lock )
+		
+			push( eax );	// Save codeRec parameter for call
+			lex( esi );
+			cmp( eax, '.' );
+			jne badLockPrefix;
+			lex( esi );
+			if( ebx = instr_tc ) then
+
+				// Note: codeRec parameter is already on the stack.
+
+				pushd( lockPrefix_c );
+				call parseInstr;
+				
+			else
+			
+			badLockPrefix:
+				add( 4, esp );	// Remove junk codeRec parameter
+				HLAerror( "Illegal LOCK instruction prefix" nl );
+				mov( edi, ecx );	// set returns = "";
+				mov( edi, edx );
+
+			endif;
+
+		case( tkn_lodsb )
+		
+			putImplied1
+			( 
+				eax, 
+				_lodsb, 
+				repPrefix_c, 
+				$ac 
+			);
+
+		case( tkn_lodsd )
+		
+			putImplied1
+			( 
+				eax, 
+				_lodsd, 
+				repPrefix_c, 
+				$ad 
+			);
+
+		case( tkn_lodsw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_lodsw, 
+				repPrefix_c | sizePrefix_c, 
+				$ad 
+			);
+
+		case( tkn_loop )
+		
+			unhandledInstr();
+
+		case( tkn_loope )
+		
+			unhandledInstr();
+
+		case( tkn_loopne )
+		
+			unhandledInstr();
+
+		case( tkn_loopnz )
+		
+			unhandledInstr();
+
+		case( tkn_loopz )
+		
+			unhandledInstr();
+
+		case( tkn_lsl )
+		
+			unhandledInstr();
+
+		case( tkn_lss )
+		
+			unhandledInstr();
+
+		case( tkn_ltreg )
+		
+			unhandledInstr();
+
+		case( tkn_maskmovdqu )
+		
+			unhandledInstr();
+
+		case( tkn_maskmovq )
+		
+			unhandledInstr();
+
+		case( tkn_maxpd )
+		
+			unhandledInstr();
+
+		case( tkn_maxps )
+		
+			unhandledInstr();
+
+		case( tkn_maxsd )
+		
+			unhandledInstr();
+
+		case( tkn_maxss )
+		
+			unhandledInstr();
+
+		case( tkn_mfence )
+		
+			unhandledInstr();
+
+		case( tkn_minpd )
+		
+			unhandledInstr();
+
+		case( tkn_minps )
+		
+			unhandledInstr();
+
+		case( tkn_minsd )
+		
+			unhandledInstr();
+
+		case( tkn_minss )
+		
+			unhandledInstr();
+
+		case( tkn_mod )
+		
+			unhandledInstr();
+
+		case( tkn_mov )
+		
+			unhandledInstr();
+
+		case( tkn_movapd )
+		
+			unhandledInstr();
+
+		case( tkn_movaps )
+		
+			unhandledInstr();
+
+		case( tkn_movd )
+		
+			unhandledInstr();
+
+		case( tkn_movdq2q )
+		
+			unhandledInstr();
+
+		case( tkn_movdqa )
+		
+			unhandledInstr();
+
+		case( tkn_movdqu )
+		
+			unhandledInstr();
+
+		case( tkn_movhlps )
+		
+			unhandledInstr();
+
+		case( tkn_movhpd )
+		
+			unhandledInstr();
+
+		case( tkn_movhps )
+		
+			unhandledInstr();
+
+		case( tkn_movlhps )
+		
+			unhandledInstr();
+
+		case( tkn_movlpd )
+		
+			unhandledInstr();
+
+		case( tkn_movlps )
+		
+			unhandledInstr();
+
+		case( tkn_movmskpd )
+		
+			unhandledInstr();
+
+		case( tkn_movmskps )
+		
+			unhandledInstr();
+
+		case( tkn_movntdq )
+		
+			unhandledInstr();
+
+		case( tkn_movnti )
+		
+			unhandledInstr();
+
+		case( tkn_movntpd )
+		
+			unhandledInstr();
+
+		case( tkn_movntps )
+		
+			unhandledInstr();
+
+		case( tkn_movntq )
+		
+			unhandledInstr();
+
+		case( tkn_movq )
+		
+			unhandledInstr();
+
+		case( tkn_movq2dq )
+		
+			unhandledInstr();
+
+		case( tkn_movsb )
+		
+			putImplied1
+			( 
+				eax, 
+				_movsb, 
+				repPrefix_c, 
+				$a4 
+			);
+
+		case( tkn_movsd )
+		
+			putImplied1
+			( 
+				eax, 
+				_movsd, 
+				repPrefix_c, 
+				$a5 
+			);
+
+		case( tkn_movsdp )
+		
+			unhandledInstr();
+
+		case( tkn_movss )
+		
+			unhandledInstr();
+
+		case( tkn_movsw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_movsw, 
+				repPrefix_c | sizePrefix_c, 
+				$a5 
+			);
+
+		case( tkn_movsx )
+		
+			unhandledInstr();
+
+		case( tkn_movupd )
+		
+			unhandledInstr();
+
+		case( tkn_movups )
+		
+			unhandledInstr();
+
+		case( tkn_movzx )
+		
+			unhandledInstr();
+
+		case( tkn_mul )
+		
+			unhandledInstr();
+
+		case( tkn_mulpd )
+		
+			unhandledInstr();
+
+		case( tkn_mulps )
+		
+			unhandledInstr();
+
+		case( tkn_mulsd )
+		
+			unhandledInstr();
+
+		case( tkn_mulss )
+		
+			unhandledInstr();
+
+		case( tkn_neg )
+		
+			unhandledInstr();
+
+		case( tkn_nop )
+		
+			putImplied1
+			( 
+				eax, 
+				_nop, 
+				0, 
+				$90 
+			);
+
+		case( tkn_not )
+
+			unhandledInstr();
+
+		case( tkn_or )
+		
+			unhandledInstr();
+
+		case( tkn_orpd )
+		
+			unhandledInstr();
+
+		case( tkn_orps )
+		
+			unhandledInstr();
+
+		case( tkn_out )
+		
+			unhandledInstr();
+
+		case( tkn_outsb )
+		
+			putImplied1
+			( 
+				eax, 
+				_outsb, 
+				repPrefix_c, 
+				$6e 
+			);
+
+		case( tkn_outsd )
+		
+			putImplied1
+			( 
+				eax, 
+				_outsd, 
+				repPrefix_c, 
+				$6f 
+			);
+
+		case( tkn_outsw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_outsw, 
+				repPrefix_c | sizePrefix_c, 
+				$6f 
+			);
+
+		case( tkn_packssdw )
+		
+			unhandledInstr();
+
+		case( tkn_packsswb )
+		
+			unhandledInstr();
+
+		case( tkn_packuswb )
+		
+			unhandledInstr();
+
+		case( tkn_paddb )
+		
+			unhandledInstr();
+
+		case( tkn_paddd )
+		
+			unhandledInstr();
+
+		case( tkn_paddq )
+		
+			unhandledInstr();
+
+		case( tkn_paddsb )
+		
+			unhandledInstr();
+
+		case( tkn_paddsw )
+		
+			unhandledInstr();
+
+		case( tkn_paddusb )
+		
+			unhandledInstr();
+
+		case( tkn_paddusw )
+		
+			unhandledInstr();
+
+		case( tkn_paddw )
+		
+			unhandledInstr();
+
+		case( tkn_pand )
+		
+			unhandledInstr();
+
+		case( tkn_pandn )
+		
+			unhandledInstr();
+
+		case( tkn_pause )
+		
+			unhandledInstr();
+
+		case( tkn_pavgb )
+		
+			unhandledInstr();
+
+		case( tkn_pavgw )
+		
+			unhandledInstr();
+
+		case( tkn_pcmpeqb )
+		
+			unhandledInstr();
+
+		case( tkn_pcmpeqd )
+		
+			unhandledInstr();
+
+		case( tkn_pcmpeqw )
+		
+			unhandledInstr();
+
+		case( tkn_pcmpgtb )
+		
+			unhandledInstr();
+
+		case( tkn_pcmpgtd )
+		
+			unhandledInstr();
+
+		case( tkn_pcmpgtw )
+		
+			unhandledInstr();
+
+		case( tkn_pextrw )
+		
+			unhandledInstr();
+
+		case( tkn_pinsrw )
+		
+			unhandledInstr();
+
+		case( tkn_pmaddwd )
+		
+			unhandledInstr();
+
+		case( tkn_pmaxsw )
+		
+			unhandledInstr();
+
+		case( tkn_pmaxub )
+		
+			unhandledInstr();
+
+		case( tkn_pminsw )
+		
+			unhandledInstr();
+
+		case( tkn_pminub )
+		
+			unhandledInstr();
+
+		case( tkn_pmovmskb )
+		
+			unhandledInstr();
+
+		case( tkn_pmulhuw )
+		
+			unhandledInstr();
+
+		case( tkn_pmulhw )
+		
+			unhandledInstr();
+
+		case( tkn_pmullw )
+		
+			unhandledInstr();
+
+		case( tkn_pmuludq )
+		
+			unhandledInstr();
+
+		case( tkn_pop )
+		
+			unhandledInstr();
+
+		case( tkn_popa )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_popa, 
+				sizePrefix_c, 
+				$61 
+			);
+
+		case( tkn_popad )
+		
+			putImplied1
+			( 
+				eax, 
+				_popad, 
+				0, 
+				$61 
+			);
+
+		case( tkn_popf )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_popf, 
+				sizePrefix_c, 
+				$9d 
+			);
+
+		case( tkn_popfd )
+		
+			putImplied1
+			( 
+				eax, 
+				_popfd, 
+				0, 
+				$9d 
+			);
+
+		case( tkn_por )
+		
+			unhandledInstr();
+
+		case( tkn_prefetch )
+		
+			unhandledInstr();
+
+		case( tkn_prefetchnta )
+		
+			unhandledInstr();
+
+		case( tkn_prefetcht0 )
+		
+			unhandledInstr();
+
+		case( tkn_prefetcht1 )
+		
+			unhandledInstr();
+
+		case( tkn_prefetcht2 )
+		
+			unhandledInstr();
+
+		case( tkn_psadbw )
+		
+			unhandledInstr();
+
+		case( tkn_pshufd )
+		
+			unhandledInstr();
+
+		case( tkn_pshufw )
+		
+			unhandledInstr();
+
+		case( tkn_pslld )
+		
+			unhandledInstr();
+
+		case( tkn_pslldq )
+		
+			unhandledInstr();
+
+		case( tkn_psllq )
+		
+			unhandledInstr();
+
+		case( tkn_psllw )
+		
+			unhandledInstr();
+
+		case( tkn_psrad )
+		
+			unhandledInstr();
+
+		case( tkn_psraw )
+		
+			unhandledInstr();
+
+		case( tkn_psrld )
+		
+			unhandledInstr();
+
+		case( tkn_psrldq )
+		
+			unhandledInstr();
+
+		case( tkn_psrlq )
+		
+			unhandledInstr();
+
+		case( tkn_psrlw )
+		
+			unhandledInstr();
+
+		case( tkn_psubb )
+		
+			unhandledInstr();
+
+		case( tkn_psubd )
+		
+			unhandledInstr();
+
+		case( tkn_psubq )
+		
+			unhandledInstr();
+
+		case( tkn_psubsb )
+		
+			unhandledInstr();
+
+		case( tkn_psubsw )
+		
+			unhandledInstr();
+
+		case( tkn_psubusb )
+		
+			unhandledInstr();
+
+		case( tkn_psubusw )
+		
+			unhandledInstr();
+
+		case( tkn_psubw )
+		
+			unhandledInstr();
+
+		case( tkn_punpckhbw )
+		
+			unhandledInstr();
+
+		case( tkn_punpckhdq )
+		
+			unhandledInstr();
+
+		case( tkn_punpckhqdq )
+		
+			unhandledInstr();
+
+		case( tkn_punpckhwd )
+		
+			unhandledInstr();
+
+		case( tkn_punpcklbw )
+		
+			unhandledInstr();
+
+		case( tkn_punpckldq )
+		
+			unhandledInstr();
+
+		case( tkn_punpcklqdq )
+		
+			unhandledInstr();
+
+		case( tkn_punpcklwd )
+		
+			unhandledInstr();
+
+		case( tkn_push )
+		
+			unhandledInstr();
+
+		case( tkn_pusha )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_pusha, 
+				sizePrefix_c, 
+				$60 
+			);
+
+		case( tkn_pushad )
+		
+			putImplied1
+			( 
+				eax, 
+				_pushad, 
+				0, 
+				$60 
+			);
+
+		case( tkn_pushd )
+		
+			unhandledInstr();
+
+		case( tkn_pushf )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_pushf, 
+				sizePrefix_c, 
+				$9c 
+			);
+
+		case( tkn_pushfd )
+		
+			putImplied1
+			( 
+				eax, 
+				_pushf, 
+				0, 
+				$9c 
+			);
+
+		case( tkn_pushw )
+		
+			unhandledInstr();
+
+		case( tkn_pxor )
+		
+			unhandledInstr();
+
+		case( tkn_rcl )
+		
+			unhandledInstr();
+
+		case( tkn_rcpps )
+		
+			unhandledInstr();
+
+		case( tkn_rcpss )
+		
+			unhandledInstr();
+
+		case( tkn_rcr )
+		
+			unhandledInstr();
+
+		case( tkn_rdmsr )
+		
+			putImplied1
+			( 
+				eax, 
+				_rdmsr, 
+				0, 
+				$320f 
+			);
+
+		case( tkn_rdpmc )
+		
+			putImplied1
+			( 
+				eax, 
+				_rdpmc, 
+				0, 
+				$3d0f 
+			);
+
+		case( tkn_rdtsc )
+		
+			putImplied1
+			( 
+				eax, 
+				_rdpmc, 
+				0, 
+				$310f 
+			);
+
+		case( tkn_rep )
+		
+			push( eax );	// Save codeRec parameter for call
+			lex( esi );
+			cmp( eax, '.' );
+			jne badRepPrefix;
+			lex( esi );
+			if( ebx = instr_tc ) then
+
+				// Note: codeRec parameter is already on the stack.
+
+				pushd( repPrefix_c );
+				call parseInstr;
+				
+			else
+			
+			  badRepPrefix:
+				add( 4, esp );	// Remove junk codeRec parameter
+				HLAerror( "Illegal REP instruction prefix" nl );
+				mov( edi, ecx );	// set returns = ""
+				mov( edi, edx );
+
+			endif;
+
+
+		case( tkn_repe )
+		
+			push( eax );	// Save codeRec parameter for call
+			lex( esi );
+			cmp( eax, '.' );
+			jne badRepePrefix;
+			lex( esi );
+			if( ebx = instr_tc ) then
+
+				// Note: codeRec parameter is already on the stack.
+
+				pushd( repePrefix_c );
+				call parseInstr;
+				
+			else
+			
+			  badRepePrefix:
+				add( 4, esp );	// Remove junk codeRec parameter
+				HLAerror( "Illegal REPE instruction prefix" nl );
+				mov( edi, ecx );	// set returns = ""
+				mov( edi, edx );
+
+			endif;
+
+
+
+		case( tkn_repne )
+		
+			push( eax );	// Save codeRec parameter for call
+			lex( esi );
+			cmp( eax, '.' );
+			jne badRepnePrefix;
+			lex( esi );
+			if( ebx = instr_tc ) then
+
+				// Note: codeRec parameter is already on the stack.
+
+				pushd( repnePrefix_c );
+				call parseInstr;
+				
+			else
+			
+			  badRepnePrefix:
+				add( 4, esp );	// Remove junk codeRec parameter
+				HLAerror( "Illegal REPNE instruction prefix" nl );
+				mov( edi, ecx );	// set returns = ""
+				mov( edi, edx );
+
+			endif;
+
+
+
+		case( tkn_repz )
+		
+			push( eax );	// Save codeRec parameter for call
+			lex( esi );
+			cmp( eax, '.' );
+			jne badRepzPrefix;
+			lex( esi );
+			if( ebx = instr_tc ) then
+
+				// Note: codeRec parameter is already on the stack.
+
+				pushd( repePrefix_c );
+				call parseInstr;
+				
+			else
+			
+			  badRepzPrefix:
+				add( 4, esp );	// Remove junk codeRec parameter
+				HLAerror( "Illegal REPZ instruction prefix" nl );
+				mov( edi, ecx );	// set returns = ""
+				mov( edi, edx );
+
+			endif;
+
+
+
+		case( tkn_repnz )
+		
+			push( eax );	// Save codeRec parameter for call
+			lex( esi );
+			cmp( eax, '.' );
+			jne badRepnzPrefix;
+			lex( esi );
+			if( ebx = instr_tc ) then
+
+				// Note: codeRec parameter is already on the stack.
+
+				pushd( repnePrefix_c );
+				call parseInstr;
+				
+			else
+			
+			  badRepnzPrefix:
+				add( 4, esp );	// Remove junk codeRec parameter
+				HLAerror( "Illegal REPNZ instruction prefix" nl );
+				mov( edi, ecx );	// set returns = ""
+				mov( edi, edx );
+
+			endif;
+
+
+
+		case( tkn_ret )
+		
+			mov( 0, cnt );
+			mov( true, shortRet );
+			if( intelSyntax ) then
+
+				// For intelSyntax, we've either got an expression
+				// or a semicolon:
+
+				lex( esi );
+				reuseLastTkn();
+				if( eax <> ';' ) then
+
+					getCntOperand();
+					mov( eax, cnt );
+					mov( false, shortRet );
+
+				endif;
+
+			else
+
+				// HLA syntax allows the following:
+				//
+				//	ret;
+				//	ret();
+				//	ret( expr );
+
+				lex( esi );
+				if( eax = '(' ) then
+
+					lex( esi );
+					if( eax <> ')' ) then
+
+						// must be ret( expr ); here:
+
+						reuseLastTkn();
+						getCntOperand();
+						mov( eax, cnt );
+						mov( false, shortRet );
+						getRParen();
+
+					endif;
+
+				else
+
+					// must be ret; here:
+
+					reuseLastTkn();
+					if( eax <> ';' ) then
+
+						HLAerror
+						( 
+							"Syntax error, expected ';' or expression"
+							nl
+						);
+						
+					endif;
+
+				endif;
+
+			endif;
+
+			if( shortRet ) then
+
+				// RET; is a special one-byte opcode.
+
+				putImplied1
+				( 
+					codeRec, 
+					_ret, 
+					0, 
+					$c3 
+				);
+				
+			else
+
+				// $c2 is the standard three-byte INT instruction:
+
+				mov( cnt, edx );
+				shl( 8, edx );
+				or( $c2, edx );
+				putThreeByte
+				( 
+					codeRec, 
+					_ret, 
+					0, 
+					edx 
+				);
+
+			endif;
+			mov( cnt, edx );
+			mov( codeRec, eax );
+			mov( edx, intCodeEAX.cntOperand );
+
+		case( tkn_rol )
+		
+			unhandledInstr();
+
+		case( tkn_ror )
+		
+			unhandledInstr();
+
+		case( tkn_rsm )
+		
+			putImplied2
+			( 
+				eax, 
+				_rsm, 
+				0, 
+				$aa0f 
+			);
+
+		case( tkn_rsqrtss )
+		
+			unhandledInstr();
+
+		case( tkn_sahf )
+		
+			putImplied1
+			( 
+				eax, 
+				_sahf, 
+				0, 
+				$9e 
+			);
+
+		case( tkn_sal )
+		
+			unhandledInstr();
+
+		case( tkn_sar )
+		
+			unhandledInstr();
+
+		case( tkn_sbb )
+		
+			unhandledInstr();
+
+		case( tkn_scasb )
+		
+			putImplied1
+			( 
+				eax, 
+				_scasb, 
+				repePrefix_c | repnePrefix_c, 
+				$ae 
+			);
+
+		case( tkn_scasd )
+		
+			putImplied1
+			( 
+				eax, 
+				_scasd, 
+				repePrefix_c | repnePrefix_c, 
+				$af 
+			);
+
+		case( tkn_scasw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_scasw, 
+				repePrefix_c | repnePrefix_c | sizePrefix_c, 
+				$af 
+			);
+
+		case( tkn_seta )
+		
+			unhandledInstr();
+
+		case( tkn_setae )
+		
+			unhandledInstr();
+
+		case( tkn_setb )
+		
+			unhandledInstr();
+
+		case( tkn_setbe )
+		
+			unhandledInstr();
+
+		case( tkn_setc )
+		
+			unhandledInstr();
+
+		case( tkn_sete )
+		
+			unhandledInstr();
+
+		case( tkn_setg )
+		
+			unhandledInstr();
+
+		case( tkn_setge )
+		
+			unhandledInstr();
+
+		case( tkn_setl )
+		
+			unhandledInstr();
+
+		case( tkn_setle )
+		
+			unhandledInstr();
+
+		case( tkn_setna )
+		
+			unhandledInstr();
+
+		case( tkn_setnae )
+		
+			unhandledInstr();
+
+		case( tkn_setnb )
+		
+			unhandledInstr();
+
+		case( tkn_setnbe )
+		
+			unhandledInstr();
+
+		case( tkn_setnc )
+		
+			unhandledInstr();
+
+		case( tkn_setne )
+		
+			unhandledInstr();
+
+		case( tkn_setng )
+		
+			unhandledInstr();
+
+		case( tkn_setnge )
+		
+			unhandledInstr();
+
+		case( tkn_setnl )
+		
+			unhandledInstr();
+
+		case( tkn_setnle )
+		
+			unhandledInstr();
+
+		case( tkn_setno )
+		
+			unhandledInstr();
+
+		case( tkn_setnp )
+		
+			unhandledInstr();
+
+		case( tkn_setns )
+		
+			unhandledInstr();
+
+		case( tkn_setnz )
+		
+			unhandledInstr();
+
+		case( tkn_seto )
+		
+			unhandledInstr();
+
+		case( tkn_setp )
+		
+			unhandledInstr();
+
+		case( tkn_setpe )
+		
+			unhandledInstr();
+
+		case( tkn_setpo )
+		
+			unhandledInstr();
+
+		case( tkn_sets )
+		
+			unhandledInstr();
+
+		case( tkn_setz )
+		
+			unhandledInstr();
+
+		case( tkn_sfence )
+		
+			unhandledInstr();
+
+		case( tkn_sgdt )
+		
+			unhandledInstr();
+
+		case( tkn_shl )
+		
+			unhandledInstr();
+
+		case( tkn_shld )
+		
+			unhandledInstr();
+
+		case( tkn_shr )
+		
+			unhandledInstr();
+
+		case( tkn_shrd )
+		
+			unhandledInstr();
+
+		case( tkn_shufpd )
+		
+			unhandledInstr();
+
+		case( tkn_shufps )
+		
+			unhandledInstr();
+
+		case( tkn_sidt )
+		
+			unhandledInstr();
+
+		case( tkn_sldt )
+		
+			unhandledInstr();
+
+		case( tkn_sqrtpd )
+		
+			unhandledInstr();
+
+		case( tkn_sqrtps )
+		
+			unhandledInstr();
+
+		case( tkn_sqrtsd )
+		
+			unhandledInstr();
+
+		case( tkn_sqrtss )
+		
+			unhandledInstr();
+
+		case( tkn_smsw )
+		
+			unhandledInstr();
+
+		case( tkn_stc )
+		
+			putImplied1
+			( 
+				eax, 
+				_stc, 
+				0, 
+				$f9 
+			);
+
+		case( tkn_std )
+		
+			putImplied1
+			( 
+				eax, 
+				_std, 
+				0, 
+				$fd 
+			);
+
+		case( tkn_sti )
+		
+			putImplied1
+			( 
+				eax, 
+				_sti, 
+				0, 
+				$fb 
+			);
+
+		case( tkn_stmxcsr )
+		
+			unhandledInstr();
+
+		case( tkn_stosb )
+		
+			putImplied1
+			( 
+				eax, 
+				_stosb, 
+				repPrefix_c, 
+				$aa 
+			);
+
+		case( tkn_stosd )
+		
+			putImplied1
+			( 
+				eax, 
+				_stosd, 
+				repPrefix_c, 
+				$ab 
+			);
+
+		case( tkn_stosw )
+		
+			or( sizePrefix_c, prefixes );
+			putImplied1
+			( 
+				eax, 
+				_stosw, 
+				repPrefix_c | sizePrefix_c, 
+				$ab 
+			);
+
+		case( tkn_streg )
+		
+			unhandledInstr();
+
+		case( tkn_sub )
+		
+			unhandledInstr();
+
+		case( tkn_subpd )
+		
+			unhandledInstr();
+
+		case( tkn_subps )
+		
+			unhandledInstr();
+
+		case( tkn_subsd )
+		
+			unhandledInstr();
+
+		case( tkn_subss )
+		
+			unhandledInstr();
+
+		case( tkn_sysenter )
+		
+			putImplied2
+			( 
+				eax, 
+				_sysenter, 
+				0, 
+				$050f 
+			);
+
+		case( tkn_sysexit )
+		
+			putImplied2
+			( 
+				eax, 
+				_sysexit, 
+				0, 
+				$070f 
+			);
+
+		case( tkn_test )
+		
+			unhandledInstr();
+
+		case( tkn_ucomisd )
+		
+			unhandledInstr();
+
+		case( tkn_ucomiss )
+		
+			unhandledInstr();
+
+		case( tkn_ud2 )
+		
+			putImplied2
+			( 
+				eax, 
+				_ud2, 
+				0, 
+				$0b0f 
+			);
+
+		case( tkn_unpchkpd )
+		
+			unhandledInstr();
+
+		case( tkn_unpchkps )
+		
+			unhandledInstr();
+
+		case( tkn_unpcklpd )
+		
+			unhandledInstr();
+
+		case( tkn_unpcklps )
+		
+			unhandledInstr();
+
+		case( tkn_verr )
+		
+			unhandledInstr();
+
+		case( tkn_verw )
+		
+			unhandledInstr();
+
+		case( tkn_wait )
+		
+			putImplied1
+			( 
+				eax, 
+				_wait, 
+				0, 
+				$9b 
+			);
+
+		case( tkn_wbinvd )
+		
+			unhandledInstr();
+
+		case( tkn_wrsmr )
+		
+			unhandledInstr();
+
+		case( tkn_xadd )
+		
+			unhandledInstr();
+
+		case( tkn_xchg )
+		
+			unhandledInstr();
+
+		case( tkn_xlat )
+		
+			putImplied1
+			( 
+				eax, 
+				_xlat, 
+				0, 
+				$b7 
+			);
+
+		case( tkn_xor )
+		
+			unhandledInstr();
+
+		case( tkn_xorpd )
+		
+			unhandledInstr();
+
+		case( tkn_xorps )
+		
+			unhandledInstr();
+
+
+		default
+
+			HLAerror( "Unknown instruction: '" );
+			dumpLexeme();
+			HLAerror2( "'" nl );
+
+			mov( edi, ecx );	// returns = ""
+			mov( edi, edx );
+
+	endswitch; //> changed to hla standard switch instead of broken one in hll - may need to remedy
+
+end parseInstr;
+
+end parseInstrUnit;

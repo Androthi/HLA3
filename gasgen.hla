@@ -1,0 +1,13 @@
+unit gasGenUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+procedure gasGen; @nodisplay; @noalignstack;
+begin gasGen;
+
+		  
+
+end gasGen;
+
+end gasGenUnit;
+

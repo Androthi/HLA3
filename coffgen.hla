@@ -1,0 +1,2206 @@
+// coffgen.hla
+//
+// This module handles code generation for the COFF format
+//
+// This document builds the file structure described in the
+// documentation "Microsoft Portable Executable and
+// Common Object File Format Specification" Revision 6.0, 1999.
+//
+// Please consult that documentation of a description of the
+// data types and algorithms found in this source file.
+
+unit coffGenUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+static
+	align(4);
+	totalSize		:uns32 := 0;
+	numCoffSyms		:uns32 := 0;
+	numCoffBlks		:uns32 := 0;
+	coffSyms		:CoffSymbolListPtr := NULL;
+	lastCoffSym		:CoffSymbolListPtr := NULL;
+
+	stAllocatedSize	:uns32 := 0;
+	stringTableSize	:uns32 := 0;
+	stringTable		:pointer to char := NULL;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// appendStringTable-
+//
+//	Appends a string to the end of the string table and returns the offset
+// into the string table where the new string can be found.
+//
+// Returns:
+//
+//	EAX-
+//		Offset (from the beginning of the string table) to newly 
+//		allocated string in the string table.
+
+//proc( "appendStringTable" );
+procedure appendStringTable( toAppend:string );
+begin appendStringTable;
+
+	push( ecx );
+	push( esi );
+	push( edi );
+
+	mov( toAppend, esi );
+	canAccess( [esi] );
+	str.length( esi );
+	inc( eax );
+	mov( eax, ecx );
+	add( stringTableSize, eax );
+	if( eax >= stAllocatedSize ) then
+
+		shl( 1, stAllocatedSize );
+		realloc( stringTable, stAllocatedSize );
+		mov( eax, stringTable );
+
+	endif;
+	mov( stringTableSize, eax );
+	mov( stringTable, edi );
+	add( eax, edi );
+	canAccess( [esi] );
+	add( ecx, stringTableSize );
+	rep.movsb();
+
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+
+end appendStringTable;
+
+
+	 
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// addCOFFsymbol-
+//
+//	Add a symbol to the COFF symbol table list.
+
+//proc( "addCOFFsymbol" );
+procedure addCOFFsymbol
+(
+		theName			:string;
+		theValue		:dword;
+		sectionNum		:word;
+		theType			:word;
+		storageClass	:byte;
+		numOfAuxSyms	:byte
+);
+var
+	strLen			:uns32;
+	symStrTblIndex	:dword;
+
+begin addCOFFsymbol;
+
+	push( ebx );
+	push( ecx );
+	push( esi );
+	push( edi );
+					   
+	// Bump up the symbol counter by the number of aux syms plus one:
+
+	movzx( numOfAuxSyms, eax );
+	inc( eax );
+	add( eax, numCoffSyms );
+	inc( numCoffBlks );
+
+	// If the length of the name is greater than eight characters,
+	// we're going to need some auxillary symbol records:
+
+	mov( theName, eax );
+	str.length( eax );
+	mov( eax, strLen );
+	if( eax > 8 ) then
+
+		// If the name is greater than eight characters long,
+		// then we've got to create a string of the form "/nnnn"
+		// where "nnnn" is an ASCII representation of a decimal
+		// index into the string table where the actual (zero-
+		// terminated) name can be found.
+
+		appendStringTable( theName );
+		mov( eax, symStrTblIndex );
+		
+	endif;
+
+
+	// Compute the size of the CoffSymbolList entry as the
+	// size of a CoffSymbolList record item plus the number
+	// of aux symbol records.
+
+	mov( lastCoffSym, ebx );
+	movzx( numOfAuxSyms, ecx );
+	intmul( @size( CoffSymbols ), ecx );
+	add( @size( CoffSymbolList ), ecx );
+	malloc( ecx );
+	sub( @size( CoffSymbolList )-@size( CoffSymbols ), ecx );
+
+	// Append this symbol to the end of the COFF symbol list:
+
+	if( ebx = NULL ) then
+
+		mov( eax, lastCoffSym );
+		mov( eax, coffSyms );
+
+	else
+
+		canAccess( coffListEBX.next );
+
+		mov( eax, coffListEBX.next );
+		mov( eax, lastCoffSym );
+
+	endif;
+	mov( eax, ebx );
+	mov( ecx, coffListEBX.size );
+	mov( NULL, coffListEBX.next );
+
+	// Copy the name field over. Pad with zeros
+	// if there aren't exactly eight characters:
+
+	if( strLen <= 8 ) then
+
+		mov( theName, esi );
+		xor( eax, eax );
+		mov( eax, coffListEBX.syms.symbol.LongName[0] );
+		mov( eax, coffListEBX.syms.symbol.LongName[4] );
+		lea( edi, coffListEBX.syms.symbol.LongName );
+		mov( (type str.strRec [esi]).length, ecx );
+		rep.movsb();
+
+	else
+		// If the name was greater than eight characters
+		// in length, then store zero into the first four
+		// bytes of the symbol table entry and put the
+		// index into the string table into the next four bytes.
+
+		xor( eax, eax );
+		mov( eax, coffListEBX.syms.symbol.LongName[0] );
+		mov( symStrTblIndex, eax );
+		mov( eax, coffListEBX.syms.symbol.LongName[4] );
+
+	endif;
+
+	mov( theValue, eax );
+	mov( eax, coffListEBX.syms.symbol.Value );
+	mov( sectionNum, cx );
+	mov( cx, coffListEBX.syms.symbol.SectionNumber );
+	mov( theType, cx );
+	mov( cx, coffListEBX.syms.symbol._Type );
+	mov( storageClass, al );
+	mov( al, coffListEBX.syms.symbol.StorageClass );
+	mov( numOfAuxSyms, al );
+	mov( al, coffListEBX.syms.symbol.NumberOfAuxSymbols );
+	 
+	// Return pointer to symbol in EAX:
+
+	mov( ebx, eax );
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	
+end addCOFFsymbol;
+
+
+//////////////////////////////////////////////////////////////////////////////
+
+
+//proc( "buildSectionHeader" );
+procedure buildSectionHeader
+(
+	var	sectionHeader		 	:IMAGE_SECTION_HEADER;
+		_name					:string;
+		virtualAddress			:dword;
+		sizeOfRawData			:uns32;
+		pointerToRawData		:dword;
+		pointerToRelocations	:dword;
+		pointerToLinenumbers	:dword;
+		numberOfRelocations		:uns32;
+		numberOfLinenumbers		:uns32;
+		characteristics			:dword
+);
+
+static
+	nameStr	:str.strvar(8);
+
+begin buildSectionHeader;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( esi );
+	push( edi );
+	cld();
+
+	mov( sectionHeader, ebx );
+	canAccess( [ebx] );
+
+	// Clear out the name field so it is padded with zeros
+	// in case the name's length is less than eight characters:
+
+	xor( eax, eax );
+	mov( eax, (type dword sectionEBX._Name));
+	mov( eax, (type dword sectionEBX._Name[4]));
+
+	str.length( _name );
+	mov( eax, ecx );
+	if( eax <= 8 ) then
+
+		// If the name is eight characters or less, then
+		// copy the name directly into the section header's
+		// name field:
+
+		mov( _name, esi );
+
+	else
+
+		// If the section's name is greater than eight characters,
+		// then create an entry in the string table for the name:
+
+		HLAwarning
+		( 
+			"Segment name '", 
+			_name, 
+			"' is longer than eight characters.",
+			nl
+			"This name may be truncated by the linker to eight characters"
+			nl
+			"when creating the executable file."
+			nl
+		);
+
+		appendStringTable( _name );
+		str.put( nameStr, '/', (type uns32 eax ));
+		str.length( nameStr );
+		mov( eax, ecx );
+		lea( esi, nameStr );
+
+	endif;
+	lea( edi, sectionEBX._Name );
+	rep.movsb();
+
+	// Okay, fill in the other fields of the section header:
+
+	mov( virtualAddress, eax );
+	mov( sizeOfRawData, ecx );
+	mov( pointerToRawData, esi );
+	mov( pointerToLinenumbers, edi );
+	mov( 0, sectionEBX.VirtualSize );
+	mov( eax, sectionEBX.VirtualAddress );
+	mov( ecx, sectionEBX.SizeOfRawData );
+	mov( esi, sectionEBX.PointerToRawData );
+	mov( edi, sectionEBX.PointerToLinenumbers );
+	mov( pointerToRelocations, edi );
+	mov( characteristics, esi );
+	mov( (type word numberOfRelocations), ax );
+	mov( (type word numberOfLinenumbers), cx );
+	mov( edi, sectionEBX.PointerToRelocations );
+	mov( ax, sectionEBX.NumberOfRelocations );
+	mov( cx, sectionEBX.NumberOfLinenumbers );
+	mov( esi, sectionEBX.Characteristics );
+
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end buildSectionHeader;
+
+	  			  
+
+
+
+//proc( "fillInSectionHeader" );
+procedure fillInSectionHeader
+(
+	var	sectionHeader		 	:IMAGE_SECTION_HEADER;
+		sizeOfRawData			:uns32;
+		pointerToRawData		:dword;
+		pointerToRelocations	:dword;
+		pointerToLinenumbers	:dword;
+		numberOfRelocations		:uns32;
+		numberOfLinenumbers		:uns32
+);
+begin fillInSectionHeader;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( esi );
+	push( edi );
+
+	mov( sectionHeader, ebx );
+	canAccess( [ebx] );
+
+	// Okay, fill in the other fields of the section header:
+
+	mov( pointerToRelocations, eax );
+	mov( sizeOfRawData, ecx );
+	mov( pointerToRawData, esi );
+	mov( pointerToLinenumbers, edi );
+	mov( 0, sectionEBX.VirtualAddress );
+	mov( 0, sectionEBX.VirtualSize );
+	mov( ecx, sectionEBX.SizeOfRawData );
+	mov( esi, sectionEBX.PointerToRawData );
+	mov( edi, sectionEBX.PointerToLinenumbers );
+	mov( eax, sectionEBX.PointerToRelocations );
+
+	mov( (type word numberOfRelocations), ax );
+	mov( (type word numberOfLinenumbers), cx );
+	mov( ax, sectionEBX.NumberOfRelocations );
+	mov( cx, sectionEBX.NumberOfLinenumbers );
+
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end fillInSectionHeader;
+
+	  			  
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// computeSegmentSize-
+//
+//	Computes the size of a data segment
+//
+// Returns:
+//
+//	EAX-
+//		Size of the data segment
+
+//proc( "computeSegmentSize" );
+procedure computeSegmentSize( theSegment:symNodePtr_t );
+var
+	size		:dword;
+
+begin computeSegmentSize;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( theSegment, ebx );
+	canAccess( [ebx] );
+	assert( symEBX.pType = Segment_pt );
+
+	// Okay traverse the segList to determine the size of the segment
+
+	mov( 0, size );
+	mov( symEBX.segList, ebx );
+	while( ebx <> NULL ) do
+
+		mov( segEBX.segItemType, eax );
+		assert( eax < codeRecord_c );
+
+		if( eax = symbolRecord_c ) then
+
+			mov( segEBX.symPtr, eax );
+			canAccess( [eax] );
+
+			// Compute the size/offset. This is pretty easy, just
+			// use the segItem_t starting offset and the size of
+			// the data object:
+
+			mov( segEBX.offset, ecx );
+			add( symEAX.objectSize, ecx );
+			if( ecx >= size ) then
+
+				mov( ecx, size );
+
+			endif;
+
+		elseif( eax = dataRecord_c ) then
+
+			mov( segEBX.valList.elementCnt, edx );
+			mov( segEBX.valList.valType, eax );
+			intmul( symEAX.objectSize, edx );
+			add( segEBX.offset, edx );
+			if( edx >= size ) then
+
+				mov( edx, size );
+
+			endif;
+
+		endif;
+		mov( segEBX.nextSegItem, ebx );
+
+	endwhile;
+
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	mov( size, eax );
+
+end computeSegmentSize;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// buildDataSegment-
+//
+//	Constructs a data segment in memory.
+//
+// Returns:
+//
+//	EAX-
+//		Pointer to the binary data allocated in memory
+//
+//	EBX-
+//		Size of the allocated binary data block.
+//
+//	ECX-
+//		Pointer to the relocation table.
+//
+//	EDX-
+//		Size of the relocation table.
+
+procedure buildDataSegment
+( 
+	theSegment		:symNodePtr_t; 
+	sectionNum		:word;
+	isConstSection	:boolean 
+); @external;
+
+//proc( "buildDataSegment" );
+procedure buildDataSegment
+( 
+	theSegment		:symNodePtr_t; 
+	sectionNum		:word;
+	isConstSection	:boolean
+);
+var
+	size				:dword;
+	binaryDataPtr		:dword;
+	relocTable			:relocPtr_t;
+	relocSize			:dword;			// Allocated size of relocTable
+	relocIndex			:dword;			// Current byte index into relocTable
+
+	// putBinData-
+	//
+	//	Writes the binary data from the attr object passed as a parameter
+	// to the binary data block pointed at by binaryDataPtr+offset. If the 
+	// data requires a relocation entry, this procedure adds a relocation 
+	// entry to the relocTable array.
+	//
+	// Assumption:	  
+	//	Direction flag must be clear upon entry.
+
+	procedure putBinData
+	( 	
+		attr			:attrPtr_t; 
+		offset			:dword; 
+		symType			:symNodePtr_t;
+		basePtr			:dword;
+		isConstSection	:boolean 
+	);
+	var
+		theString	:attrPtr_t;
+
+	begin putBinData;
+
+		push( eax );
+		push( ebx );
+		push( ecx );
+		push( edx );
+		push( esi );
+		push( edi );
+
+		// Base address of buildDataSegments' activation record:
+
+		mov( basePtr, ebx );
+		mov( offset, edi );
+		add( ebx::binaryDataPtr, edi );
+		canAccess( [edi] );
+
+		mov( attr, ecx );
+		canAccess( [ecx] );
+		lea( esi, attrECX.byte_vt );
+
+
+		// Okay, process the data type, as necessary:
+
+		movzx( attrECX.pType, eax );
+		switch( eax )
+
+			case
+			(
+				Byte_pt,  
+				Uns8_pt,  
+				Int8_pt,
+				Boolean_pt,
+				Char_pt,  
+				XChar_pt
+			)
+
+				movsb();
+			
+			
+			case
+			(
+				Word_pt,  
+				Uns16_pt, 
+				Int16_pt, 
+				Unicode_pt
+			)
+				movsw();
+			
+			case
+			(
+				Procptr_pt,			
+				Pointer_pt
+			)
+
+
+				mov( attrECX.p.dispMinusAdrs, eax );
+				if( eax <> NULL ) then
+
+					canAccess( [eax] );
+
+					// If we've got a static expression of the
+					// form "&x[n] - &y[n]" then we can compute
+					// the constant value right here on the spot:
+
+					mov( staticEAX.seg, edx );
+					mov( attrECX.p.dispBaseAdrs, eax );
+					canAccess( [eax] );
+
+					// Both symbols must belong to the same segment,
+					// or it's an error:
+
+					if( edx <> staticEAX.seg ) then
+
+						HLAerror
+						( 
+							"Static address expression at line ",
+							staticEAX.lineNumber,
+							" involves two variables"
+							nl
+						);
+
+						mov( staticEAX.symbol, edx );
+						mov( attrECX.p.dispMinusAdrs, eax );
+						mov( staticEAX.symbol, eax );
+
+						HLAerror2
+						(
+							"in different segments (",
+							symEDX.trueName,
+							" and ",
+							symEAX.trueName,
+							")"
+							nl
+						);
+
+					else
+
+						// Okay, compute the distance between
+						// the two symbols and just emit that
+						// constant (something we can do right
+						// away, no relocation info is needed)
+
+						mov( staticEAX.symbol, eax );
+						mov( attrECX.p.dispMinusAdrs, edx );
+						canAccess( [edx] );
+
+						mov( symEAX.offset, eax );
+						mov( staticEDX.symbol, edx );
+						add( attrECX.p.constant, eax );
+						sub( symEDX.offset, eax );
+						mov( eax, [edi] );
+
+					endif;
+
+				elseif( attrECX.p.dispBaseAdrs = NULL ) then
+
+					// We've got an @pointer(xxx) defined pointer
+					// constant that only has an offset field.
+					// Simply output the value of the offset field:
+
+					mov( attrECX.p.constant, eax );
+					mov( eax, [edi] );
+
+				else
+
+					// If a "minusThisAdrs_vt" value isn't present
+					// as a basePtrConst_vt value is present,
+					// then we're simply taking the address of
+					// an existing object. So we need to emit
+					// a relocation record for this guy.
+					// Begin by emitting the pointer constant's
+					// offset:
+
+					mov( attrECX.p.constant, eax );
+					mov( eax, [edi] );
+
+					// Compute the offset into the section where
+					// the relocation is going to be applied:
+
+					sub( ebx::binaryDataPtr, edi );
+					mov( ebx::relocIndex, edx );
+					add( ebx::relocTable, edx );
+					canAccess( [edx] );
+
+					mov( edi, relocEDX.VirtualAddress );
+
+					// Get the symbol assocated with this pointer
+					// object and determine if we already have
+					// a COFF symbol table entry for it:
+
+					mov( attrECX.p.dispBaseAdrs, ecx );
+					canAccess( [ecx] );
+					mov( staticECX.symbol, ecx );
+
+					// If there was an error earlier in the source file,
+					// ECX could contain NULL at this point.
+
+					if( ecx <> NULL ) then
+
+						mov( symECX.COFFSymIndex, eax );
+						if( eax = -1 ) then
+
+							// No COFF symbol table entry yet exists,
+							// so we have to create one. However, we know
+							// what the offset to the entry will be (numCoffSyms
+							// tells us this), so fill in the SymbolTableIndex
+							// first:
+
+							mov( numCoffSyms, eax );
+							mov( eax, relocEDX.SymbolTableIndex );
+							intmul( @size( IMAGE_SYMBOL ), eax );
+							mov( eax, symECX.COFFSymIndex );
+
+							
+							// Next, compute the storage class of this symbol:
+
+							mov( IMAGE_SYM_CLASS_STATIC, al );
+							if( symECX.isPublic || symECX.isExternal ) then
+
+								mov( IMAGE_SYM_CLASS_EXTERNAL, al );
+
+							endif;
+							addCOFFsymbol
+							(
+								symECX.trueName,
+								symECX.offset,
+								symECX.sectionNum,
+								0,						// theType
+								al,						// Storage class
+								0						// numOfAuxSyms
+							);
+
+						else
+
+							// We already have a COFF symbol entry
+							// for this HLA symbol, so just emit the
+							// index for the COFF symbol here. Note
+							// that EAX contains the byte index, we
+							// must first convert it to a symbol index.
+
+							push( edx );
+							xor( edx, edx );
+							div( @size( IMAGE_SYMBOL ), edx:eax );
+							pop( edx );
+							mov( eax, relocEDX.SymbolTableIndex );
+
+						endif;
+
+						// The relocation type for pointer is always
+						// IMAGE_REL_I386_DIR32
+
+						mov( IMAGE_REL_I386_DIR32, relocEDX._Type );
+
+
+						// Bump up the amount of space we're using
+						// in the relocation table. If another allocation
+						// will not fit in the table, reallocate the table
+						// at twice it's current size:
+
+						mov( ebx::relocIndex, eax );
+						add( @size( IMAGE_RELOCATION ), eax );
+						mov( eax, ebx::relocIndex );
+						add( @size( IMAGE_RELOCATION ) - 1, eax );
+						if( eax >= ebx::relocSize ) then
+
+							shl( 1, ebx::relocSize );			// Double the size
+							realloc( ebx::relocTable, ebx::relocSize );
+							mov( eax, ebx::relocTable );
+
+						endif;
+
+					endif;
+
+				endif;
+			
+			case
+			(			
+				DWord_pt, 
+				Uns32_pt, 
+				Int32_pt, 
+				Real32_pt
+			)
+				movsd();
+				
+
+
+			case
+			( 
+				String_pt, 
+				Utf8_pt,  
+				UString_pt
+			)
+
+				if( isConstSection ) then
+
+					// If we're processing the consts section, then
+					// we treat strings specially as we need to emit
+					// the actual string data rather than a pointer
+					// to the string data.
+
+					mov( [esi], esi );	// Get ptr to actual string data.
+					if( al = String_pt ) then
+
+						// Back up pointer to point at MaxLength field:
+
+						sub( 8, esi );		// Point at maxlength field
+						mov( [esi+4], ecx );// Get the string length
+						add( 12, ecx );		// Adjust for maxlen/length/zero/pad
+						shr( 2, ecx );		// Convert to dword count and round
+						rep.movsd();		// Copy the string data over
+
+					elseif( al = Utf8_pt ) then
+
+						utf8Len( esi );		// Compute the number of chars
+						stosd();			//  in this UTF-8 string and emit
+						sub( 8, esi );		// Point at maxlength field
+						mov( [esi+4], ecx );// Get the byte length
+						add( 12, ecx );		// maxlen/length/zero/pad adjust
+						shr( 2, ecx );		// Convert to dword count and round
+						rep.movsd();		// Copy the string data over
+
+					else	// Must be UString_pt
+
+						// Back up pointer to point at MaxLength field:
+
+						sub( 8, esi );		// Point at maxlength field
+						mov( [esi+4], ecx );// Get the byte length
+						mov( ecx, eax );	// Emit string length/2 as the char
+						shr( 1, eax );		// count (Unicode, not UTF-16!)
+						stosd();
+
+						movsd();			// Copy maxlength across
+						movsd();			// Copy byte length across
+
+						rep.movsb();		// Copy the string.
+
+						// Zero-terminate, and pad with an appropriate
+						// number of zeros:
+
+						xor( eax, eax );
+						stosw();
+						forever
+
+							test( 3, edi );
+							breakif( @z );
+							stosb();
+							inc( edi );
+
+						endfor;
+
+					endif;
+
+				else
+
+					// If we're not processing the consts section, then
+					// a string object is a pointer. The following code
+					// is very similar to that for pointers except for the
+					// fact that the offset we use is actually eight bytes
+					// beyond the stored offset (because we have to allow
+					// for the length/maxLength fields appearing before
+					// the string data).
+
+					mov( attrECX.stringData_vt, ecx );
+
+					// If there was an error earlier in the source file,
+					// ECX could contain NULL at this point.
+
+					if( ecx <> NULL ) then
+
+						mov( symECX.offset, eax );
+						add( 8, eax );
+						if( attrECX.pType <> String_pt ) then
+
+							// For Unicode and UTF-8 strings, we need
+							// an extra four bytes to hold the character
+							// count:
+
+							add( 4, eax );
+
+						endif;
+						mov( eax, [edi] );
+
+						// Compute the offset into the section where
+						// the relocation is going to be applied:
+
+						sub( ebx::binaryDataPtr, edi );
+						mov( ebx::relocIndex, edx );
+						add( ebx::relocTable, edx );
+						canAccess( [edx] );
+
+						mov( edi, relocEDX.VirtualAddress );
+
+						mov( symECX.COFFSymIndex, eax );
+						if( eax = -1 ) then
+
+							// No COFF symbol table entry yet exists,
+							// so we have to create one. However, we know
+							// what the offset to the entry will be (numCoffSyms
+							// tells us this), so fill in the SymbolTableIndex
+							// first:
+
+							mov( numCoffSyms, eax );
+							mov( eax, relocEDX.SymbolTableIndex );
+							intmul( @size( IMAGE_SYMBOL ), eax );
+							mov( eax, symECX.COFFSymIndex );
+							   
+							// For consts, the storage class is
+							// always IMAGE_SYM_CLASS_STATIC:
+
+							addCOFFsymbol
+							(
+								symECX.trueName,
+								symECX.offset,
+								symECX.sectionNum,
+								0,						// theType
+								IMAGE_SYM_CLASS_STATIC,	// Storage class
+								0						// numOfAuxSyms
+							);
+
+						else
+
+							// We already have a COFF symbol entry
+							// for this HLA symbol, so just emit the
+							// index for the COFF symbol here. Note
+							// that EAX contains the byte index, we
+							// must first convert it to a symbol index.
+
+							push( edx );
+							xor( edx, edx );
+							div( @size( IMAGE_SYMBOL ), edx:eax );
+							pop( edx );
+							mov( eax, relocEDX.SymbolTableIndex );
+
+						endif;
+
+						// The relocation type for pointer is always
+						// IMAGE_REL_I386_DIR32
+
+						mov( IMAGE_REL_I386_DIR32, relocEDX._Type );
+
+
+						// Bump up the amount of space we're using
+						// in the relocation table. If another allocation
+						// will not fit in the table, reallocate the table
+						// at twice it's current size:
+
+						mov( ebx::relocIndex, eax );
+						add( @size( IMAGE_RELOCATION ), eax );
+						mov( eax, ebx::relocIndex );
+						add( @size( IMAGE_RELOCATION ) - 1, eax );
+						if( eax >= ebx::relocSize ) then
+
+							shl( 1, ebx::relocSize );			// Double the size
+							realloc( ebx::relocTable, ebx::relocSize );
+							mov( eax, ebx::relocTable );
+
+						endif;
+
+					endif;
+
+
+				endif;
+
+
+			
+			case
+			(
+				QWord_pt, 
+				Uns64_pt, 
+				Int64_pt, 
+				Real64_pt
+			)
+				movsd();
+				movsd();
+
+			
+			case
+			(
+				TByte_pt, 
+				Real80_pt
+			)
+				movsd();
+				movsd();
+				movsw();
+
+			
+			case
+			(
+				Cset_pt,  
+				LWord_pt, 
+				Uns128_pt,
+				Int128_pt,
+				Real128_pt
+			)
+				movsd();
+				movsd();
+				movsd();
+				movsd();
+
+			
+
+			case( Enum_pt )  
+
+				#print( "TODO: Modify enum output to use enumsize" )
+				movsb();
+			
+				
+			case( XCset_pt )
+
+				movsd();
+				movsd();
+				movsd();
+				movsd();
+				movsd();
+				movsd();
+				movsd();
+				movsd();
+			
+			case( Array_pt )
+			
+
+				mov( attrECX.arrayValues_vt, esi );
+				mov( attrECX.symType, edx );
+				canAccess( [edx] );
+				mov( symEDX.symType, edx );
+				canAccess( [edx] );
+
+				mov( attrECX.numElements, ecx );
+				while( ecx > 0 ) do
+
+					canAccess( [esi] );
+					putBinData
+					( 	
+						esi, 
+						offset, 
+						edx,
+						ebx, 
+						isConstSection
+					);
+					mov( symEDX.objectSize, eax );
+					add( eax, offset );
+					add( @size( attr_t ), esi );
+					dec( ecx ); 
+
+				endwhile;
+
+
+			case( Record_pt )
+
+				mov( attrECX.fieldValues_vt, esi );
+				mov( attrECX.numFields, ecx );
+				while( ecx > 0 ) do
+
+					canAccess( [esi] );
+					mov( (type attr_t [esi]).symType, edx );
+					canAccess( [edx] );
+					putBinData
+					( 	
+						esi, 
+						offset, 
+						edx,
+						ebx, 
+						isConstSection
+					);
+					mov( symEDX.objectSize, eax );
+					add( eax, offset );
+					add( @size( attr_t ), esi );
+					dec( ecx ); 
+
+				endwhile;
+
+
+
+			case( Union_pt )
+
+				mov( attrECX.fieldValues_vt, esi );
+				mov( attrECX.curField_vt, edx );
+				canAccess( [esi] );
+				canAccess( [edx] );
+				putBinData
+				( 	
+					esi, 
+					offset, 
+					edx,
+					ebx, 
+					isConstSection
+				);
+				
+			
+			case( Class_pt )
+
+				// There aren't initialized class constants,
+				// so just emit zeros for each byte of the class
+				// data object:
+				mov( attrECX.symType, ecx );
+				canAccess( [ecx] );
+				mov( symECX.objectSize, ecx );
+				mov( 0, al );
+				rep.stosb();
+
+			default
+
+				HLAerror( "Unexpected pType (Internal HLA Error)" nl );
+
+		endswitch;
+
+		pop( edi );
+		pop( esi );
+		pop( edx );
+		pop( ecx );
+		pop( ebx );
+		pop( eax );
+
+	end putBinData;
+
+begin buildDataSegment;
+
+	push( esi );
+	push( edi );
+	cld();
+
+	// First, compute the size of this data segment:
+
+	computeSegmentSize( theSegment );
+	mov( eax, size );
+
+	// Let's allocate storage for the segment:
+
+	mov( eax, ecx );		// For stosb instruction, below.
+	malloc( eax );
+	mov( eax, binaryDataPtr );
+
+	// Zero out the memory, so that all padding bytes are zeros:
+
+	mov( eax, edi );
+	xor( eax, eax );
+	rep.stosb();
+
+	// Initially allocate a 4K block to hold the relocation records.
+	// We will shrink or expand this block, as necessary, later on.
+
+	malloc( 4096 );
+	mov( eax, relocTable );
+	mov( 4096, relocSize );
+	mov( 0, relocIndex );
+
+	// Okay, let's step through the data again and copy the binary
+	// data to the new segment we've created. We'll also create the
+	// relocation record list during this pass.
+
+	mov( theSegment, ebx );
+	mov( symEBX.segList, ebx );
+	while( ebx <> NULL ) do
+
+		canAccess( [ebx] );
+		mov( segEBX.segItemType, eax );
+		if( eax = symbolRecord_c ) then
+
+			mov( segEBX.symPtr, ecx );
+			canAccess( [ecx] );
+
+			push( numCoffSyms );		// Save, to compute index later.
+			if( symECX.isPublic ) then
+
+				// Publics are external storage class symbols 
+				// with a section #.
+
+				if( symECX.COFFSymIndex = -1 ) then
+				
+					addCOFFsymbol
+					(
+						symECX.trueName,
+						symECX.offset,
+						sectionNum,
+						0,							// theType
+						IMAGE_SYM_CLASS_EXTERNAL,
+						0							// numOfAuxSyms
+					);
+
+				endif;
+				lea( eax, symECX.va );
+				putBinData
+				( 
+					eax, 
+					symECX.offset, 
+					symECX.symType, 
+					ebp,
+					isConstSection
+				);
+
+			elseif( symECX.isExternal ) then
+
+				// External symbols have a section # of zero and
+				// and an external storage class.
+
+				if( symECX.COFFSymIndex = -1 ) then
+
+					addCOFFsymbol
+					(
+						symECX.trueName,
+						symECX.offset,
+						0,
+						0,					// theType
+						IMAGE_SYM_CLASS_EXTERNAL,
+						0
+					);
+
+				endif;
+
+			else
+
+				// Local symbols have a non-zero section #  and
+				// and a static storage class.
+
+				if( symECX.COFFSymIndex = -1 ) then
+
+					addCOFFsymbol
+					(
+						symECX.trueName,
+						symECX.offset,
+						sectionNum,
+						0,					// theType
+						IMAGE_SYM_CLASS_STATIC,
+						0
+					);
+
+				endif;
+				lea( eax, symECX.va );
+				putBinData
+				( 
+					eax, 
+					symECX.offset, 
+					symECX.symType, 
+					ebp,
+					isConstSection 
+				);
+
+			endif;
+			pop( eax );		// Retrieve original numCoffSyms value.
+			intmul( @size( IMAGE_SYMBOL ), eax ); 
+			mov( eax, symECX.COFFSymIndex );
+			mov( sectionNum, symECX.sectionNum );
+
+
+		elseif( eax = dataRecord_c ) then
+
+			canAccess( [ebx] );
+			mov( segEBX.valList.elementCnt, ecx );
+			mov( segEBX.valList.valPtr, esi );
+			mov( segEBX.offset, edi );
+			mov( segEBX.valList.valType, edx );
+			while( ecx > 0 ) do
+
+				putBinData
+				( 	
+					esi, 
+					edi, 
+					edx,
+					ebp, 
+					isConstSection
+				);
+				add( symEDX.objectSize, edi );
+				add( @size( attr_t ), esi );
+				dec( ecx );
+
+			endwhile;
+
+		endif;
+		mov( segEBX.nextSegItem, ebx );
+
+	endwhile;
+
+//stdout.put( nl nl "Binary Data:" nl );
+//mov( binaryDataPtr, esi );
+//for( mov( 0, ecx ); ecx < size; inc( ecx )) do
+//
+//	test( $7, ecx );
+//	if( @z ) then
+//
+//		lea( eax, [esi+ecx] );
+//		stdout.put( nl, eax, ':' );
+//
+//	endif;
+//	mov( [esi+ecx], al );
+//	stdout.put( ' ', al );
+//
+//endfor;
+//stdout.put( nl nl );
+//
+//stdout.put( "Relocation Data:" nl );
+//mov( relocTable, esi );
+//for( mov( 0, ecx ); ecx < relocIndex; add( @size(IMAGE_RELOCATION), ecx) ) do
+//
+//	mov( (type IMAGE_RELOCATION [esi]).VirtualAddress, eax );
+//	stdout.put( "va:", eax );
+//	mov( (type IMAGE_RELOCATION [esi]).SymbolTableIndex, eax );
+//	stdout.put( " sti:", eax );
+//	mov( (type IMAGE_RELOCATION [esi])._Type, ax );
+//	stdout.put( " type:", al, nl );
+//	add( @size( IMAGE_RELOCATION ), esi );
+//
+//endfor;
+//stdout.put( nl nl );
+
+
+	// Return function results here:
+	
+	mov( binaryDataPtr, eax );
+	mov( size, ebx );
+	mov( relocTable, ecx );
+	mov( relocIndex, edx );		
+
+	pop( edi );
+	pop( esi );
+
+end buildDataSegment;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Build_data-
+//
+//	Builds the .data section.
+//
+//	On return:
+//
+//	EAX-
+//		Points at a raw data area, followed immediately by the relocation 
+//		entries, and immediately followed by the line number entries.
+//
+//	ECX-
+//		Contains the size of the raw data area, relocation entries, and 
+//		line number entries.
+
+//proc( "Build_data" );
+procedure Build_data
+( 
+	var	dataSection	:IMAGE_SECTION_HEADER; 
+		sectionNum	:word 
+);
+begin Build_data;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	mov( dataSection, ebx );
+	canAccess( [ebx] );
+
+	
+	// Construct the actual data segment:
+
+	buildDataSegment
+	( 
+		dataSegment,
+		sectionNum,
+		false 
+	);
+	mov( eax, dataSegmentRaw );
+	mov( ebx, dataSegmentSize );
+	mov( ecx, dataSegmentReloc );
+	mov( edx, dataSegmentRelocSize );
+	
+	// Adjust the COFF file size by bumping up the totalSize
+	// variable by the amount of the storage needed by the header:
+
+	add( @size( IMAGE_SECTION_HEADER ), totalSize );
+
+	// Placeholder, we'll fill in the details later:
+
+	buildSectionHeader
+	(
+		dataSection,
+		".data",
+		0,					// virtualAddress
+		0,					// sizeOfRawData
+		0,					// pointerToRawData
+		0,					// pointerToRelocations
+		0,					// pointerToLineNumbers
+		0,					// numberOfRelocations
+		0,					// numberOfLinenumbers
+			IMAGE_SCN_ALIGN_16BYTES
+		|	IMAGE_SCN_MEM_READ
+		|	IMAGE_SCN_MEM_WRITE
+	);
+
+	addCOFFsymbol
+	( 
+		".data", 
+		0, 
+		sectionNum,						// Section # 
+		IMAGE_SYM_DTYPE_NULL,
+		IMAGE_SYM_CLASS_STATIC,
+		0
+	);  			  
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end Build_data;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Build_bss-
+//
+//	Builds the .bss section.
+//
+//	On return:
+//
+//	EAX-
+//		Points at a raw data area, followed immediately by the relocation 
+//		entries, and immediately followed by the line number entries.
+//
+//	ECX-
+//		Contains the size of the raw data area, relocation entries, and 
+//		line number entries.
+
+//proc( "Build_bss" );
+procedure Build_bss
+( 
+	var	bssSection	:IMAGE_SECTION_HEADER; 
+		sectionNum	:word 
+);
+begin Build_bss;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	mov( bssSection, ebx );
+	canAccess( [ebx] );
+
+	// Construct the actual bss segment:
+
+	buildDataSegment
+	( 
+		bssSegment,
+		sectionNum,
+		false 
+	);
+
+	free( eax );				// No data section for the .bss section!
+	mov( NULL, bssSegmentRaw );
+
+	mov( ebx, bssSegmentSize );
+	mov( ecx, bssSegmentReloc );
+	mov( edx, bssSegmentRelocSize );
+	
+	// Adjust the COFF file size by bumping up the totalSize
+	// variable by the amount of the storage needed by the header:
+
+	add( @size( IMAGE_SECTION_HEADER ), totalSize );
+	
+	
+	// Temporary stub for development:
+
+	buildSectionHeader
+	(
+		bssSection,
+		".bss",
+		0,			// virtualAddress
+		0,			// sizeOfRawData
+		0,			// pointerToRawData
+		0,			// pointerToRelocations
+		0,			// pointerToLineNumbers
+		0,			// numberOfRelocations
+		0,			// numberOfLinenumbers
+			IMAGE_SCN_ALIGN_16BYTES
+		|	IMAGE_SCN_CNT_UNINITIALIZED_DATA
+		|	IMAGE_SCN_MEM_READ
+		|	IMAGE_SCN_MEM_WRITE
+	);
+
+	addCOFFsymbol
+	( 
+		".bss", 
+		0, 
+		sectionNum, 
+		IMAGE_SYM_DTYPE_NULL,
+		IMAGE_SYM_CLASS_STATIC,
+		0
+	);  			  
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end Build_bss;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Build_readonly-
+//
+//	Builds the readonly section.
+//
+//	On return:
+//
+//	EAX-
+//		Points at a raw data area, followed immediately by the relocation 
+//		entries, and immediately followed by the line number entries.
+//
+//	ECX-
+//		Contains the size of the raw data area, relocation entries, and 
+//		line number entries.
+
+//proc( "Build_readonly" );
+procedure Build_readonly
+( 
+	var	readonlySection	:IMAGE_SECTION_HEADER; 
+		sectionNum		:word 
+);
+begin Build_readonly;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	// Construct the actual data segment:
+
+	buildDataSegment
+	( 
+		readonlySegment,
+		sectionNum,
+		false 
+	);
+	mov( eax, roSegmentRaw );
+	mov( ebx, roSegmentSize );
+	mov( ecx, roSegmentReloc );
+	mov( edx, roSegmentRelocSize );
+	
+	// Adjust the COFF file size by bumping up the totalSize
+	// variable by the amount of the storage needed by the header:
+
+	add( @size( IMAGE_SECTION_HEADER ), totalSize );
+	
+	
+	// Temporary stub for development:
+
+	buildSectionHeader
+	(
+		readonlySection,
+		"readonly",
+		0,			// virtualAddress
+		0,			// sizeOfRawData
+		0,			// pointerToRawData
+		0,			// pointerToRelocations
+		0,			// pointerToLineNumbers
+		0,			// numberOfRelocations
+		0,			// numberOfLinenumbers
+			IMAGE_SCN_ALIGN_16BYTES
+		|	IMAGE_SCN_MEM_READ
+	);
+
+	addCOFFsymbol
+	( 
+		"readonly", 
+		0, 
+		sectionNum, 
+		IMAGE_SYM_DTYPE_NULL,
+		IMAGE_SYM_CLASS_STATIC,
+		0
+	);  			  
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end Build_readonly;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Build_consts-
+//
+//	Builds the consts section.
+//
+//	On return:
+//
+//	EAX-
+//		Points at a raw data area, followed immediately by the relocation 
+//		entries, and immediately followed by the line number entries.
+//
+//	ECX-
+//		Contains the size of the raw data area, relocation entries, and 
+//		line number entries.
+
+//proc( "Build_consts" );
+procedure Build_consts
+( 
+	var	constSection	:IMAGE_SECTION_HEADER; 
+		sectionNum		:word 
+);
+begin Build_consts;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	mov( constSection, ebx );
+	canAccess( [ebx] );
+
+	// Construct the actual data segment:
+
+	buildDataSegment
+	( 
+		constSegment,
+		sectionNum,
+		true 
+	);
+	mov( eax, constSegmentRaw );
+	mov( ebx, constSegmentSize );
+	mov( ecx, constSegmentReloc );
+	mov( edx, constSegmentRelocSize );
+	
+	// Adjust the COFF file size by bumping up the totalSize
+	// variable by the amount of the storage needed by the header:
+
+	add( @size( IMAGE_SECTION_HEADER ), totalSize );
+	
+	
+	// Temporary stub for development:
+
+	buildSectionHeader
+	(
+		constSection,
+		"consts",
+		0,			// virtualAddress
+		0,			// sizeOfRawData
+		0,			// pointerToRawData
+		0,			// pointerToRelocations
+		0,			// pointerToLineNumbers
+		0,			// numberOfRelocations
+		0,			// numberOfLinenumbers
+			IMAGE_SCN_ALIGN_16BYTES
+		|	IMAGE_SCN_MEM_READ
+	);
+
+	addCOFFsymbol
+	( 
+		"consts", 
+		0, 
+		sectionNum, 
+		IMAGE_SYM_DTYPE_NULL,
+		IMAGE_SYM_CLASS_STATIC,
+		0
+	);  			  
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end Build_consts;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// Build_text-
+//
+//	Builds the .text section. Converts the code AST (abstract syntax tree) and
+// binary encoding data structure into a RAW code block.
+//
+//	On return:
+//
+//	EAX-
+//		Points at a raw data area containing the code, followed immediately
+//		by the relocation entries, and immediately followed by the line
+//		number entries.
+//
+//	ECX-
+//		Contains the size of the raw data area containing the code, relocation
+//		entries, and line number entries.
+
+//proc( "Build_text" );
+procedure Build_text
+( 
+	var	textSection	:IMAGE_SECTION_HEADER; 
+		sectionNum	:word 
+);
+begin Build_text;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	mov( textSection, ebx );
+	canAccess( [ebx] );
+
+	#print( "TODO: build text segment" )
+
+	// Adjust the COFF file size by bumping up the totalSize
+	// variable by the amount of the storage needed by the header:
+
+	add( @size( IMAGE_SECTION_HEADER ), totalSize );
+
+	
+	// Temporary stub for development:
+
+	buildSectionHeader
+	(
+		textSection,
+		".text",
+		0,			// virtualAddress
+		0,			// sizeOfRawData
+		0,			// pointerToRawData
+		0,			// pointerToRelocations
+		0,			// pointerToLineNumbers
+		0,			// numberOfRelocations
+		0,			// numberOfLinenumbers
+			IMAGE_SCN_CNT_CODE		// Characteristics
+		|	IMAGE_SCN_ALIGN_16BYTES
+		|	IMAGE_SCN_MEM_EXECUTE
+		|	IMAGE_SCN_MEM_READ
+	);
+
+
+	addCOFFsymbol
+	( 
+		".text", 
+		0, 
+		sectionNum, 
+		IMAGE_SYM_DTYPE_NULL,
+		IMAGE_SYM_CLASS_STATIC,
+		0
+	);  			  
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end Build_text;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//	coffGen-
+//
+//	Called by the main program to generate COFF output.
+//proc( "coffGen" );
+procedure coffGen; @nodisplay; @noalignstack;
+var
+	curTime			:time.timerec;
+	curDate			:date.daterec;
+	UnixTime		:dword;
+	sections		:sectionHeaderListPtr;
+
+	textDataPtr		:dword;
+	textDataSize	:dword;
+	dataPtr			:dword;
+	dataSize		:dword;
+	bssDataPtr		:dword;
+	bssDataSize		:dword;
+
+	textSection		:IMAGE_SECTION_HEADER;
+	align(4);
+	dataSection		:IMAGE_SECTION_HEADER;
+	align(4);
+	bssSection		:IMAGE_SECTION_HEADER;
+	align(4);
+	readonlySection	:IMAGE_SECTION_HEADER;
+	align(4);
+	constSection	:IMAGE_SECTION_HEADER;
+
+	align( 2 );
+	usrSection		:word;
+	 
+
+begin coffGen;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	push( esi );
+	push( edi );
+	cld();
+
+	// Begin by initializing total size with the size of the COFF file header:
+
+	mov( @size( IMAGE_FILE_HEADER ), totalSize );
+
+	// Initialize the string table
+
+	mov( 65536, stAllocatedSize );
+	malloc( 65536 );
+	mov( eax, stringTable );
+	mov( 4, stringTableSize );	// Leave room at the start of the table
+								// for the string table length value.
+
+	// Generate the ".file" symbol table entry.
+	// Begin by computing the number of auxiliary records we're
+	// going to need to hold the filename (18 bytes per record).
+
+	str.length( baseFileName );
+	push( eax );		// Save length for later
+	add( 17, eax );		// Round up to the next 18 bytes.
+	xor( edx, edx );
+	div( @size( IMAGE_SYMBOL ), edx:eax );
+	push( eax );		// Save # of aux syms for later
+	addCOFFsymbol
+	( 
+		".file", 
+		0, 
+		IMAGE_SYM_DEBUG, 
+		IMAGE_SYM_DTYPE_NULL,
+		IMAGE_SYM_CLASS_FILE,
+		al						// # of aux syms needed
+	);
+	canAccess( [eax] );
+
+	// Fill in the auxiliary symbol(s) with the file name.
+	// Begin by zero-filling so the name is padded with zeros:
+
+	lea( edi, (type CoffSymbolList [eax]).syms[ @size( IMAGE_SYMBOL )] );
+	pop( ecx );								// Retrieve # of aux symbols needed
+	mov( edi, esi );
+	intmul( @size( IMAGE_SYMBOL ), ecx );	// # of bytes in auxiliary syms 
+	xor( eax, eax );
+	rep.stosb();
+	mov( esi, edi );			// Retrieve ptr to dest location.
+
+	// Now copy the filename across:
+
+	pop( ecx );					// Retrieve baseFileName length
+	mov( baseFileName, esi );	// Get the filename
+	rep.movsb();
+
+
+	// Compute the total number of segments/sections that we're
+	// going to output. Start off with .text, .data, .bss, readonly,
+	// and const sections:
+
+	mov( 5, COFF_file_Header.NumberOfSections );
+
+	mov( rootNode.linearSyms, ebx );
+	while( ebx <> NULL ) do
+
+		canAccess( [ebx] );
+		mov( symEBX.symClass, al );
+		if
+		( 
+				al = Segment_ct 
+			&&	ebx <> dataSegment
+			&&	ebx <> bssSegment
+			&&	ebx <> readonlySegment
+			&&	ebx <> codeSegment
+			&&	ebx <> constSegment
+		) then
+
+			inc( COFF_file_Header.NumberOfSections );
+
+		endif;
+		mov( symEBX.next, ebx );
+
+	endwhile;
+
+
+	// Read the current date & time to use as the object file time value
+	
+	time.curTime( curTime );
+	date.today( curDate );
+
+	// Okay, convert our date format to the Unix data format that the
+	// COFF file format requires (# of seconds since Jan 1, 1970).
+
+	date.daysBetween( 1, 1, 1970, curDate );
+	intmul( 60*60*24, eax );	// Seconds per day. 
+	mov( eax, UnixTime );
+	time.toSecs( curTime );
+	add( UnixTime, eax );
+	mov( eax, COFF_file_Header.TimeDateStamp );
+		 
+	// The following segments must be built in exactly this order!
+	//
+	// Build the .text section:
+
+	Build_text( textSection, codeSegmentNumber );
+		   
+	// Build the .data section:
+
+	Build_data( dataSection, dataSegmentNumber );
+
+	// Build the .bss section:
+
+	Build_bss( bssSection, bssSegmentNumber );
+
+	// Build the readonly section:
+
+	Build_readonly( readonlySection, readonlySegmentNumber );
+
+	// Build the user-defined segments:
+
+	mov( userSegmentsList, esi );
+	mov( userSegmentNumber, usrSection );
+	while( esi <> NULL ) do
+
+		canAccess( [esi] );
+
+		// Construct the actual data segment:
+
+		buildDataSegment
+		( 
+			userSegESI.theSegment,
+			usrSection,
+			false 
+		);
+		mov( eax, userSegESI.segRaw );
+		mov( ebx, userSegESI.segSize );
+		mov( ecx, userSegESI.segReloc );
+		mov( edx, userSegESI.segRelocSize );
+		
+		// Adjust the COFF file size by bumping up the totalSize
+		// variable by the amount of the storage needed by the header:
+
+		add( @size( IMAGE_SECTION_HEADER ), totalSize );
+
+		// Placeholder, we'll fill in the details later:
+
+		mov( userSegESI.theSegment, ebx );
+		buildSectionHeader
+		(
+			userSegESI.segSection,
+			symEBX.trueName,
+			0,					// virtualAddress
+			0,					// sizeOfRawData
+			0,					// pointerToRawData
+			0,					// pointerToRelocations
+			0,					// pointerToLineNumbers
+			0,					// numberOfRelocations
+			0,					// numberOfLinenumbers
+				IMAGE_SCN_ALIGN_16BYTES
+			|	IMAGE_SCN_MEM_READ
+			|	IMAGE_SCN_MEM_WRITE
+		);
+
+		addCOFFsymbol
+		( 
+			symEBX.trueName, 
+			0, 
+			usrSection,						// Section # 
+			IMAGE_SYM_DTYPE_NULL,
+			IMAGE_SYM_CLASS_STATIC,
+			0
+		);
+		inc( usrSection );
+		mov( userSegESI.next, esi );  			  
+
+
+	endwhile;
+
+	// Build the consts section:
+
+	Build_consts( constSection, usrSection );
+
+	// Now that we've got all the sections built, we've got to go
+	// back and fill in the missing holes in the sections' headers.
+	//
+	// Note: this *must* appear in this order!
+
+	#print( "TODO: fill in data for .text section header" )
+
+
+	// Fill in the data segment header:
+
+	mov( totalSize, ecx );			// Compute pointer to relocations
+	add( dataSegmentSize, ecx );
+
+	mov( dataSegmentRelocSize, eax );	// Compute the # of relocations
+	xor( edx, edx );
+	div( @size( IMAGE_RELOCATION ), edx:eax );
+
+	fillInSectionHeader
+	(
+		dataSection,
+		dataSegmentSize, 	// sizeOfRawData
+		totalSize,			// pointerToRawData
+		ecx,				// pointerToRelocations
+		0,					// pointerToLineNumbers
+		eax,				// numberOfRelocations
+		0					// numberOfLinenumbers
+	);
+	mov( totalSize, eax );
+	add( dataSegmentSize, eax );
+	add( dataSegmentRelocSize, eax );
+	mov( eax, totalSize );
+
+	
+	// Fill in the .bss segment header:
+
+	mov( eax, ecx );					// Compute pointer to relocations
+	add( bssSegmentSize, ecx );
+
+	mov( bssSegmentRelocSize, eax );	// Compute the # of relocations
+	xor( edx, edx );
+	div( @size( IMAGE_RELOCATION ), edx:eax );
+
+	fillInSectionHeader
+	(
+		bssSection,
+		bssSegmentSize, 	// sizeOfRawData
+		0,					// pointerToRawData (none for bss segment)
+		ecx,				// pointerToRelocations
+		0,					// pointerToLineNumbers
+		eax,				// numberOfRelocations
+		0					// numberOfLinenumbers
+	);
+	mov( totalSize, eax );
+	//add( bssSegmentSize, eax );		// Not part of file!
+	add( bssSegmentRelocSize, eax );
+	mov( eax, totalSize );
+
+
+	
+	// Fill in the readonly segment header:
+
+	mov( eax, ecx );						// Compute pointer to relocations
+	add( roSegmentSize, ecx );
+
+	mov( roSegmentRelocSize, eax );	// Compute the # of relocations
+	xor( edx, edx );
+	div( @size( IMAGE_RELOCATION ), edx:eax );
+
+	fillInSectionHeader
+	(
+		readonlySection,
+		roSegmentSize,		 	// sizeOfRawData
+		totalSize,				// pointerToRawData
+		ecx,					// pointerToRelocations
+		0,						// pointerToLineNumbers
+		eax,					// numberOfRelocations
+		0						// numberOfLinenumbers
+	);
+	mov( totalSize, eax );
+	add( roSegmentSize, eax );
+	add( roSegmentRelocSize, eax );
+	mov( eax, totalSize );
+
+
+
+	// Build the user-defined segments:
+
+	mov( userSegmentsList, esi );
+	mov( userSegmentNumber, usrSection );
+	while( esi <> NULL ) do
+
+		canAccess( [esi] );
+		mov( totalSize, ecx );				// Compute pointer to relocations
+		add( userSegESI.segSize, ecx );
+
+		mov( userSegESI.segRelocSize, eax );	// Compute the # of relocations
+		xor( edx, edx );
+		div( @size( IMAGE_RELOCATION ), edx:eax );
+
+		fillInSectionHeader
+		(
+			userSegESI.segSection,
+			userSegESI.segSize, 	// sizeOfRawData
+			totalSize,				// pointerToRawData
+			ecx,					// pointerToRelocations
+			0,						// pointerToLineNumbers
+			eax,					// numberOfRelocations
+			0						// numberOfLinenumbers
+		);
+		mov( totalSize, eax );
+		add( userSegESI.segSize, eax );
+		add( userSegESI.segRelocSize, eax );
+		mov( eax, totalSize );
+
+		inc( usrSection );
+		mov( userSegESI.next, esi );  			  
+
+
+	endwhile;
+	
+	
+
+
+	// Fill in the const segment header:
+
+	mov( eax, ecx );						// Compute pointer to relocations
+	add( constSegmentSize, ecx );
+
+	mov( constSegmentRelocSize, eax );	// Compute the # of relocations
+	xor( edx, edx );
+	div( @size( IMAGE_RELOCATION ), edx:eax );
+
+	fillInSectionHeader
+	(
+		constSection,
+		constSegmentSize, 		// sizeOfRawData
+		totalSize,				// pointerToRawData
+		ecx,					// pointerToRelocations
+		0,						// pointerToLineNumbers
+		eax,					// numberOfRelocations
+		0						// numberOfLinenumbers
+	);
+	mov( totalSize, eax );
+	add( constSegmentSize, eax );
+	add( constSegmentRelocSize, eax );
+	mov( eax, totalSize );
+
+
+
+	
+
+	// Finish off the COFF header:
+
+	mov( totalSize, eax );
+	mov( eax, COFF_file_Header.PointerToSymbolTable );
+	mov( numCoffSyms, eax );
+	mov( eax, COFF_file_Header.NumberOfSymbols );
+	mov( 0, COFF_file_Header.Characteristics );
+
+	// Okay, write all the data to the COFF file:
+	//
+	// Begin by writing the COFF header to the file:
+
+	fileio.write( objFileHandle, COFF_file_Header, @size( COFF_file_Header ));
+	
+	// Now write the section headers to the file:
+	
+	fileio.write( objFileHandle, textSection, @size( IMAGE_SECTION_HEADER ));  
+	fileio.write( objFileHandle, dataSection, @size( IMAGE_SECTION_HEADER ));  
+	fileio.write( objFileHandle, bssSection, @size( IMAGE_SECTION_HEADER ));
+	fileio.write( objFileHandle, readonlySection, @size( IMAGE_SECTION_HEADER ));
+	mov( userSegmentsList, esi );
+	mov( userSegmentNumber, usrSection );
+	while( esi <> NULL ) do
+
+		canAccess( [esi] );
+		fileio.write
+		( 
+			objFileHandle, 
+			userSegESI.segSection, 
+			@size( IMAGE_SECTION_HEADER )
+		);
+		mov( userSegESI.next, esi );
+
+	endwhile;
+	fileio.write( objFileHandle, constSection, @size( IMAGE_SECTION_HEADER ));
+
+
+	// Now write the data segment to the file:
+
+	fileio.write( objFileHandle, val dataSegmentRaw, dataSegmentSize );  
+	fileio.write( objFileHandle, val dataSegmentReloc, dataSegmentRelocSize );  
+	
+	// Don't write BSS data! It's assumed to be all zeros!
+	// But we do need to write the BSS relocations to the file.
+
+	//fileio.write( objFileHandle, val bssSegmentRaw, bssSegmentSize );  
+	fileio.write( objFileHandle, val bssSegmentReloc, bssSegmentRelocSize );  
+	
+	// Write the readonly segment to the file:
+
+	fileio.write( objFileHandle, val roSegmentRaw, roSegmentSize );  
+	fileio.write
+	( 
+			objFileHandle, 
+		val	roSegmentReloc, 
+			roSegmentRelocSize 
+	);
+	
+	// Write the user-defined segments to the file:
+
+	mov( userSegmentsList, esi );
+	while( esi <> NULL ) do
+
+		canAccess( [esi] );
+		fileio.write
+		(
+				objFileHandle,
+			val	userSegESI.segRaw,
+				userSegESI.segSize 
+		);
+
+		fileio.write
+		(
+				objFileHandle,
+			val	userSegESI.segReloc,
+				userSegESI.segRelocSize 
+		);
+
+		mov( userSegESI.next, esi );  			  
+
+	endwhile;
+	
+	
+
+
+	
+
+	// Write the consts segment to the file:
+
+	fileio.write( objFileHandle, val constSegmentRaw, constSegmentSize );  
+	fileio.write( objFileHandle, val constSegmentReloc, constSegmentRelocSize );  
+	
+	  
+	
+	// Now traverse the symbol list and dump the symbols to the obj file:
+	  
+
+	mov( coffSyms, ebx );
+	for( mov( 0, ecx ); ecx<numCoffBlks; inc( ecx )) do
+
+		canAccess( [ebx] );
+		mov( coffListEBX.size, edx );
+		lea( eax, coffListEBX.syms );
+		fileio.write( objFileHandle, [eax], edx );
+		mov( coffListEBX.next, ebx );
+
+	endfor;
+
+	// Write the strings table to the file:
+
+	mov( stringTable, ebx );
+	canAccess( [ebx] );
+	mov( stringTableSize, eax );
+	mov( eax, [ebx] );
+	fileio.write( objFileHandle, [ebx], eax );
+
+	pop( edi );
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+end coffGen;
+
+end coffGenUnit;
+

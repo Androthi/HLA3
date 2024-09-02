@@ -1,0 +1,2 @@
+[BUILD]
+hla3 -test -sym -v test/xctl1.hla2 >test/xctl1.txt

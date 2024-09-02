@@ -1,0 +1,4922 @@
+unit parseProcs;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+	 
+
+?@nodisplay := true;
+?@noalignstack := true;									   
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// validOptions-
+//
+//	Tests a procedure's options list to see if the program has specified
+// any illegal procedure options.
+//
+// Inputs:
+//
+//	actual-
+//		Bitmap containing the actual procedure options specified:
+//
+//	allowed-
+//		Bitmap containing the procedure options allowed for the
+//		particular declaration.
+//
+// Legal bitmap values:
+// 			optCdecl		:dword := @{0};
+// 			optPascal		:dword := @{1};
+// 			optStdcall		:dword := @{2};
+// 			optUse			:dword := @{3};
+// 			optReturns		:dword := @{4};
+// 			optPreserves	:dword := @{5};
+// 			optLeave		:dword := @{6};
+// 			optEnter		:dword := @{7};
+// 			optDisplay		:dword := @{8};
+// 			optAlignStack	:dword := @{9};
+// 			optFrame		:dword := @{10};
+//
+// Displays an error message if there was an illegal option specified
+// (that is, if "actual" contains a bit not present in "allowed").
+
+//proc( "validOptions" )
+procedure validOptions( actual:dword; allowed:dword );
+readonly
+	options: string[ numProcOpts ] := optStrs;
+
+begin validOptions;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	mov( actual, eax );
+	and( allowed, eax );
+	if( eax <> actual ) then
+		
+		HLAerror( "Illegal procedure option(s): " );
+		mov( allowed, eax );
+		not( eax );
+		and( actual, eax );
+		xor( ebx, ebx );
+		for( mov( 1, ecx ); ecx < (1 << numProcOpts); shl( 1, ecx )) do
+
+			test( ecx, eax );
+			if( @nz ) then
+
+				HLAerror2
+				(  
+					options[ ebx*4 ], 
+					" " nl 
+				);
+
+			endif;
+			inc( ebx );
+
+		endfor;
+
+	endif;
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end validOptions;
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// passBy - handles the parameter passing mechanism
+// for pass by value, value/result, result, name, and
+// lazy (pass by reference is handled elsewhere).
+//
+// Returns:
+//
+//	AL-
+//		parmClass_t value specifying where this parameter is passed.
+
+//proc( "passBy" )
+procedure passBy; @noframe;
+begin passBy;
+
+	// Default is pass by value:
+	
+	lex( esi );
+	if( eax = tkn_val ) then
+	
+		// Do nothing, we're already passing by value.
+		
+		mov( valp_pc, al );
+		ret();
+		
+	endif;
+	
+	if( eax = tkn_valres ) then
+	
+		mov( vrp_pc, al );
+		ret();
+		
+	endif;
+	
+	if( eax = tkn_result ) then
+	
+		mov( result_pc, al );
+		ret();
+		
+	endif;
+	
+	if( eax = tkn_name ) then
+	
+		mov( name_pc, al );
+		ret();
+		
+	endif;
+	
+	if( eax = tkn_lazy ) then
+	
+		mov( lazy_pc, al );
+		ret();
+		
+	endif;
+	
+	// Default to pass by value:
+	
+	reuseLastTkn();
+	mov( valp_pc, al );
+	ret();
+	
+end passBy;
+
+
+
+//////////////////////////////////////////////////////////////////
+//
+// optionalIN - Handles the optional "IN REG" specifier for
+//				a parameter.
+//
+// Returns:
+//
+//	EAX-
+//		register_t value specifying which register holds this
+//		parameter (inNone if not in a register).
+
+//proc( "optionalIN" )
+procedure optionalIN; @noframe;
+begin optionalIN;
+
+	// Check for the optional "in register" address.
+	
+	lex( esi );
+	if( eax = tkn_in ) then
+	
+		// See if a register immediately follows
+		// the 'IN' keyword (tacit assumption here
+		// that reg8_tc < reg16_tc < reg32_tc and
+		// reg32_tc is the maximum "_tc" value).
+		
+		lex( esi );
+		if( ebx >= reg8_tc ) then
+
+			switch( eax )
+			
+				case( tkn_al )
+				
+					mov( _AL, eax );
+					
+				case( tkn_ah )
+				
+					mov( _AH, eax );
+					
+				case( tkn_bl )
+				
+					mov( _BL, eax );
+					
+				case( tkn_bh )
+				
+					mov( _BH, eax );
+					
+				case( tkn_cl )
+				
+					mov( _CL, eax );
+					
+				case( tkn_ch )
+				
+					mov( _CH, eax );
+					
+				case( tkn_dl )
+				
+					mov( _DL, eax );
+					
+				case( tkn_dh )
+				
+					mov( _DH, eax );
+					
+				case( tkn_ax )
+				
+					mov( _AX, eax );
+					
+				case( tkn_bx )
+				
+					mov( _BX, eax );
+					
+				case( tkn_cx )
+				
+					mov( _CX, eax );
+					
+				case( tkn_dx )
+				
+					mov( _DX, eax );
+					
+				case( tkn_di )
+				
+					mov( _DI, eax );
+					
+				case( tkn_si )
+				
+					mov( _SI, eax );
+					
+				case( tkn_bp )
+				
+					mov( _BP, eax );
+					
+				case( tkn_sp )
+				
+					mov( _SP, eax );
+					
+				case( tkn_eax )
+				
+					mov( _EAX, eax );
+					
+				case( tkn_ebx )
+				
+					mov( _EBX, eax );
+					
+				case( tkn_ecx )
+				
+					mov( _ECX, eax );
+					
+				case( tkn_edx )
+				
+					mov( _EDX, eax );
+					
+				case( tkn_edi )
+				
+					mov( _EDI, eax );
+					
+				case( tkn_esi )
+				
+					mov( _ESI, eax );
+					
+				case( tkn_ebp )
+				
+					mov( _EBP, eax );
+					
+				case( tkn_esp )
+				
+					mov( _ESP, eax );
+					
+				default
+				
+					mov( _none, eax );
+					
+			endswitch;
+			ret();
+			
+		endif;
+		HLAerror( "Expected an x86 register, encountered " );
+		dumpQLexeme();
+		raise( ex.hlaerr );
+	
+	endif;
+	reuseLastTkn();
+	mov( _none, eax );	// Default is "not in a register."
+	ret();
+	
+end optionalIN;
+
+
+
+////////////////////////////////////////////////////////////////////////
+//
+// typeOrProc- processes the type ID for
+// a parameter.
+//
+// Returns:
+//
+//	typeTkn in ECX
+//	inReg in EAX
+
+
+//proc( "typeOrProc" )
+procedure typeOrProc; @noframe;
+begin typeOrProc;
+
+	if( !getTypeID() ) then
+	
+		HLAerror( "Expected a type identifier, encountered " );
+		dumpQLexeme();
+		forever
+		
+			// Skip everything until we find a semicolon or
+			// a closing parenthesis:
+			
+			lex( esi );
+			if( eax = ';' || eax = ')' ) then
+			
+				reuseLastTkn();
+				xor( ecx, ecx );
+				xor( eax, eax );
+				ret();
+				
+			endif;
+			freeTkn( [ecx] );
+			
+		endfor;
+		
+	elseif( eax = &text_ste ) then
+	
+		HLAerror( "TEXT is not a valid parameter type" nl );
+		mov( &string_ste, eax );
+		
+	endif;
+	push( eax );	// save typeTkn value
+	optionalIN();
+	pop( ecx );
+	ret();
+	
+end typeOrProc;
+
+
+				
+
+
+//////////////////////////////////////////////////////////////////////
+//
+// optionalParms:
+//
+//	Processes the parameter list for a procedure declaration.
+//
+//
+//	optionalParms ->
+//			<empty string>
+//		|	'(' <oneOrMoreParms> ')'
+//
+//	oneOrMoreParms ->
+//			<passBy> <id> ':' <typeOrProc>
+//		|	var <id> ':' <varStuff>
+//
+//	passBy ->	val | valres | name | lazy | <empty string>
+//
+//	typeOrProc ->
+//			<typeID> <optionalIN> ( ';' <oneOrMoreParms> )*
+//		|	procedure <optionalParms> <optionalIN> ( ';' <oneOrMoreParms> )*
+//
+//	varStuff ->
+//			var <optionalIN> ( ';' <oneOrMoreParms> )*
+//		|	<typeID> <optionalIN> ( ';' <oneOrMoreParms> )*
+//
+//	optionalIN ->
+//			in <register>
+//		|	<empty string>
+//
+//	register -> reg32 | reg16 | reg8
+//
+//	reg32 -> eax | ebx | ecx | edx | esi | edi | ebp | esp
+//	reg16 -> ax | bx | cx | dx | si | di | bp | sp 
+//	reg8 -> al | ah | bl | bh | cl | ch | dl | dh
+//
+//
+//
+// Inputs:
+//		theProc-
+//			Pointer to the symbol table entry for the procedure
+//			whose parameters we're currently processing.
+//
+//		initialVal-
+// 			True if the caller allows an initializer for
+// 			a procedure pointer variable. 
+
+
+//proc( "optionalParms" )
+procedure optionalParms
+( 
+	theProc		:symNodePtr_t;
+	initialVal	:boolean 
+);
+	@use eax;
+	
+var
+	parmTkn		:tokenPtr_t;
+	typeTkn		:tokenPtr_t;
+	trueName	:string;
+	lcName		:string;
+	hashValue	:dword;
+	inReg		:register_t;
+	passedBy	:parmClass_t;
+	align( 4 );
+	dummyTkn	:token_t;
+
+
+	//proc( "oneOrMoreParms" )
+	procedure oneOrMoreParms; @noframe;
+	begin oneOrMoreParms;
+	
+		forever
+		
+			lex( esi );
+			begin untypedRef;
+			
+				if( eax = tkn_var ) then
+				
+					// Note that this is pass by reference:
+					
+					mov( refp_pc, ebp::passedBy );
+					
+					// Handle reference parameters specially because
+					// they allow untyped reference parameters.
+					
+					lex( esi );
+					if( eax = tkn_globalID ) then
+					
+						makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+						
+					elseif( eax = tkn_localID ) then
+					
+						// May not be possible to catch this here.
+						// That's okay, we'll catch it when we call
+						// enterVar down below.
+						HLAerror
+						( 
+							"Duplicate symbol definition: ",
+							tokenECX.trueName,
+							nl 
+						);
+						makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+						
+					endif;
+					if( eax <> tkn_undefID ) then
+					
+						HLAerror( "Expected an identifier, encountered " );
+						dumpQLexeme();
+						reuseLastTkn();
+						raise( ex.hlaerr );
+						
+					endif;
+					mov( ecx, ebp::parmTkn );	// Save for later.
+					matchColon();
+					lex( esi );
+					if( eax = tkn_var ) then
+					
+						// Untyped reference parameter.
+						
+						mov( untyped_pc, ebp::passedBy );
+						optionalIN();
+						mov( al, ebp::inReg );
+						exit untypedRef; 
+						
+					endif;
+					
+					// If it isn't an untyped reference parameter,
+					// fall through to the code below to process
+					// the parameter's type:
+					
+					reuseLastTkn();
+								
+				else
+				
+					reuseLastTkn();
+					
+					// Okay, we've got something besides a VAR parameter,
+					// handle it down here.
+					
+					passBy();
+					mov( al, ebp::passedBy );
+					lex( esi );
+					if( eax = tkn_globalID ) then
+					
+						makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+						
+					elseif( eax = tkn_localID ) then
+					
+						// Not sure this can be caught here.
+						// Duplicate symbol errors are handled in the
+						// call to enterVar, below.
+						HLAerror
+						( 
+							"Duplicate symbol definition: ", 
+							tokenECX.trueName,
+							nl
+						);
+						makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+						
+					endif;
+					if( eax <> tkn_undefID ) then
+					
+						HLAerror( "Expected an identifier, encountered " );
+						dumpQLexeme();
+						reuseLastTkn();
+						raise( ex.hlaerr );
+						
+					endif;
+					mov( ecx, ebp::parmTkn );	// Save for later.
+					matchColon();
+					
+				endif;
+				
+				// Okay, process the <typeID> following the colon:
+
+				typeOrProc();
+				mov( ecx, ebp::typeTkn );
+				mov( al, ebp::inReg );
+				if( ecx = NULL ) then
+
+					// Bail if there was an error in typeOrProc:
+
+					ret();
+
+				endif;
+				
+			end untypedRef;
+			
+			// Okay, at this point we've collected all the useful
+			// information about this parameter in the following
+			// variables:
+			//
+			//	theProc- Owner of this symbol's symbol table.
+			//	parmTkn- Token value for the parameter symbol.
+			//	typeTkn- Token value for the parameter's type.
+			//	inReg-	 0 if passed on stack, tkn_XXX (xxx=some register)
+			//			 if passed in a register.
+			//	passedBy-parameter passing mechanism (parmClass_t value)
+			//
+			//	Now let's construct a symbol table entry for this
+			// particular parameter.
+			
+			mov( ebp::parmTkn, ecx );
+			mov( tokenECX.trueName, eax );
+			mov( eax, ebp::trueName );
+			mov( tokenECX.lcName, eax );
+			mov( eax, ebp::lcName );
+			mov( tokenECX.hashValue, eax );
+			mov( eax, ebp::hashValue );
+			
+			if( !tokenECX.alloc ) then
+			
+				mov( str.a_cpy( ebp::trueName ), ebp::trueName );
+				mov( str.a_cpy( ebp::lcName ), ebp::lcName );
+				
+			endif;
+			
+			// Look up the symbol just to get the leaf node
+			// value in EBX:
+			
+			mov( ebp::theProc, ebx );
+			mov( symEBX.localHash, ebx );
+			lookupLocalIn
+			( 
+				ebp::trueName, 
+				ebp::lcName,
+				ebp::hashValue, 
+				ebx 
+			);
+
+			if( ebp::passedBy = untyped_pc ) then
+			
+				// Special case for untyped reference
+				// parameters (that don't really have a type).
+				
+				mov( &dword_ste, edx );
+				
+			else
+			
+				mov( ebp::typeTkn, edx );
+				canAccess( [edx] );
+				if( tokenEDX.symNode <> NULL ) then
+				
+					mov( tokenEDX.symNode, edx );
+
+				endif;
+				
+			endif;
+			enterVar
+			(
+				ebp::trueName,
+				ebp::lcName,
+				eax,
+				symEDX.pType,
+				edx,
+				ebp::theProc,
+				0,			// We'll fill in the offset later.
+				ebp::passedBy,
+				[ebx]
+			);
+			
+			// Parameters passed as an address are always
+			// four bytes long:
+			
+			mov( ebp::passedBy, dl );
+			if( dl in refp_pc..result_pc ) then
+			
+				mov( 4, symEAX.objectSize );
+			
+			
+			// Parameters passed by name or lazy evaluation
+			// are always eight bytes (thunk size).
+			
+			elseif( dl = name_pc || dl = lazy_pc ) then
+			
+				mov( 8, symEAX.objectSize );
+				 	
+			endif;
+			
+			// This is a parameter, not a VAR object, so adjust
+			// the symbol table entry accordingly.
+			
+			mov( Parm_ct, symEAX.symClass );
+			mov( ebp::passedBy, bl );
+			mov( bl, symEAX.pClass );
+			
+			// If we're passing the parameter in a register,
+			// note that here:
+			
+			movzx( ebp::inReg, edx );
+			mov( dl, symEAX.inReg );
+			switch( edx )
+			
+				case
+				(
+					_AL,	_AH,
+					_BL,	_BH,
+					_CL,	_CH,
+					_DL,	_DH 
+				)
+				
+					if( symEAX.objectSize <> 1 ) then
+					
+						HLAerror
+						( 
+							"Parameter doesn't fit in register"
+							nl
+						);
+						mov( 1, symEAX.objectSize );
+						
+					endif;
+			
+				case
+				( 
+					_AX, 
+					_BX,
+					_CX, 
+					_DX,
+					_SI, 
+					_DI,
+					_BP, 
+					_SP
+				)
+				
+					if( symEAX.objectSize <> 2 ) then
+					
+						HLAerror
+						( 
+							"Parameter doesn't fit in register"
+							nl
+						);
+						mov( 2, symEAX.objectSize );
+						
+					endif;
+			
+				case
+				( 
+					_EAX, 
+					_EBX,
+					_ECX, 
+					_EDX,
+					_ESI, 
+					_EDI,
+					_EBP, 
+					_ESP
+				)
+				
+					if( symEAX.objectSize <> 4 ) then
+					
+						HLAerror
+						( 
+							"Parameter doesn't fit in register"
+							nl
+						);
+						mov( 4, symEAX.objectSize );
+						
+					endif;
+
+				// default - don't worry about size check.
+					
+			endswitch;
+			
+							
+			// If we reach the end of the parameter list, bail
+			// on this loop.  Otherwise, get a semicolon
+			// separator and repeat for the next parameter in
+			// the list.
+			
+			lex( esi );
+			if( eax = ')' ) then
+			
+				reuseLastTkn();
+				ret();
+				
+			endif;
+			
+			if( eax <> ';' ) then
+			
+				HLAerror( "Expected ';', encountered " );
+				dumpQLexeme();
+				reuseLastTkn();
+				ret();
+				
+			endif;
+			
+		endfor;
+
+	end oneOrMoreParms;
+
+	//proc( "getInitializer" )
+	procedure getInitializer; @noframe;
+	begin getInitializer;
+
+		// if "initialVal" is true, then
+		// the caller allows an initializer for
+		// a procedure pointer variable. Check
+		// for the initializer here.
+
+		if( ebp::initialVal ) then
+
+			lex( esi );
+			if( eax = tkn_assign ) then
+
+				mov( ebp::theProc, ebx );
+				mov( false, symEBX.isInitialized );
+				constExpr( symEBX.va );
+				raiseErr( @c );
+				mov( symEBX.va.pType, al );
+				if( al <> Pointer_pt && al <> Procptr_pt ) then
+
+					HLAerror
+					(
+						"Procedure initializer must be a pointer "
+						"constant" nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				mov( true, symEBX.isInitialized );
+			else
+
+				reuseLastTkn();
+
+			endif;
+
+		endif;
+		ret();
+
+	end getInitializer;
+	
+begin optionalParms;
+
+	try
+		lex( esi );
+		if( eax = '(' ) then
+		
+			oneOrMoreParms();
+			mustMatchRParen();
+			getInitializer();
+			mustMatchSemicolon();
+		
+		else
+
+			reuseLastTkn();
+			getInitializer();
+			mustMatchSemicolon();
+			
+		endif;
+
+	  exception( ex.hlaerr );
+
+		resyncOnSemicolon();
+
+	endtry;
+	
+end optionalParms;
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// matchParms-
+//
+//	Matches the parameter list in the current declaration against
+// a parameter list for the procedure previous defined as external
+// or forward.
+
+//proc( "matchParms" )
+procedure matchParms
+( 
+	theProc		:symNodePtr_t 
+);
+var
+	linearList	:symNodePtr_t;
+
+
+	//proc( "matchOneOrMoreParms" )
+	procedure matchOneOrMoreParms; @noframe;
+	begin matchOneOrMoreParms;
+	
+		mov( ebp::theProc, ebx );
+		mov( symEBX.linearSyms, ebx );
+		canAccess( [ebx] );
+		mov( symEBX.next, ebx );
+		mov( ebx, ebp::linearList );
+		forever
+		
+			if( ebp::linearList = NULL ) then
+
+				HLAerror
+				(
+					"Number of parameters in declaration exceeds "
+					nl
+					"original (forward/external) definition"
+					nl
+				);
+				ret();
+
+			endif;
+			lex( esi );
+			begin untypedRef;
+			
+				if( eax = tkn_var ) then
+				
+					// Handle reference parameters specially because
+					// they allow untyped reference parameters.
+					
+					lex( esi );
+					if( ebx <> ID_tc ) then
+
+						mov( ebp::linearList, ebx );
+						HLAerror
+						(
+							"Expected parameter ID '",
+							symEBX.trueName,
+							"', encountered "
+						);
+						dumpQLexeme();
+						ret();
+
+					endif;
+
+					// Okay, we've got an ID. Make sure it's the
+					// *same* local ID:
+
+					mov( ebp::linearList, ebx );
+					if( str.ne( tokenECX.trueName, symEBX.trueName )) then
+
+						HLAerror
+						(
+							"Parameter ",
+							tokenECX.trueName,
+							" must exactly match original declaration (",
+							symEBX.trueName,
+							")" nl
+						);
+						ret();
+
+					endif;
+
+					// Okay, the identifiers match. Now check the types:
+
+					matchColon();
+					lex( esi );
+					if( eax = tkn_var ) then
+					
+						// Untyped reference parameter.
+						
+						mov( ebp::linearList, ebx );
+						if( symEBX.pClass <> untyped_pc ) then
+
+							HLAerror
+							(
+								"Parameter in original definition was " nl
+								"not passed as an untyped reference "
+								"parameter"
+								nl
+							);
+							ret();
+
+						endif;						
+						exit untypedRef; 
+						
+					endif;
+
+					// If it isn't an untyped reference parameter,
+					// fall through to the code below to process
+					// the parameter's type:
+					
+					reuseLastTkn();
+								
+
+
+				else // Didn't encounter VAR token
+				
+					reuseLastTkn();
+					
+					// Okay, we've got something besides a VAR parameter,
+					// handle it down here.
+					
+					passBy();
+					mov( ebp::linearList, ebx );
+					if( al <> symEBX.pClass ) then
+
+						HLAerror
+						(
+							"Original parameter definition was passed by "
+						);
+						printPassBy( symEBX.pClass );
+						HLAerror2
+						(
+							", " nl
+							"current passing mechanism is "
+						);
+						printPassBy( al );
+						HLAerror2( nl );
+						ret();
+
+					endif;
+
+					// Get the ID and see if it matches the original:
+
+					lex( esi );
+					if( ebx <> ID_tc ) then
+
+						mov( ebp::linearList, ebx );
+						HLAerror
+						(
+							"Expected parameter ID '",
+							symEBX.trueName,
+							"', encountered "
+						);
+						dumpQLexeme();
+						ret();
+
+					endif;
+
+
+					// Okay, we've got an ID. Make sure it's the
+					// *same* local ID:
+
+					mov( ebp::linearList, ebx );
+					if( str.ne( tokenECX.trueName, symEBX.trueName )) then
+
+						HLAerror
+						(
+							"Parameter ",
+							tokenECX.trueName,
+							" must exactly match original declaration (",
+							symEBX.trueName,
+							")" nl
+						);
+						ret();
+
+					endif;
+					matchColon();
+					
+				endif;
+				
+				// Okay, process the <typeID> following the colon:
+
+				typeOrProc();
+				if( ecx = NULL ) then
+
+					// Bail if there was an error in typeOrProc:
+
+					ret();
+
+				endif;
+				mov( ebp::linearList, ebx );
+				if( al <> symEBX.inReg ) then
+
+					HLAerror
+					(
+						"Parameter ",
+						symEBX.trueName,
+						" was not passed in the same register ("
+					);
+					printInReg( al );
+					HLAerror2
+					(
+						")"
+						nl
+						"as in the original definition ("
+					);
+					mov( symEBX.inReg, al );
+					printInReg( al );
+					HLAerror2
+					(
+						")"
+						nl
+					);
+					ret();
+
+				endif;
+
+				// Okay, let's make sure that the type of the
+				// current parameter declaration matches the type
+				// of the original definition:
+
+				if( ecx <> symEBX.symType ) then
+
+					assert( symEBX.symType <> NULL );
+					mov( symEBX.symType, ebx );
+					HLAerror
+					( 
+						"Declared type of parameter (",
+						symECX.trueName,
+						") does not match"
+						nl
+						"the original definition (",
+						symEBX.trueName,
+						nl
+					);
+					ret();
+
+				endif;
+				
+			end untypedRef;			
+			
+							
+			// If we reach the end of the parameter list, bail
+			// on this loop.  Otherwise, get a semicolon
+			// separator and repeat for the next parameter in
+			// the list.
+			
+			lex( esi );
+			if( eax = ')' ) then
+			
+				mov( ebp::linearList, ebx );
+				if( symEBX.next <> NULL ) then
+
+					mov( symEBX.next, ebx );
+					HLAerror
+					(
+						"Too few parameters in declaration, does not match "
+						nl
+						"original definition (missing '",
+						symEBX.trueName,
+						"')"
+						nl
+					);
+
+				endif;
+				reuseLastTkn();
+				ret();
+				
+			endif;
+			
+			if( eax <> ';' ) then
+			
+				HLAerror( "Expected ';', encountered " );
+				dumpQLexeme();
+				reuseLastTkn();
+				ret();
+				
+			endif;
+			mov( ebp::linearList, ebx );
+			mov( symEBX.next, ebx );
+			mov( ebx, ebp::linearList );
+			
+		endfor;
+
+	end matchOneOrMoreParms;
+
+	
+begin matchParms;
+
+	lex( esi );
+	if( eax = '(' ) then
+	
+		matchOneOrMoreParms();
+		matchRParen();
+		getSemicolon();
+	
+	else
+
+		// No parameter list -
+		// Let's make sure the original definition was empty, too.
+
+		mov( theProc, ebx );
+		mov( symEBX.linearSyms, ebx );
+		if( ebx <> NULL ) then
+
+			mov( symEBX.next, ebx );
+
+		endif;
+		if( ebx <> NULL ) then
+
+			HLAerror
+			( 
+				"Original procedure definition has parameter '",
+				symEBX.trueName,
+				"'"
+				nl
+			);
+
+		endif;
+		reuseLastTkn();
+		getSemicolon();		
+		
+	endif;
+	
+end matchParms;
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// protoOptions-
+//
+//	Handles procedure options that are legal for a procedure
+// prototype or a procedure type.
+//
+//	Here are the options legal in a prototype/type declaration:
+//
+//	@cdecl, @pascal, @preserves, @stdcall, @use, @returns
+//
+//  Here are the options legal in a procedure declaration:
+//
+//	@leave/@noleave, @display/@nodisplay, @enter/@noenter, 
+//	@alignstack/@noalignstack, and @frame/@noframe
+//
+//
+// This function a powerset in EAX specifying which options
+// were present.
+
+//proc( "protoOptions" )
+procedure protoOptions( theProc:symNodePtr_t );
+var
+	optsPresent	:dword;
+	returnsAttr	:attr_t;
+
+begin protoOptions;
+
+	// Assign various default values:
+
+	mov( @{}, optsPresent );
+	mov( theProc, ebx );
+
+	// Process each of the procedure options:
+	
+	forever
+	
+		lex( esi );
+		mov( theProc, ebx );
+		
+		// Handle the "@cdecl" option here:
+		
+		if( eax = tkn_at_cdecl ) then
+		
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+			mustMatchSemicolon();
+			or( optCdecl, optsPresent );
+			continue;
+			
+		endif;
+		
+		// Handle the "@pascal" option here:
+		
+		if( eax = tkn_at_pascal ) then
+		
+			mov( pascal_cs, symEBX.cproc.callSeq );
+			mustMatchSemicolon();
+			or( optPascal, optsPresent );
+			continue;
+			
+		endif;
+		
+		// Handle the "@preserves( reg_list )" option here:
+		
+		if( eax = tkn_at_preserves ) then
+		
+			matchLParen();
+			mov( theProc, ebx );
+			mov( preserveNone, symEBX.cproc.preserves );
+			forever
+			
+				lex( esi );
+				if( ebx < reg8_tc ) then
+				
+					HLAerror( "Expected register, encountered " );
+					dumpQLexeme();
+					reuseLastTkn();
+					break;
+					
+				endif;
+				mov( theProc, ebx );
+				switch( eax )
+				
+					case( tkn_al )
+					
+						or( preserveAL, symEBX.cproc.preserves );
+						
+					case( tkn_ah )
+					
+						or( preserveAH, symEBX.cproc.preserves );
+						
+					case( tkn_bl )
+					
+						or( preserveBL, symEBX.cproc.preserves );
+						
+					case( tkn_bh )
+					
+						or( preserveBH, symEBX.cproc.preserves );
+						
+					case( tkn_cl )
+					
+						or( preserveCL, symEBX.cproc.preserves );
+						
+					case( tkn_ch )
+					
+						or( preserveCH, symEBX.cproc.preserves );
+						
+					case( tkn_dl )
+					
+						or( preserveDL, symEBX.cproc.preserves );
+						
+					case( tkn_dh )
+					
+						or( preserveDH, symEBX.cproc.preserves );
+						
+						
+			
+					case( tkn_ax )
+					
+						or( preserveAX, symEBX.cproc.preserves );
+						
+					case( tkn_bx )
+					
+						or( preserveBX, symEBX.cproc.preserves );
+						
+					case( tkn_cx )
+					
+						or( preserveCX, symEBX.cproc.preserves );
+						
+					case( tkn_dx )
+					
+						or( preserveDX, symEBX.cproc.preserves );
+						
+					case( tkn_si )
+
+						or( preserveSI, symEBX.cproc.preserves );
+						
+					case( tkn_di )
+					
+						or( preserveDI, symEBX.cproc.preserves );
+						
+					case( tkn_bp )
+					
+						or( preserveBP, symEBX.cproc.preserves );
+						
+					case( tkn_sp )
+					
+						or( preserveSP, symEBX.cproc.preserves );
+			
+						
+						
+			
+					case( tkn_eax )
+					
+						or( preserveEAX, symEBX.cproc.preserves );
+						
+					case( tkn_ebx )
+					
+						or( preserveEBX, symEBX.cproc.preserves );
+						
+					case( tkn_ecx )
+					
+						or( preserveECX, symEBX.cproc.preserves );
+						
+					case( tkn_edx )
+					
+						or( preserveEDX, symEBX.cproc.preserves );
+						
+					case( tkn_esi )
+					
+						or( preserveESI, symEBX.cproc.preserves );
+						
+					case( tkn_edi )
+					
+						or( preserveEDI, symEBX.cproc.preserves );
+						
+					case( tkn_ebp )
+					
+						or( preserveEBP, symEBX.cproc.preserves );
+						
+					case( tkn_esp )
+					
+						or( preserveESP, symEBX.cproc.preserves );
+						
+				endswitch;
+			
+				lex( esi );
+				if( eax <> ',' ) then
+				
+					reuseLastTkn();
+					break;
+					
+				endif;
+				
+			endfor;
+			mustMatchRParen();
+			mustMatchSemicolon();
+			or( optPreserves, optsPresent );
+			continue;
+			
+		endif;
+		
+		// Handle the "@stdcall" option here:
+		
+		if( eax = tkn_at_stdcall ) then
+		
+			mov( stdcall_cs, symEBX.cproc.callSeq );
+			mustMatchSemicolon();
+			or( optStdcall, optsPresent );
+			continue;
+			
+		endif;
+		
+		// Handle the "@use reg32;" option here:
+		
+		if( eax = tkn_at_use ) then
+		
+			lex( esi );
+			if( ebx <> reg32_tc ) then
+			
+				HLAerror
+				( 
+					"Expected a 32-bit register as '@USE' operand, "
+					"encountered "
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+				resyncOnSemicolon();
+				
+			else
+			
+				mov( theProc, ebx );
+				switch( eax )
+					
+					case( tkn_eax )
+					
+						mov( _EAX, symEBX.cproc.uses );
+					
+					case( tkn_ebx )
+					
+						mov( _EBX, symEBX.cproc.uses );
+						
+					case( tkn_ecx )
+					
+						mov( _ECX, symEBX.cproc.uses );
+					
+					case( tkn_edx )
+					
+						mov( _EDX, symEBX.cproc.uses );
+					
+					case( tkn_esi )
+					
+						mov( _ESI, symEBX.cproc.uses );
+						
+					case( tkn_edi )
+					
+						mov( _EDI, symEBX.cproc.uses );
+						
+					case( tkn_ebp )
+					
+						mov( _EBP, symEBX.cproc.uses );
+						
+					case( tkn_esp )
+					
+						mov( _ESP, symEBX.cproc.uses );
+						
+				endswitch;
+				mustMatchSemicolon();
+				or( optUse, optsPresent );
+			
+			endif;			
+			continue;
+			
+		endif;
+		
+		
+		// Handle the "@returns( str_expr )" option here:
+		
+		if( eax = tkn_at_returns ) then
+		
+			try
+
+				matchLParen();
+				raiseErr( @c );
+				constExpr( returnsAttr );
+				raiseErr( @c );
+				if( returnsAttr.pType <> String_pt ) then
+				
+					HLAerror( "Expected a string expression in '@RETURNS'" nl );
+					freeAttr( returnsAttr );
+					raise( ex.hlaerr );
+					
+				endif;
+				mov( returnsAttr.string_vt, eax );
+				mov( eax, symEBX.cproc.returnsStr );
+				mustMatchRParen();
+				mustMatchSemicolon();
+				or( optReturns, optsPresent );
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+				
+			endtry;
+			continue;
+			
+		endif;
+
+		// Handle the @alignstack & @noalignstack options here:
+
+		if( eax = tkn_at_alignstack ) then
+
+			mov( true, symEBX.cproc.alignsStack );
+			mustMatchSemicolon();
+			or( optAlignStack, optsPresent );
+			continue;
+
+		endif;
+
+		if( eax = tkn_at_noalignstack ) then
+
+			mov( false, symEBX.cproc.alignsStack );
+			mustMatchSemicolon();
+			or( optAlignStack, optsPresent );
+			continue;
+
+		endif;
+		
+
+		// Handle the @display & @nodisplay options here:
+
+		if( eax = tkn_at_display ) then
+
+			mov( true, symEBX.cproc.hasDisplay );
+			mustMatchSemicolon();
+			or( optDisplay, optsPresent );
+			continue;
+
+		endif;
+
+		if( eax = tkn_at_nodisplay ) then
+
+			mov( false, symEBX.cproc.hasDisplay );
+			mustMatchSemicolon();
+			or( optDisplay, optsPresent );
+			continue;
+
+		endif;
+		
+
+		// Handle the @frame & @noframe options here:
+
+		if( eax = tkn_at_frame ) then
+
+			mov( true, symEBX.cproc.hasFrame );
+			mustMatchSemicolon();
+			or( optFrame, optsPresent );
+			continue;
+
+		endif;
+
+		if( eax = tkn_at_noframe ) then
+
+			mov( false, symEBX.cproc.hasFrame );
+			mustMatchSemicolon();
+			or( optFrame, optsPresent );
+			continue;
+
+		endif;
+		
+
+		// Handle the @enter & @noenter options here:
+
+		if( eax = tkn_at_enter ) then
+
+			mov( true, symEBX.cproc.useEnter );
+			mustMatchSemicolon();
+			or( optEnter, optsPresent );
+			continue;
+
+		endif;
+
+		if( eax = tkn_at_noenter ) then
+
+			mov( false, symEBX.cproc.useEnter );
+			mustMatchSemicolon();
+			or( optEnter, optsPresent );
+			continue;
+
+		endif;
+		
+
+		// Handle the @leave & @noleave options here:
+
+		if( eax = tkn_at_leave ) then
+
+			mov( true, symEBX.cproc.useLeave );
+			mustMatchSemicolon();
+			or( optLeave, optsPresent );
+			continue;
+
+		endif;
+
+		if( eax = tkn_at_noleave ) then
+
+			mov( false, symEBX.cproc.useLeave );
+			mustMatchSemicolon();
+			or( optLeave, optsPresent );
+			continue;
+
+		endif;
+
+		
+		//  If we get to this point, we don't have a valid
+		// procedure prototype option, so just return.
+		
+		reuseLastTkn();
+		break;
+		
+	endfor;	// Corresponding jump is wasted, oh well.
+	mov( optsPresent, eax );
+	
+end protoOptions;
+
+
+	
+	
+
+
+	
+	
+////////////////////////////////////////////////////////////////////
+//
+// assignOffsets-
+//
+//	Recursively walks the list of parameters for a procedure
+// and assigns offsets to those parameters.
+
+//proc( "assignOffsets" )
+procedure assignOffsets
+( 
+	symList: symNodePtr_t; 
+	callSeq:callSeq_t;
+	offset: int32 
+);
+	@use ecx;
+			
+begin assignOffsets;
+
+	mov( symList, ebx );
+	if( ebx <> NULL ) then
+	
+		if( symEBX.pClass <> notp_pc ) then
+		
+			if( symEBX.inReg = _none ) then
+	
+				if( callSeq = pascal_cs ) then
+				
+					assignOffsets( symEBX.next, callSeq, offset );
+					mov( symList, ebx );
+					mov( eax, symEBX.offset );
+					add( symEBX.objectSize, eax );
+					
+					// Force parameter size to be an even multiple
+					// of four bytes:
+					
+					test( %11, eax );
+					if( @nz ) then
+					
+						add( 3, eax );
+						and( $FFFF_FFFC, eax );
+						
+					endif;
+					
+					exit assignOffsets;
+					
+				endif;
+				
+				// Must be CDECL or STDCALL, so assign offsets
+				// in the reverse order of PASCAL.
+				
+				mov( offset, eax );
+				mov( eax, symEBX.offset );
+				mov( symEBX.objectSize, eax );
+				
+				// Force parameter to be an even multiple of
+				// four bytes long:
+				
+				test( %11, eax );
+				if( @nz ) then
+				
+					add( 3, eax );
+					and( $FFFF_FFFC, eax );
+					
+				endif;
+				
+				add( offset, eax );
+				assignOffsets( symEBX.next, callSeq, eax );
+				exit assignOffsets;
+					
+			endif;
+
+			// If this particular parameter was passed in a register,
+			// we don't assign an offset to it;  just skip it and
+			// move on to the next parameter.
+						
+			assignOffsets( symEBX.next, callSeq, offset );
+			exit assignOffsets;
+			
+		endif;
+		
+		// At this point, we've hit the end of the parameters
+		// and waded on into local variables (which really shouldn't
+		// exist at this point, but nothing like being safe).
+				
+	endif;
+	mov( offset, eax );
+	
+end assignOffsets;
+	
+	
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// parseProcType-
+//
+//	Parses procedure pointer variable/type declarations:
+//
+//	procType->	procedure <optionalParms> ';' <protoOptions> 
+//
+//	optionalParms ->
+//			<empty string>
+//		|	'(' <oneOrMoreParms> ')'
+//
+//	oneOrMoreParms ->
+//			<passBy> <id> ':' <typeOrProc>
+//		|	var <id> ':' <varStuff>
+//
+//	passBy ->	val | valres | name | lazy | <empty string>
+//
+//	typeOrProc ->
+//			<typeID> <optionalIN> ( ';' <oneOrMoreParms> )*
+//		|	procedure <optionalParms> <optionalIN> ( ';' <oneOrMoreParms> )*
+//
+//	varStuff ->
+//			var <optionalIN> ( ';' <oneOrMoreParms> )*
+//		|	<typeID> <optionalIN> ( ';' <oneOrMoreParms> )*
+//		|	procedure <optionalParms> <optionalIN> ( ';' <oneOrMoreParms> )*
+//
+//	optionalIN ->
+//			in <register>
+//		|	<empty string>
+//
+//	register -> reg32 | reg16 | reg8
+//
+//	reg32 -> eax | ebx | ecx | edx | esi | edi | ebp | esp
+//	reg16 -> ax | bx | cx | dx | si | di | bp | sp 
+//	reg8 -> al | ah | bl | bh | cl | ch | dl | dh
+//
+//
+//	protoOptions ::=
+//				@returns '(' <constExpr> ')' ';' <protoOptions>
+//			|	@pascal ';'	 <protoOptions>
+//			|	@cdecl ';'	 <protoOptions>
+//			|	@stdcall ';' <protoOptions>
+//			|	<empty string>
+//
+//
+//
+// This function returns a pointer to the symbol table entry
+// it creates in the EAX register.
+
+//
+//	Parameters:
+//
+//		trueName-
+//			Original identifier to use
+//
+//		lcName-
+//			Lowercase version of identifier (for case neutrality reasons)
+//
+//		symClass-
+//			This symbol's class (type, const, var, static, etc.)
+//
+//		offset-
+//			Used by records and VAR objects. Specifies the variable's
+//			offset into an activation record or other record.
+//
+//		pClass-
+//			Parameter class (if parameter, else notp_pc).
+//
+//		startOffs-
+//			Starting offset to use for the first parameter in the
+//			activation record.
+//
+//		theSeg-
+//			Pointer to the symbol table entry of the segment that
+//			will hold this object (NULL if not a static_ct object).
+//
+//		initialVal-
+//			Pointer to an attr_t object where this code will store
+//			the initial value for the procedure pointer. This parameter
+//			will contain NULL if it is not legal to initialize the pointer.
+
+//proc( "parseProcType" )
+procedure parseProcType
+( 
+	trueName	:string;
+	lcName		:string;
+	hashValue	:dword;
+	symClass	:classType_t;
+	offset		:dword;
+	pClass		:parmClass_t;
+	startOffs	:int32;
+	theSeg		:symNodePtr_t;
+	enterSym	:enterProc_t;
+	initialVal	:boolean 
+);
+var
+	theProc		:symNodePtr_t;
+	options		:dword;
+	
+begin parseProcType;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	push( curLexLevel );
+	
+
+	// Note: we're calling lookupLocal here just to get the
+	// pointer to the leaf node in EBX.  lookupLocal always
+	// fails since this symbol isn't in the symbol table yet.
+	
+	lookupLocal( trueName, lcName, hashValue );
+	
+	// First step: Build a symbol table entry for the procedure
+	// pointer type so we can attach a local symbol table to it.
+	// Create an appropriate symbol table entry, depending
+	// on the class of this object:
+
+
+	
+	if( symClass = Var_ct || symClass = Parm_ct ) then
+	
+		enterVar
+		(
+			trueName,
+			lcName,
+			eax,
+			Procptr_pt,
+			&procptr_ste,
+			curOwner,
+			offset,
+			pClass,
+			[ebx]
+		);	
+	
+	elseif( symClass = Type_ct ) then
+	
+		enterType
+		(
+			trueName,
+			lcName,
+			NULL,
+			Procptr_pt,
+			&procptr_ste,
+			curOwner,
+			[ebx]
+		);	
+	
+	
+	elseif( symClass = Static_ct ) then
+	
+		// Call enterStatic, enterReadonly, enterStorage, or
+		// enterSegment, as appropriate for this symbol.
+
+		enterSym
+		(
+			trueName,
+			lcName,
+			hashValue,
+			trueName,
+			eax,
+			Procptr_pt,
+			&procptr_ste,
+			curOwner,
+			0,
+			theSeg,
+			NULL,
+			[ebx]
+		);
+
+		
+	else
+		// Defensive code: doesn't normally execute.
+	
+		HLAerror
+		( 
+			"Unexpected ClassType in parseProcType (internal HLA error), "
+			"ClassType=", 
+			(type uns8 al ),
+			nl
+		);
+		
+		// We need to create a dummy entry just so the system
+		// doesn't crash (Type_ct is probably the safest):
+		
+		enterType
+		(
+			trueName,
+			lcName,
+			NULL,
+			Procptr_pt,
+			&procptr_ste,
+			curOwner,
+			[ebx]
+		);	
+		
+		
+	endif;
+	mov( NULL, symEAX.localHash );
+	mov( eax, theProc );		// Save for later
+
+
+	mov( defaultFrame, bl );
+	mov( bl, symEAX.cproc.hasFrame ); 
+
+	mov( defaultDisplay, bl );
+	mov( bl, symEAX.cproc.hasDisplay ); 
+
+	mov( defaultStackAlign, bl );
+	mov( bl, symEAX.cproc.alignsStack ); 
+
+	mov( defaultEnter, bl );
+	mov( bl, symEAX.cproc.useEnter ); 
+
+	mov( defaultLeave, bl );
+	mov( bl, symEAX.cproc.useLeave );
+						 
+	// Defaults that cannot be set by the user:
+
+	mov( _none, symEAX.cproc.uses );
+	mov( pascal_cs, symEAX.cproc.callSeq );
+	mov( preserveNone, symEAX.cproc.preserves );
+	mov( NULL, symEAX.cproc.returnsStr ); 
+
+	
+	inc( curLexLevel );			// Bump up the lex level for the parms.
+	
+	// We need to create a new hash table for the local symbols in
+	// this procedure variable. As the only local symbols will be
+	// those in the parameter list, we don't really need a large
+	// symbol table. In fact, we're only going to use a single entry
+	// in the hash table.  Note that we *can* get away with taking
+	// the size of hashTable_t here, because the default declaration
+	// has exactly one hash table entry.
+	//
+	// By forcing it to one entry, we degenerate to a straight
+	// binary search. Not that it matters, because there will be
+
+	// so few parameters in the parameter list.
+
+	safe_malloc( @size( hashTable_t ) );
+	mov( 0, (type hashTable_t [eax]).mask );			//Force it to one entry.
+	mov( NULL, (type hashTable_t [eax]).hashTable );	// No entries yet!
+	
+	// Okay, save the pointer to the hash table in the procedure's
+	// localHash field:
+
+	mov( theProc, ebx );	
+	mov( eax, symEBX.localHash );
+	
+	// We need to create a dummy entry to allow us to point linearSyms
+	// and lastLinear at something reasonable.  Just make a copy of the current
+	// procedure object (which is good, because we don't want to
+	// allow any parameters with the same name at the new lex level). Also,
+	// we'll enter it into the hash table we just created to prevent someone
+	// from attempting to use the proc name as a parameter name.
+	
+	safe_malloc( @size( symNode_t ));
+	push( esi );
+	push( edi );
+	cld();
+	mov( (@size( symNode_t ) + 3) div 4, ecx );
+	mov( eax, edi );
+	mov( theProc, esi );
+	rep.movsd();
+	pop( edi );
+	pop( esi );
+	
+	// Okay, we can't use a total copy of the procedure's sym entry,
+	// some fields have to be changed:
+	
+	xor( ecx, ecx );
+	mov( ecx, symEAX.left );
+	mov( ecx, symEAX.right );
+	mov( ecx, symEAX.next );
+	
+	mov( theProc, ebx );
+	mov( ebx, symEAX.owner );
+	mov( eax, symEBX.linearSyms );
+	mov( eax, symEBX.lastLinear );
+	inc( symEAX.lexLevel );
+	
+	// Okay, save the pointer to the sub-entry in the hash table we created.
+	
+	mov( symEBX.localHash, ebx );
+	mov( eax, (type hashTable_t [ebx]).hashTable );	// Only 1 entry!
+	push( eax ); 	// Save for later.
+
+	
+	// Okay, we're set.  Now start parsing the parameters:
+	
+	optionalParms( theProc, initialVal );
+	
+	// Okay, now deal with the procedure options that may follow
+	// the parameters:
+	
+	protoOptions( theProc );
+	validOptions
+	( 
+		eax,
+		optCdecl | optPascal | optStdcall | 
+			optUse | optReturns | optPreserves
+	);
+	mov( theProc, ebx );
+	mov( eax, options );
+	test( optCdecl, eax );
+	if( @nz ) then
+
+		mov( cdecl_cs, symEBX.cproc.callSeq );
+
+	else
+
+		test( optStdcall, eax );
+		if( @nz ) then
+
+			mov( stdcall_cs, symEBX.cproc.callSeq );
+
+		else
+
+			mov( pascal_cs, symEBX.cproc.callSeq );
+
+		endif;
+
+	endif;
+	
+	// Now we have to scan through the parameter list for this
+	// procedure object and assign offsets to the parameters:
+	
+	mov( symEBX.cproc.callSeq, dl );		// Get the calling sequence.
+	mov( symEBX.linearSyms, ebx );		// Point EBX at dummy entry.
+	mov( symEBX.next, ebx );			// Skip dummy entry
+	assignOffsets( ebx, dl, startOffs );
+	
+	// The last offset value, minus the starting offset value,
+	// is the number of bytes of parameters for this procedure.
+	// Initialize the parameter size, local symbols size, and
+	// baseClass fields here.
+	
+	mov( theProc, ebx );
+	sub( startOffs, eax );
+	mov( eax, symEBX.cproc.parmSize );
+	mov( 0, symEBX.cproc.localSize );
+	mov( NULL, symEBX.cproc.baseClass );
+	
+	// Patch the procedure-related fields of the sub-entry, 
+	// we'll never refer to it again, but it does get printed in
+	// a symbol table dump.
+
+	pop( ecx );						// Retrieve ptr to the sub-entry
+	mov( symEBX.cproc.returnsStr, eax );
+	mov( eax, symECX.cproc.returnsStr );
+
+	mov( symEBX.cproc.baseClass, eax );
+	mov( eax, symECX.cproc.baseClass );
+
+	mov( symEBX.cproc.parmSize, eax );
+	mov( eax, symECX.cproc.parmSize );
+
+	mov( symEBX.cproc.localSize, eax );
+	mov( eax, symECX.cproc.localSize );
+
+	mov( symEBX.cproc.preserves, eax );
+	mov( eax, symECX.cproc.preserves );
+
+	mov( symEBX.cproc.callSeq, al );
+	mov( al, symECX.cproc.callSeq );
+
+	mov( symEBX.cproc.hasFrame, al );
+	mov( al, symECX.cproc.hasFrame );
+
+	mov( symEBX.cproc.hasDisplay, al );
+	mov( al, symECX.cproc.hasDisplay );
+
+	mov( symEBX.cproc.alignsStack, al );
+	mov( al, symECX.cproc.alignsStack );
+
+	mov( symEBX.cproc.useEnter, al );
+	mov( al, symECX.cproc.useEnter );
+
+	mov( symEBX.cproc.useLeave, al );
+	mov( al, symECX.cproc.useLeave );
+
+	mov( symEBX.cproc.uses, al );
+	mov( al, symECX.cproc.uses );
+
+
+	// Clean up and return a pointer to the Procedure entry we created.
+
+	pop( curLexLevel );
+	mov( theProc, eax );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );	
+	
+end parseProcType;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// createLocalHashTable-
+//
+//	Creates a local symbol/hash table for the procedure
+// passed as a parameter.
+//
+// Input:
+//	theProc-
+//		Symbol table entry of a procedure to which the local
+//		symbol table will be attached.
+//
+// Returns:
+//	EAX-	Pointer to hash table for the symbol table.
+
+//proc( "createLocalHashTable" )
+procedure createLocalHashTable( theProc:symNodePtr_t );
+begin createLocalHashTable;
+
+	push( ebx );
+	push( ecx );
+	push( edi );
+
+	// We need to create a new hash table for the local symbols in
+	// this procedure.
+
+	mov( theProc, ebx );
+	safe_malloc
+	( 
+		@size( hashTable_t ) + @size( symNodePtr_t ) * procHashSize 
+	);
+	mov( eax, symEBX.localHash );
+	mov( procHashMask, hashEAX.mask );
+	mov( ebx, hashEAX.owner );
+	lea( edi, hashEAX.hashTable );
+	mov( procHashSize, ecx );
+	xor( eax, eax );
+	cld();
+	rep.stosd();
+
+	mov( symEBX.localHash, eax );	// Return ptr to hash table.
+	pop( edi );
+	pop( ecx );
+	pop( ebx );
+
+end createLocalHashTable;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// createLocalProc-
+//
+//	Creates a copy of the procedure's symbol table entry
+// in the procedure's local symbol table. 
+//
+// Inputs:
+//
+//	theProc -
+//		Pointer to symbol table entry to copy.
+//
+//	procHash -
+//		Hash function value for the procedure.
+//
+// Returns-
+//	EAX -
+//		Pointer to symbol table entry we've created.
+
+//proc( "createLocalProc" )
+procedure createLocalProc( theProc:symNodePtr_t; procHash:dword );
+begin createLocalProc;
+
+	push( ebx );
+	push( ecx );
+	push( esi );
+	push( edi );
+	mov( theProc, ebx );
+
+	
+	safe_malloc( @size( symNode_t ));
+	mov( @size( symNode_t ), ecx );
+	mov( eax, edi );
+	mov( ebx, esi );
+	cld();
+	rep.movsb();
+	
+	// Okay, we can't use a total copy of the procedure's sym entry,
+	// some fields have to be changed:
+	
+	xor( ecx, ecx );
+	mov( ecx, symEAX.left );
+	mov( ecx, symEAX.right );
+	mov( ecx, symEAX.next );
+	mov( ecx, symEAX.linearSyms );
+	mov( ecx, symEAX.lastLinear );
+	
+	mov( ebx, symEAX.owner );
+	mov( eax, symEBX.linearSyms );
+	mov( eax, symEBX.lastLinear );
+	inc( symEAX.lexLevel );
+	
+	// Okay, save the pointer to the sub-entry in the 
+	// hash table we created.
+	
+	mov( symEBX.localHash, ecx );
+	mov( ecx, symEAX.localHash );
+	mov( procHash, edx );
+	and( procHashMask, edx );
+	mov( eax, (type hashTable_t [ecx+edx*4]).hashTable );
+
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+
+end createLocalProc;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// patchLocalProc-
+//
+// The following procedure copies the protoOptions values
+// from the main procedure to its local symbol table copy.
+// This is done after parsing the prototype options.
+//
+// Inputs
+//
+//	theProc-
+//		Pointer to original symbol table entry for the procedure.
+//
+//	localProc-
+//		Pointer to local symbol table entry (target of copy).
+
+
+//proc( "patchLocalProc" )
+procedure patchLocalProc( theProc:symNodePtr_t; localProc:symNodePtr_t );
+begin patchLocalProc;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	// Patch the procedure-related fields of the sub-entry. 
+	// The sub-entry only gets used for procedure calls, so
+	// we only have to worry about protoOptions, not procOptions
+	// here.
+
+	mov( theProc, ebx );
+	mov( localProc, eax );
+	mov( symEBX.cproc.returnsStr, ecx );
+	mov( ecx, symEAX.cproc.returnsStr );
+
+	mov( symEBX.cproc.baseClass, ecx );
+	mov( ecx, symEAX.cproc.baseClass );
+
+	mov( symEBX.cproc.parmSize, ecx );
+	mov( ecx, symEAX.cproc.parmSize );
+
+	mov( symEBX.cproc.localSize, ecx );
+	mov( ecx, symEAX.cproc.localSize );
+
+	mov( symEBX.cproc.preserves, ecx );
+	mov( ecx, symEAX.cproc.preserves );
+
+	mov( symEBX.cproc.callSeq, cl );
+	mov( cl, symEAX.cproc.callSeq );
+
+	mov( symEBX.cproc.uses, cl );
+	mov( cl, symEAX.cproc.uses );
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end patchLocalProc;
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseProc-
+//
+// Handle procedure declarations here.
+// We've already seen the "procedure" lexeme, now process the rest of the
+// procedure's declaration.
+//
+//	Grammar:
+//
+//		parseProc ->
+//			procedure <ID> <optionalParms> ';' <protoOptions> <procBody>
+//
+//	protoOptions ::=
+//				@returns '(' <constExpr> ')' ';' <protoOptions>
+//			|	@pascal ';'	 <protoOptions>
+//			|	@cdecl ';'	 <protoOptions>
+//			|	@stdcall ';' <protoOptions>
+//			|	<empty string>
+//
+//	procBody ::=
+//				@forward ';'
+//			|	@external <optExtStr> ';'
+//			|	( <protoOptions> )*
+//					 <procDCLs> begin <id> ';' <stmts> end <id> ';'
+//
+//  optExtStr ::=
+//				<empty string>
+//			|	'(' constExpr ')' ';'  // constExpr must be a string.
+//
+//	procDcls -> ( pDcls )*
+//
+//	pDcls ->	var Variables
+//			|	namespace parseNamespace
+//			|	constTkn Constants 
+//			|	valTkn Values 
+//			|	typeTkn Types 
+//			|	staticTkn StaticVars 
+//			|	storageTkn StorageVars
+//			|	readonlyTkn ReadOnlyVars
+//			|	segmentTkn SegmentVars
+//			|	procedureTkn parseProc 
+//			|	iteratorTkn parseIterator 
+//			|	methodTkn parseMethod 
+
+
+
+//proc( "parseProc" )
+procedure parseProc;
+var
+	procName	:string;
+	proclcName	:string;
+	procHash	:dword;
+	theProc		:symNodePtr_t;
+	localProc	:symNodePtr_t;
+	theClass	:symNodePtr_t;
+	parmOffs	:dword;
+	theOptions	:dword;
+	prevLexLevel:dword;
+	extName		:string;
+	extStr		:attr_t;
+
+begin parseProc;
+
+	push( curOffset );
+	mov( startLclOffs, eax );
+	mov( eax, curOffset );
+	mov( startParmsOffs, eax );
+	mov( eax, parmOffs );
+
+	if( !matchTknCls( esi, ID_tc )) then
+
+		HLAerror
+		( 
+			"Expected identifier after 'PROCEDURE' but encountered " 
+		);
+		dumpQLexeme();
+		pop( curOffset );
+		stc();
+		exit parseProc;
+
+	endif;
+
+	// Save these values, as we need to change them to point at
+	// the local symbols in the procedure's symbol table.
+
+	push( fwdPtrList );
+	push( curHashTable );
+	push( curOwner );
+	mov( curLexLevel, edx );
+	mov( edx, prevLexLevel );
+	push( edx );
+	mov( NULL, fwdPtrList );
+
+	// The first thing to do is to check to see if this is a
+	// class symbol:
+
+	if( eax <> tkn_undefID ) then
+
+		mov( tokenECX.symNode, ebx );
+		if( symEBX.symClass = Type_ct && symEBX.pType = Class_pt ) then
+
+			mov( ebx, theClass );
+			lex( esi );
+			if( eax <> '.' ) then
+
+				HLAerror( "Expected '.' in <class.procname>, but found " );
+				dumpQLexeme();
+				add( 12, esp );		// Remove  curHashTable, curOwner, ...
+				pop( curOffset );
+				exit parseProc;
+
+			endif;
+
+			// We've seen <classname> and '.', now get the proc name:
+
+			mov( theClass, ebx ); // Retrieve ptr to class' symbol table entry
+			mov( symEBX.localHash, eax );
+			mov( eax, curHashTable );
+			mov( ebx, curOwner );
+			mov( classLexLevel, curLexLevel );
+
+			lex( esi );		// Get the next ID
+
+			// If it's not an identifier or it's not a class procedure
+			// ID, we have an error:
+
+			if( ebx = ID_tc ) then
+
+				// Regardless of what lex(esi) found, we need to
+				// look the symbol up in the class' symbol table:
+
+				mov( theClass, ebx );
+				lookupLocalIn
+				( 
+					tokenECX.trueName, 
+					tokenECX.lcName,
+					tokenECX.hashValue, 
+					symEBX.localHash 
+				);
+				if( eax <> NULL && symEAX.pType = ClassProc_pt ) then
+
+					mov( tkn_localID, eax );
+
+				endif;
+
+			endif;
+			if( eax <> tkn_localID ) then
+
+				HLAerror
+				( 
+					"Expected predefined class procedure name, encountered: " 
+				);
+				dumpQLexeme();
+				pop( curLexLevel );
+				pop( curOwner );
+				pop( curHashTable );
+				pop( curOffset );
+				exit parseProc;
+
+			endif;
+
+			// Okay, it's a local ID and it is a class procedure.
+			
+			mov( tkn_localID, eax );	// To trigger next IF stmt.
+
+		endif;
+
+	endif;
+
+
+	
+	// Handle locally defined symbols specially, as they
+	// could be forward or external declarations
+
+	if( eax = tkn_localID ) then
+
+		mov( tokenECX.symNode, ebx );
+		if( !symEBX.isForward && !symEBX.isExternal ) then
+
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				tokenECX.trueName,
+				nl
+			);
+			makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+		else // Handle forward and external symbols here.
+
+			mov( symEBX.trueName, eax );
+			mov( eax, procName );
+			mov( symEBX.lcName, eax );
+			mov( eax, proclcName );
+
+			mov( ebx, curOwner );
+			mov( symEBX.localHash, eax );
+			mov( eax, curHashTable );
+			mov( symEBX.lexLevel, eax );
+			inc( eax );
+			mov( eax, curLexLevel );
+
+			mov( ebx, theProc );
+			mov( symEBX.linearSyms, eax );
+			mov( eax, localProc );
+
+			// If it was previously declared as an external symbol
+			// then we need to mark the "isPublic" field in the
+			// external list as true.
+
+			if( symEBX.isExternal ) then
+
+				setPublic( ebx );
+
+			endif;
+
+			// As the symbol already exists in the local symbol table,
+			// let's check the parameter list to see if it matches
+			// the forward/external declaration:
+
+			matchParms( ebx );
+
+			// Set EAX to tkn_localID so we can skip the next
+			// IF statement.
+
+			mov( tkn_localID, eax );
+
+		endif;
+
+	endif;
+
+	if( eax <> tkn_localID ) then  // It's a global or undefined ID:
+
+		// If it's a global symbol, turn it into an undefined symbol:
+
+		if( eax = tkn_globalID ) then
+		
+			// If it's global, turn it into an undefined
+			// ID as it is legal to reuse global identifiers
+			// in the local context:
+
+			makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+		endif;
+
+		// For undefined symbols, we need to create a new symbol
+		// table entry:
+		//
+		// Save the procedure's name locally so we can easily
+		// refer to it later.
+
+		if( tokenECX.alloc ) then
+
+			mov( tokenECX.trueName, eax );
+			mov( eax, procName );
+			mov( tokenECX.lcName, eax );
+			mov( eax, proclcName );
+
+		else
+
+			// If the procedure name wasn't allocated on the heap,
+			// do so now because we need a unique, allocated,
+			// copy to put into the symbol table.
+
+			str.a_cpy( tokenECX.trueName );
+			mov( eax, procName );
+			str.a_cpy( tokenECX.lcName );
+			mov( eax, proclcName );
+
+		endif;
+		mov( tokenECX.hashValue, eax );
+		mov( eax, procHash );
+
+		// The following call to lookupLocal will (probably) return NULL.
+		// We call it just to get the leaf node value into EBX:
+
+		lookupLocal( procName, proclcName, procHash );
+
+		// Okay, enter the procedure's name into the symbol table:
+
+		enterProc
+		(
+			procName,
+			proclcName,
+			procHash,
+			procName,	// external name, use procName for now.
+			Proc_pt,
+			curOwner,
+			NULL,		// No base class, not yet, anyway.
+			NULL,		// No pointer to intermediate code, yet.
+			[ebx]		// Leaf node pointer.
+		);
+		mov( eax, theProc );	// Save pointer to symbol table entry.
+
+		inc( curLexLevel );
+		mov( eax, curOwner );	// The procedure owns the new symbol table.
+
+		// Create a local symbol table for this procedure entry:
+
+		createLocalHashTable( theProc );
+		mov( eax, curHashTable );	// Future symtab entries go here.
+
+		// We need to create a dummy entry to allow us to point
+		// linearSyms and lastLinear at something reasonable.
+		// Just make a copy of the current procedure object
+		// (which is good, because we don't want to allow any
+		// parameters with the same name at the new lex level).
+		// Also, we'll enter it into the hash table we just
+		// created to prevent someone from attempting to use the
+		// proc name as a parameter name.
+
+		createLocalProc( theProc, procHash );
+		mov( eax, localProc );
+
+		// Okay, let's process the rest of the procedure declaration:
+
+		optionalParms( theProc, false );
+
+		// Process the procedure options:
+		
+		protoOptions( theProc );
+		mov( theProc, ebx );
+		mov( eax, theOptions );
+		test( optCdecl, eax );
+		if( @nz ) then
+
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+
+		else
+
+			test( optStdcall, eax );
+			if( @nz ) then
+
+				mov( stdcall_cs, symEBX.cproc.callSeq );
+
+			else
+
+				mov( pascal_cs, symEBX.cproc.callSeq );
+
+			endif;
+
+		endif;
+	
+		// Now we have to scan through the parameter list for this
+		// procedure object and assign offsets to the parameters:
+		
+		mov( theProc, ebx );
+		mov( symEBX.cproc.callSeq, dl );		// Get the calling sequence.
+		mov( symEBX.linearSyms, ebx );		// Point EBX at dummy entry.
+		mov( symEBX.next, ebx );			// Skip dummy entry
+
+		assignOffsets( ebx, dl, parmOffs );
+		
+		// The last offset value, minus the starting offset value,
+		// is the number of bytes of parameters for this procedure.
+		// Initialize the parameter size, local symbols size, and
+		// baseClass fields here.
+		
+		mov( theProc, ebx );
+		sub( parmOffs, eax );
+		mov( eax, symEBX.cproc.parmSize );
+		mov( 0, symEBX.cproc.localSize );
+		mov( NULL, symEBX.cproc.baseClass );
+
+	else
+		// Process the procedure options:
+		
+		protoOptions( theProc );
+		mov( eax, theOptions );
+
+	endif;
+
+	// Copy the options and parameters over to the local
+	// symbol table entry:
+
+	patchLocalProc( theProc, localProc );
+
+
+	// Look for @forward, @external, or a procedure body:
+
+	lex( esi );
+	if( eax = tkn_at_forward ) then
+
+		// Mark this as a forward symbol:
+
+		mov( theProc, ebx );
+		if( symEBX.isForward || symEBX.isExternal ) then
+
+			// If the symbol was already forward or external,
+			// then we have a duplicate symbol error.
+
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				symEBX.trueName, 
+				nl 
+			);
+
+		else
+
+			// Add this guy to the forward procedures list:
+
+			addFwdProc( ebx, NULL, prevLexLevel );
+
+		endif;
+		mov( true, symEBX.isForward );
+		getSemicolon();
+		mov( theOptions, eax );
+		validOptions
+		( 
+			eax,
+			optCdecl | optPascal | optStdcall | 
+				optUse | optReturns | optPreserves
+		);
+		test( optCdecl, eax );
+		if( @nz ) then
+
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+
+		else
+
+			test( optStdcall, eax );
+			if( @nz ) then
+
+				mov( stdcall_cs, symEBX.cproc.callSeq );
+
+			else
+
+				mov( pascal_cs, symEBX.cproc.callSeq );
+
+			endif;
+
+		endif;
+	elseif( eax = tkn_at_external ) then
+
+		// Note: external declarations are legal only
+		// at lex level 1:
+
+		if( curLexLevel > 2 ) then  // "2" because we already INC'd curLexLevel
+
+			HLAerror
+			( 
+				"@external declarations may not be nested inside "
+				"other procedures"
+				nl
+			);
+
+		endif;
+
+		mov( theProc, ebx );
+		if( symEBX.isForward || symEBX.isExternal ) then
+
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				symEBX.trueName, 
+				nl 
+			);
+
+		endif;
+
+		// Mark this as an external symbol:
+
+		mov( true, symEBX.isExternal );
+
+		// Check for optional external string
+
+		mov( NULL, extName );
+		lex( esi );
+		if( eax = '(' ) then
+
+			try
+				constExpr( extStr );
+				raiseErr( @c );
+				if( extStr.pType <> String_pt ) then
+
+					HLAerror( "Expected string constant in @external clause" nl);
+					freeAttr( extStr );
+					mov( NULL, extStr.string_vt );
+
+				endif;
+				mov( extStr.string_vt, eax );
+				mov( eax, extName );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+
+			endtry;
+
+		elseif( eax <> ';' ) then
+
+			HLAerror( "Expected ';', encountered " );
+			dumpQLexeme();
+			reuseLastTkn();
+
+		endif;
+		mov( extName, eax );
+		if( eax = NULL ) then
+
+			str.a_cpy( procName );
+
+		endif;
+		mov( theProc, ebx );
+		mov( eax, symEBX.externName );
+		addExtSym( ebx, NULL );
+		mov( theOptions, eax );
+		validOptions
+		( 
+			eax,
+			optCdecl | optPascal | optStdcall | 
+				optUse | optReturns | optPreserves
+		);
+		test( optCdecl, eax );
+		if( @nz ) then
+
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+
+		else
+
+			test( optStdcall, eax );
+			if( @nz ) then
+
+				mov( stdcall_cs, symEBX.cproc.callSeq );
+
+			else
+
+				mov( pascal_cs, symEBX.cproc.callSeq );
+
+			endif;
+
+		endif;
+	else
+
+		mov( theProc, ebx );
+
+		// If it was previously a forward declaration,
+		// we limit the number of options we allow:
+
+		mov( theOptions, eax );
+		if( symEBX.isForward ) then
+
+			validOptions
+			( 
+				eax,
+				optLeave | optEnter | optDisplay |
+					optAlignStack | optFrame
+			);
+
+		else
+
+			validOptions
+			( 
+				eax,
+				optCdecl | optPascal | optStdcall | 
+					optUse | optReturns | optPreserves |
+					optLeave | optEnter | optDisplay |
+					optAlignStack | optFrame
+			);
+			test( optCdecl, eax );
+			if( @nz ) then
+
+				mov( cdecl_cs, symEBX.cproc.callSeq );
+
+			else
+
+				test( optStdcall, eax );
+				if( @nz ) then
+
+					mov( stdcall_cs, symEBX.cproc.callSeq );
+
+				else
+
+					mov( pascal_cs, symEBX.cproc.callSeq );
+
+				endif;
+
+			endif;
+		endif;
+		
+		// Because there was no @forward, we can clear the
+		// "isForward" bit for this procedure since we've got
+		// an honest-to-God procedure declaration here.
+
+		mov( false, symEBX.isForward );
+
+		reuseLastTkn();
+
+		// Parse the declarations for this procedure:
+
+		resetTknQ();
+		procDcls();
+		chkFwdPtrList();
+		chkFwdProcList();
+
+		// At this point we'd better see "begin <procID>;"
+
+		begin syntaxError;
+
+			if( !matchTkn( esi, tkn_begin )) then 
+
+				HLAerror
+				( 
+					"Expected 'begin ", 
+					procName ,
+					";' clause, but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+
+			endif;
+			if( !matchTknCls( esi, ID_tc )) then
+
+				HLAerror
+				(
+					"Expected '", 
+					procName, 
+					"' after BEGIN but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+
+			endif;
+			if(	str.ne( procName, (type token_t [ecx]).trueName ) ) then
+
+				HLAerror
+				( 
+					"Identifier after BEGIN ('", 
+					(type token_t [ecx]).trueName, 
+					"') must match '", 
+					procName, 
+					"'" nl 
+				);
+				freeTkn( [ecx] );
+				exit syntaxError;
+				
+			endif;
+			
+			// Get the ";" after "begin <procID>"
+
+			getSemicolon();
+
+			// Okay, process the statements following 
+			// the "BEGIN <procID>;" clause:
+			
+			resetTknQ();
+			parseStmts();
+			reuseLastTkn();
+
+			// Check for any undefined forward references here:
+
+			chkFwdStaticExpr();
+			
+			
+			// We'd better see "END <procID>;" here:
+			
+			if( !matchTkn( esi, tkn_end ) ) then
+			
+				HLAerror
+				( 
+					"Expected an 'END ", 
+					procName, 
+					";' clause but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+				
+			endif;
+			
+			if( !matchTknCls( esi, ID_tc )) then
+			
+				HLAerror
+				( 
+					"Expected an identifier after the "
+					"'END' but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+
+			endif;
+			
+			if( (type token_t [ecx]).alloc ) then
+			
+				strfree( (type token_t [ecx]).lcName );
+				
+			endif;
+						
+			if( str.ne( procName, (type token_t [ecx]).trueName ) ) then
+			
+				HLAerror
+				( 
+					"Identifier after 'END' (", 
+					(type token_t [ecx]).trueName, 
+					") must match '", 
+					procName, 
+					"'" nl 
+				);
+				if( (type token_t [ecx]).alloc ) then
+				
+					strfree( (type token_t [ecx]).trueName );
+					
+				endif;
+				exit syntaxError;
+				
+			endif;
+			getSemicolon();
+
+		end syntaxError;
+
+	endif;
+
+	// Restore all the "current" pointers to the value prior to
+	// the creation of this procedure's local symbol table:
+
+	pop( curLexLevel );
+	pop( curOwner );
+	pop( curHashTable );
+	pop( fwdPtrList );
+	pop( curOffset );
+
+end parseProc;
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseClassProto-
+//
+//	This procedure handles procedure prototypes appearing in a class
+// declaration.  Note that we've already seen the "procedure" token.
+//
+//	classProcProto-> procedure <procID> <optionalParms> ';' <classProtoOptions>
+//
+//	classProtoOptions->
+//			@cdecl ';'
+//		|	@pascal ';'
+//		|	@preserves <reg32List>';'
+//		|	@stdcall ';'
+//		|	@use <reg32>';' 
+//		|	@returns '(' <constExpr> ')' ';'
+//		
+//	reg32List -> 
+//			<reg32> <moreRegs>
+//
+//	moreRegs ->
+//			',' <reg32> <moreRegs>
+//		|	<empty string>
+
+
+//proc( "parseClassProto" )
+procedure parseClassProto( classSym:symNodePtr_t );
+var
+	procName	:string;
+	proclcName	:string;
+	procHash	:dword;
+	theProc		:symNodePtr_t;
+	localProc	:symNodePtr_t;
+	startOffs	:dword;
+	parmOffs	:dword;
+	prevLexLevel:dword;
+	extName		:string;
+	extStr		:attr_t;
+
+begin parseClassProto;
+
+	if( !matchTknCls( esi, ID_tc )) then
+
+		HLAerror( "Expected identifer after 'PROCEDURE' but encountered " );
+		dumpQLexeme();
+		stc();
+		exit parseClassProto;
+
+	endif;
+
+	// Save these values as we need to change them to point at the
+	// local symbol table we're creating for the class procedure
+
+	push( curHashTable );
+	push( curOwner );
+	mov( curLexLevel, edx );
+	mov( edx, prevLexLevel );
+	push( edx );
+
+	// If it's a local ID, then this symbol is already defined in the
+	// class (and that's bad).
+
+	cmp( eax, tkn_globalID );
+	je undefineThisID;
+	cmp( eax, tkn_localID );
+	jne ItsAnUndefinedID;
+
+		HLAerror
+		( 
+			"Duplicate symbol definition in class: ",
+			tokenECX.trueName,
+			nl
+		);
+
+	undefineThisID:
+
+		// If it's globally or locally defined, turn it into an
+		// undefined ID.
+
+		makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+	ItsAnUndefinedID:
+
+	// Now we need to create a new symbol table entry.
+
+	if( tokenECX.alloc ) then
+
+		mov( tokenECX.trueName, eax );
+		mov( eax, procName );
+		mov( tokenECX.lcName, eax );
+		mov( eax, proclcName );
+
+	else
+
+		str.a_cpy( tokenECX.trueName );
+		mov( eax, procName );
+		str.a_cpy( tokenECX.lcName );
+		mov( eax, proclcName );
+
+	endif;
+	mov( tokenECX.hashValue, eax );
+	mov( eax, procHash );
+
+	// The following call to lookupLocal will (probably) return NULL.
+	// We call it just to get the leaf node value into EBX:
+
+	lookupLocal( procName, proclcName, procHash );
+
+	// Okay, enter the procedure's name into the symbol table:
+
+	enterProc
+	(
+		procName,
+		proclcName,
+		procHash,
+		procName,	// external name, use procName for now.
+		ClassProc_pt,
+		curOwner,
+		classSym,	// The base class.
+		NULL,		// No pointer to intermediate code, yet.
+		[ebx]		// Leaf node pointer.
+	);
+	mov( eax, theProc );	// Save pointer to symbol table entry.
+	mov( ClassProc_ct, symEAX.symClass );
+
+	inc( curLexLevel );
+	mov( eax, curOwner );	// The procedure owns the new symbol table.
+
+	// Create a local symbol table for this procedure entry:
+
+	createLocalHashTable( theProc );
+	mov( eax, curHashTable );	// Future symtab entries go here.
+
+	// We need to create a dummy entry to allow us to point
+	// linearSyms and lastLinear at something reasonable.
+	// Just make a copy of the current procedure object
+	// (which is good, because we don't want to allow any
+	// parameters with the same name at the new lex level).
+	// Also, we'll enter it into the hash table we just
+	// created to prevent someone from attempting to use the
+	// proc name as a parameter name.
+
+	createLocalProc( theProc, procHash );
+	mov( eax, localProc );
+
+	// Okay, let's process the rest of the procedure declaration:
+
+	optionalParms( theProc, false );
+
+	// Now we have to scan through the parameter list for this
+	// procedure object and assign offsets to the parameters:
+	
+	mov( theProc, ebx );
+	mov( symEBX.cproc.callSeq, dl );		// Get the calling sequence.
+	mov( symEBX.linearSyms, ebx );		// Point EBX at dummy entry.
+	mov( symEBX.next, ebx );			// Skip dummy entry
+
+	assignOffsets( ebx, dl, startOffs );
+	
+	// The last offset value, minus the starting offset value,
+	// is the number of bytes of parameters for this procedure.
+	// Initialize the parameter size, local symbols size, and
+	// baseClass fields here.
+	
+	mov( theProc, ebx );
+	sub( startOffs, eax );
+	mov( eax, symEBX.cproc.parmSize );
+	mov( 0, symEBX.cproc.localSize );
+	mov( NULL, symEBX.cproc.baseClass );
+
+	// Process the procedure options:
+	
+	protoOptions( theProc );
+
+	// Copy the options and parameters over to the local
+	// symbol table entry:
+
+	patchLocalProc( theProc, localProc );
+
+
+	// Look for an @external option here
+
+	lex( esi );
+	if( eax = tkn_at_external ) then
+
+		// Mark this as an external symbol:
+
+		mov( theProc, ebx );
+		mov( true, symEBX.isExternal );
+
+		// Check for optional external string
+
+		mov( NULL, extName );
+		lex( esi );
+		if( eax = '(' ) then
+
+			try
+				constExpr( extStr );
+				raiseErr( @c );
+				if( extStr.pType <> String_pt ) then
+
+					HLAerror( "Expected string constant in @external clause" nl);
+					freeAttr( extStr );
+					mov( NULL, extStr.string_vt );
+
+				endif;
+				mov( extStr.string_vt, eax );
+				mov( eax, extName );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+
+			endtry;
+
+		elseif( eax <> ';' ) then
+
+			HLAerror( "Expected ';', encountered " );
+			dumpQLexeme();
+			reuseLastTkn();
+
+		endif;
+		mov( extName, eax );
+		if( eax = NULL ) then
+
+			// Create an external name by concatenating
+			// the class name with the procedure name:
+
+			mov( classSym, ebx );
+			str.length( symEBX.trueName );
+			lea( edx, [eax+1] );	// Add 1 for "_"
+			str.length( procName );
+			add( edx, eax );
+			stralloc( eax );
+			str.cpy( symEBX.trueName, eax );
+			str.cat( "_", eax );
+			str.cat( procName, eax );
+
+		endif;
+		mov( theProc, ebx );
+		mov( eax, symEBX.externName );
+		addExtSym( ebx, classSym );
+
+	else	
+	
+		// Wasn't @external, so reuse the token
+		// Note that if it isn't an external symbol, it
+		// *must* be a forward defined symbol
+
+		mov( theProc, ebx );
+		mov( true, symEBX.isForward );
+		mov( [esp], eax );
+		mov( eax, curLexLevel );
+		addFwdProc( ebx, classSym, prevLexLevel );
+		reuseLastTkn();
+
+	endif;
+
+
+
+	// Restore all the "current" pointers to the value prior to
+	// the creation of this procedure's local symbol table:
+
+	pop( curLexLevel );
+	pop( curOwner );
+	pop( curHashTable );
+
+end parseClassProto;
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseMethod-
+//
+// Handle procedure declarations here.
+// We've already seen the "procedure" lexeme, now process the rest of the
+// procedure's declaration.
+//
+//	Grammar:
+//
+//		parseMethod ->
+//			method <ID> <optionalParms> ';' <protoOptions> <methBody>
+//
+//	protoOptions ::=
+//				@returns '(' <constExpr> ')' ';' <protoOptions>
+//			|	@pascal ';'	 <protoOptions>
+//			|	@cdecl ';'	 <protoOptions>
+//			|	@stdcall ';' <protoOptions>
+//			|	<empty string>
+//
+//	methBody ::=
+//				@forward ';'
+//			|	@external <optExtStr> ';'
+//			|	( <protoOptions> )*
+//					 <methDCLs> begin <id> ';' <stmts> end <id> ';'
+//
+//  optExtStr ::=
+//				<empty string>
+//			|	'(' constExpr ')' ';'  // constExpr must be a string.
+//
+//	methDCLs -> ( mDcls )*
+//
+//	mDcls ->	var Variables
+//			|	namespace parseNamespace
+//			|	constTkn Constants 
+//			|	valTkn Values 
+//			|	typeTkn Types 
+//			|	staticTkn StaticVars 
+//			|	storageTkn StorageVars
+//			|	readonlyTkn ReadOnlyVars
+//			|	segmentTkn SegmentVars
+//			|	procedureTkn parseMethod 
+//			|	iteratorTkn parseIterator 
+//			|	methodTkn parseMethod 
+
+
+
+//proc( "parseMethod" )
+procedure parseMethod;
+var
+	methodName		:string;
+	methodlcName	:string;
+	methodHash		:dword;
+	themethod		:symNodePtr_t;
+	localmethod		:symNodePtr_t;
+	theClass		:symNodePtr_t;
+	startOffs		:dword;
+	parmOffs		:dword;
+	theOptions		:dword;
+	extName			:string;
+	extStr			:attr_t;
+
+begin parseMethod;
+
+	mov( startLclOffs, eax );
+	mov( eax, startOffs );
+	mov( startParmsOffs, eax );
+	mov( eax, parmOffs );
+
+	if( !matchTknCls( esi, ID_tc )) then
+
+		HLAerror
+		( 
+			"Expected identifier after 'METHOD' but encountered " 
+		);
+		dumpQLexeme();
+		stc();
+		exit parseMethod;
+
+	endif;
+
+
+	// Because method symbols have to be predeclared in the class,
+	// let's check real quick to make sure this is a class symbol:
+
+	mov( tokenECX.symNode, ebx );
+	if
+	( 
+			eax = tkn_undefID
+		||	symEBX.symClass <> Type_ct 
+		||	symEBX.pType <> Class_pt 
+	) then
+
+		HLAerror
+		( 
+			"Expected a CLASS identifier after 'METHOD' but encountered " 
+		);
+		dumpQLexeme();
+		stc();
+		exit parseMethod;
+
+	endif;
+
+
+	mov( ebx, theClass );
+	lex( esi );
+	if( eax <> '.' ) then
+
+		HLAerror( "Expected '.' in <class.methodname>, but found " );
+		dumpQLexeme();
+		exit parseMethod;
+
+	endif;
+
+	// Save these values, as we need to change them to point at
+	// the local symbols in the method's symbol table.
+
+	push( fwdPtrList );
+	push( curHashTable );
+	push( curOwner );
+	push( curLexLevel );
+	mov( NULL, fwdPtrList );
+
+	// We've seen <classname> and '.', now get the method name:
+
+	mov( theClass, ebx ); // Retrieve ptr to class' symbol table entry
+	mov( symEBX.localHash, eax );
+	mov( eax, curHashTable );
+	mov( ebx, curOwner );
+	mov( classLexLevel, curLexLevel );
+
+	lex( esi );		// Get the next ID
+
+	// If it's not an identifier or it's not a class method
+	// ID, we have an error:
+
+	if( ebx = ID_tc ) then
+
+		// Regardless of what lex(esi) found, we need to
+		// look the symbol up in the class' symbol table:
+
+		mov( theClass, ebx );
+		lookupLocalIn
+		( 
+			tokenECX.trueName, 
+			tokenECX.lcName,
+			tokenECX.hashValue, 
+			symEBX.localHash 
+		);
+		if( eax <> NULL && symEAX.pType = Method_pt ) then
+
+			mov( tkn_localID, eax );
+
+		endif;
+
+	endif;
+	if( eax <> tkn_localID ) then
+
+		HLAerror
+		( 
+			"Expected predefined class method name, encountered: " 
+		);
+		dumpQLexeme();
+		pop( curLexLevel );
+		pop( curOwner );
+		pop( curHashTable );
+		exit parseMethod;
+
+	endif;
+
+	// Okay, it's a local ID and it is a class method.
+
+	mov( tokenECX.symNode, ebx );
+	if( !symEBX.isForward && !symEBX.isExternal ) then
+
+		// This isn't really possible -- defensive code.
+		HLAerror
+		( 
+			"Duplicate symbol definition: ", 
+			tokenECX.trueName,
+			nl
+		);
+		makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+	else // Handle forward and external symbols here.
+
+		mov( symEBX.trueName, eax );
+		mov( eax, methodName );
+		mov( symEBX.lcName, eax );
+		mov( eax, methodlcName );
+
+		mov( ebx, curOwner );
+		mov( symEBX.localHash, eax );
+		mov( eax, curHashTable );
+		mov( symEBX.lexLevel, eax );
+		inc( eax );
+		mov( eax, curLexLevel );
+
+		mov( ebx, themethod );
+		mov( symEBX.linearSyms, eax );
+		mov( eax, localmethod );
+
+		// If it was previously declared as an external symbol
+		// then we need to mark the "isPublic" field in the
+		// external list as true.
+
+		if( symEBX.isExternal ) then
+
+			setPublic( ebx );
+
+		endif;
+
+		// As the symbol already exists in the local symbol table,
+		// let's check the parameter list to see if it matches
+		// the forward/external declaration:
+
+		matchParms( ebx );
+
+		// Set EAX to tkn_localID so we can skip the next
+		// IF statement.
+
+		mov( tkn_localID, eax );
+
+	endif;
+
+	// Process the method options:
+	
+	protoOptions( themethod );
+	mov( eax, theOptions );
+
+	// Copy the options and parameters over to the local
+	// symbol table entry:
+
+	patchLocalProc( themethod, localmethod );
+
+
+
+	// If it was previously a forward declaration,
+	// we limit the number of options we allow:
+
+	mov( theOptions, eax );
+	mov( themethod, ebx );
+	if( symEBX.isForward ) then
+
+		validOptions
+		( 
+			eax,
+			optLeave | optEnter | optDisplay |
+				optAlignStack | optFrame
+		);
+
+	else
+
+		validOptions
+		( 
+			eax,
+			optCdecl | optPascal | optStdcall | 
+				optUse | optReturns | optPreserves |
+				optLeave | optEnter | optDisplay |
+				optAlignStack | optFrame
+		);
+		test( optCdecl, eax );
+		if( @nz ) then
+
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+
+		else
+
+			test( optStdcall, eax );
+			if( @nz ) then
+
+				mov( stdcall_cs, symEBX.cproc.callSeq );
+
+			else
+
+				mov( pascal_cs, symEBX.cproc.callSeq );
+
+			endif;
+
+		endif;
+	endif;
+	
+	// Because there was no @forward, we can clear the
+	// "isForward" bit for this method since we've got
+	// an honest-to-God method declaration here.
+
+	mov( false, symEBX.isForward );
+
+
+	// Parse the declarations for this method:
+
+	resetTknQ();
+	procDcls();
+	chkFwdPtrList();
+	chkFwdProcList();
+
+	// At this point we'd better see "begin <methodID>;"
+
+	begin syntaxError;
+
+		if( !matchTkn( esi, tkn_begin )) then 
+
+			HLAerror
+			( 
+				"Expected 'begin ", 
+				methodName ,
+				";' clause, but encountered "
+			);
+			dumpQLexeme();
+			exit syntaxError;
+
+		endif;
+		lex( esi );
+		if( ebx <> ID_tc ) then
+
+			HLAerror
+			(
+				"Expected '", 
+				methodName, 
+				"' after BEGIN but encountered "
+			);
+			dumpQLexeme();
+			freeTkn( [ecx] );
+			exit syntaxError;
+
+		endif;
+		if(	str.ne( methodName, (type token_t [ecx]).trueName ) ) then
+
+			HLAerror
+			( 
+				"Identifier after BEGIN ('", 
+				(type token_t [ecx]).trueName, 
+				"') must match '", 
+				methodName, 
+				"'" nl 
+			);
+			freeTkn( [ecx] );
+			exit syntaxError;
+			
+		endif;
+		
+		// Get the ";" after "begin <methodID>"
+
+		getSemicolon();
+
+		// Okay, process the statements following 
+		// the "BEGIN <methodID>;" clause:
+		
+		resetTknQ();
+		parseStmts();
+		reuseLastTkn();
+
+		// Check for any undefined forward references here:
+
+		chkFwdStaticExpr();
+		
+		
+		// We'd better see "END <methodID>;" here:
+		
+		if( !matchTkn( esi, tkn_end ) ) then
+		
+			HLAerror
+			( 
+				"Expected an 'END ", 
+				methodName, 
+				";' clause but encountered "
+			);
+			dumpQLexeme();
+			exit syntaxError;
+			
+		endif;
+		
+		if( !matchTknCls( esi, ID_tc )) then
+		
+			HLAerror
+			( 
+				"Expected an identifier after the "
+				"'END' but encountered "
+			);
+			dumpQLexeme();
+			exit syntaxError;
+
+		endif;
+		
+		if( (type token_t [ecx]).alloc ) then
+		
+			strfree( (type token_t [ecx]).lcName );
+			
+		endif;
+					
+		if( str.ne( methodName, (type token_t [ecx]).trueName ) ) then
+		
+			HLAerror
+			( 
+				"Identifier after 'END' (", 
+				(type token_t [ecx]).trueName, 
+				") must match '", 
+				methodName, 
+				"'" nl 
+			);
+			if( (type token_t [ecx]).alloc ) then
+			
+				strfree( (type token_t [ecx]).trueName );
+				
+			endif;
+			exit syntaxError;
+			
+		endif;
+		getSemicolon();
+
+	end syntaxError;
+
+
+	// Restore all the "current" pointers to the value prior to
+	// the creation of this procedure's local symbol table:
+
+	pop( curLexLevel );
+	pop( curOwner );
+	pop( curHashTable );
+	pop( fwdPtrList );
+
+end parseMethod;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseMethodProto-
+//
+//	This procedure handles method prototypes appearing in a class
+// declaration.  Note that we've already seen the "method" token.
+//
+//	classMethodProto-> method <procID> <optionalParms> ';' <classProtoOptions>
+//
+//	classProtoOptions->
+//			@cdecl ';'
+//		|	@pascal ';'
+//		|	@preserves <reg32List>';'
+//		|	@stdcall ';'
+//		|	@use <reg32>';' 
+//		|	@returns '(' <constExpr> ')' ';'
+//		
+//	reg32List -> 
+//			<reg32> <moreRegs>
+//
+//	moreRegs ->
+//			',' <reg32> <moreRegs>
+//		|	<empty string>
+
+
+//proc( "parseMethodProto" )
+procedure parseMethodProto
+( 
+			classSym:symNodePtr_t; 
+	valres	methodOffset:uns32 
+);
+var
+	methodName		:string;
+	methodlcName	:string;
+	methodHash		:dword;
+	theMethod		:symNodePtr_t;
+	localMethod		:symNodePtr_t;
+	startOffs		:dword;
+	parmOffs		:dword;
+	prevLexLevel	:dword;
+	extName			:string;
+	extStr			:attr_t;
+
+begin parseMethodProto;
+
+	if( !matchTknCls( esi, ID_tc )) then
+
+		HLAerror( "Expected identifer after 'METHOD' but encountered " );
+		dumpQLexeme();
+		stc();
+		exit parseMethodProto;
+
+	endif;
+
+	// Save these values as we need to change them to point at the
+	// local symbol table we're creating for the class procedure
+
+	push( curHashTable );
+	push( curOwner );
+	mov( curLexLevel, edx );
+	mov( edx, prevLexLevel );
+	push( edx );
+
+	// If it's a local ID, then this symbol is already defined in the
+	// class (and that's bad).
+
+	cmp( eax, tkn_globalID );
+	je undefineThisID;
+	cmp( eax, tkn_localID );
+	jne ItsAnUndefinedID;
+
+		HLAerror
+		( 
+			"Duplicate symbol definition in class: ",
+			tokenECX.trueName,
+			nl
+		);
+
+	undefineThisID:
+
+		// If it's globally or locally defined, turn it into an
+		// undefined ID.
+
+		makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+	ItsAnUndefinedID:
+
+	// Now we need to create a new symbol table entry.
+
+	if( tokenECX.alloc ) then
+
+		mov( tokenECX.trueName, eax );
+		mov( eax, methodName );
+		mov( tokenECX.lcName, eax );
+		mov( eax, methodlcName );
+
+	else
+
+		str.a_cpy( tokenECX.trueName );
+		mov( eax, methodName );
+		str.a_cpy( tokenECX.lcName );
+		mov( eax, methodlcName );
+
+	endif;
+	mov( tokenECX.hashValue, eax );
+	mov( eax, methodHash );
+
+	// The following call to lookupLocal will (probably) return NULL.
+	// We call it just to get the leaf node value into EBX:
+
+	lookupLocal( methodName, methodlcName, methodHash );
+
+	// Okay, enter the procedure's name into the symbol table:
+
+	enterProc
+	(
+		methodName,
+		methodlcName,
+		methodHash,
+		methodName,		// external name, use procName for now.
+		Method_pt,
+		curOwner,
+		classSym,		// The base class.
+		methodOffset,	// Offset in VMT for the method.
+		[ebx]			// Leaf node pointer.
+	);
+	mov( eax, theMethod );	// Save pointer to symbol table entry.
+	mov( Method_ct, symEAX.symClass );
+	mov( Method_pt, symEAX.pType );
+	
+	// Set the VMT offset for this method:
+	
+	mov( methodOffset, ecx );
+	mov( ecx, symEAX.offset );
+	
+	// Bump the VMT offset up by four:
+	
+	add( 4, methodOffset );
+
+	inc( curLexLevel );
+	mov( eax, curOwner );	// The method owns the new symbol table.
+
+	// Create a local symbol table for this method entry:
+
+	createLocalHashTable( theMethod );
+	mov( eax, curHashTable );	// Future symtab entries go here.
+
+	// We need to create a dummy entry to allow us to point
+	// linearSyms and lastLinear at something reasonable.
+	// Just make a copy of the current method object
+	// (which is good, because we don't want to allow any
+	// parameters with the same name at the new lex level).
+	// Also, we'll enter it into the hash table we just
+	// created to prevent someone from attempting to use the
+	// method name as a parameter name.
+
+	createLocalProc( theMethod, methodHash );
+	mov( eax, localMethod );
+
+	// Okay, let's process the rest of the method declaration:
+
+	optionalParms( theMethod, false );
+
+	// Now we have to scan through the parameter list for this
+	// method object and assign offsets to the parameters:
+	
+	mov( theMethod, ebx );
+	mov( symEBX.cproc.callSeq, dl );		// Get the calling sequence.
+	mov( symEBX.linearSyms, ebx );		// Point EBX at dummy entry.
+	mov( symEBX.next, ebx );			// Skip dummy entry
+
+	assignOffsets( ebx, dl, startOffs );
+	
+	// The last offset value, minus the starting offset value,
+	// is the number of bytes of parameters for this method.
+	// Initialize the parameter size, local symbols size, and
+	// baseClass fields here.
+	
+	mov( theMethod, ebx );
+	sub( startOffs, eax );
+	mov( eax, symEBX.cproc.parmSize );
+	mov( 0, symEBX.cproc.localSize );
+	mov( NULL, symEBX.cproc.baseClass );
+
+	// Process the method options:
+	
+	protoOptions( theMethod );
+
+	// Copy the options and parameters over to the local
+	// symbol table entry:
+
+	patchLocalProc( theMethod, localMethod );
+
+
+	// Look for an @external option here
+
+	lex( esi );
+	if( eax = tkn_at_external ) then
+
+		// Mark this as an external symbol:
+
+		mov( theMethod, ebx );
+		mov( true, symEBX.isExternal );
+
+		// Check for optional external string
+
+		mov( NULL, extName );
+		lex( esi );
+		if( eax = '(' ) then
+
+			try
+				constExpr( extStr );
+				raiseErr( @c );
+				if( extStr.pType <> String_pt ) then
+
+					HLAerror( "Expected string constant in @external clause" nl);
+					freeAttr( extStr );
+					mov( NULL, extStr.string_vt );
+
+				endif;
+				mov( extStr.string_vt, eax );
+				mov( eax, extName );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+
+			endtry;
+
+		elseif( eax <> ';' ) then
+
+			HLAerror( "Expected ';', encountered " );
+			dumpQLexeme();
+			reuseLastTkn();
+
+		endif;
+		mov( extName, eax );
+		if( eax = NULL ) then
+
+			// Create an external name by concatenating
+			// the class name with the method name:
+
+			mov( classSym, ebx );
+			str.length( symEBX.trueName );
+			lea( edx, [eax+1] );	// Add 1 for "_"
+			str.length( methodName );
+			add( edx, eax );
+			stralloc( eax );
+			str.cpy( symEBX.trueName, eax );
+			str.cat( "_", eax );
+			str.cat( methodName, eax );
+
+		endif;
+		mov( theMethod, ebx );
+		mov( eax, symEBX.externName );
+		addExtSym( ebx, classSym );
+
+	else	
+	
+		// Wasn't @external, so reuse the token
+		// Note that if it isn't an external symbol, it
+		// *must* be a forward defined symbol
+
+		mov( theMethod, ebx );
+		mov( true, symEBX.isForward );
+		addFwdProc( ebx, classSym, prevLexLevel );
+
+		reuseLastTkn();
+
+	endif;
+
+	// Restore all the "current" pointers to the value prior to
+	// the creation of this method's local symbol table:
+
+	pop( curLexLevel );
+	pop( curOwner );
+	pop( curHashTable );
+
+end parseMethodProto;
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseIterator-
+//
+// Handle iterator declarations here.
+// We've already seen the "iterator" lexeme, now process the rest of the
+// procedure's declaration.
+//
+//	Grammar:
+//
+//		parseIterator ->
+//			iterator <ID> <optionalParms> ';' <protoOptions> <procBody>
+//
+//	protoOptions ::=
+//				@returns '(' <constExpr> ')' ';' <protoOptions>
+//			|	@pascal ';'	 <protoOptions>
+//			|	@cdecl ';'	 <protoOptions>
+//			|	@stdcall ';' <protoOptions>
+//			|	<empty string>
+//
+
+
+
+//proc( "parseIterator" )
+procedure parseIterator;
+var
+	IteratorName	:string;
+	IteratorlcName	:string;
+	IteratorHash	:dword;
+	theIterator		:symNodePtr_t;
+	localIterator	:symNodePtr_t;
+	theClass		:symNodePtr_t;
+	startOffs		:dword;
+	parmOffs		:dword;
+	theOptions		:dword;
+	prevLexLevel	:dword;
+	extName			:string;
+	extStr			:attr_t;
+
+
+begin parseIterator;
+
+	mov( startLclOffs, eax );
+	mov( eax, startOffs );
+	mov( startParmsOffs, eax );
+	mov( eax, parmOffs );
+
+	if( !matchTknCls( esi, ID_tc )) then
+
+		HLAerror
+		( 
+			"Expected identifier after 'ITERATOR' but encountered " 
+		);
+		dumpQLexeme();
+		stc();
+		exit parseIterator;
+
+	endif;
+
+	// Save these values, as we need to change them to point at
+	// the local symbols in the iterator's symbol table.
+
+	push( fwdPtrList );
+	push( curHashTable );
+	push( curOwner );
+	mov( curLexLevel, edx );
+	mov( edx, prevLexLevel );
+	push( edx );
+	mov( NULL, fwdPtrList );
+
+	// The first thing to do is to check to see if this is a
+	// class symbol:
+
+	if( eax <> tkn_undefID ) then
+
+		mov( tokenECX.symNode, ebx );
+		if( symEBX.symClass = Type_ct && symEBX.pType = Class_pt ) then
+
+			mov( ebx, theClass );
+			lex( esi );
+			if( eax <> '.' ) then
+
+				HLAerror( "Expected '.' in <class.iterName>, but found " );
+				dumpQLexeme();
+				add( 12, esp );		// Remove  curHashTable, curOwner, ...
+				exit parseIterator;
+
+			endif;
+
+			// We've seen <classname> and '.', now get the iterator name:
+
+			mov( theClass, ebx ); // Retrieve ptr to class' symbol table entry
+			mov( symEBX.localHash, eax );
+			mov( eax, curHashTable );
+			mov( ebx, curOwner );
+			mov( classLexLevel, curLexLevel );
+
+			lex( esi );		// Get the next ID
+
+			// If it's not an identifier or it's not a class iterator
+			// ID, we have an error:
+
+			if( ebx = ID_tc ) then
+
+				// Regardless of what lex(esi) found, we need to
+				// look the symbol up in the class' symbol table:
+
+				mov( theClass, ebx );
+				lookupLocalIn
+				( 
+					tokenECX.trueName, 
+					tokenECX.lcName,
+					tokenECX.hashValue, 
+					symEBX.localHash 
+				);
+				if( eax <> NULL && symEAX.pType = ClassIter_pt ) then
+
+					mov( tkn_localID, eax );
+
+				endif;
+
+			endif;
+			if( eax <> tkn_localID ) then
+
+				HLAerror
+				( 
+					"Expected predefined class iterator name, encountered: " 
+				);
+				dumpQLexeme();
+				pop( curLexLevel );
+				pop( curOwner );
+				pop( curHashTable );
+				exit parseIterator;
+
+			endif;
+
+			// Okay, it's a local ID and it is a class iterator.
+			
+			mov( tkn_localID, eax );	// To trigger next IF stmt.
+
+		endif;
+
+	endif;
+
+
+	
+	// Handle locally defined symbols specially, as they
+	// could be forward or external declarations
+
+	if( eax = tkn_localID ) then
+
+		mov( tokenECX.symNode, ebx );
+		if( !symEBX.isForward && !symEBX.isExternal ) then
+
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				tokenECX.trueName,
+				nl
+			);
+			makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+		else // Handle forward and external symbols here.
+
+			mov( symEBX.trueName, eax );
+			mov( eax, IteratorName );
+			mov( symEBX.lcName, eax );
+			mov( eax, IteratorlcName );
+
+			mov( ebx, curOwner );
+			mov( symEBX.localHash, eax );
+			mov( eax, curHashTable );
+			mov( symEBX.lexLevel, eax );
+			inc( eax );
+			mov( eax, curLexLevel );
+
+			mov( ebx, theIterator );
+			mov( symEBX.linearSyms, eax );
+			mov( eax, localIterator );
+
+			// If it was previously declared as an external symbol
+			// then we need to mark the "isPublic" field in the
+			// external list as true.
+
+			if( symEBX.isExternal ) then
+
+				setPublic( ebx );
+
+			endif;
+
+			// As the symbol already exists in the local symbol table,
+			// let's check the parameter list to see if it matches
+			// the forward/external declaration:
+
+			matchParms( ebx );
+
+			// Set EAX to tkn_localID so we can skip the next
+			// IF statement.
+
+			mov( tkn_localID, eax );
+
+		endif;
+
+	endif;
+
+	if( eax <> tkn_localID ) then  // It's a global or undefined ID:
+
+		// If it's a global symbol, turn it into an undefined symbol:
+
+		if( eax = tkn_globalID ) then
+		
+			// If it's global, turn it into an undefined
+			// ID as it is legal to reuse global identifiers
+			// in the local context:
+
+			makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+		endif;
+
+		// For undefined symbols, we need to create a new symbol
+		// table entry:
+		//
+		// Save the procedure's name locally so we can easily
+		// refer to it later.
+
+		if( tokenECX.alloc ) then
+
+			mov( tokenECX.trueName, eax );
+			mov( eax, IteratorName );
+			mov( tokenECX.lcName, eax );
+			mov( eax, IteratorlcName );
+
+		else
+
+			// If the iterator name wasn't allocated on the heap,
+			// do so now because we need a unique, allocated,
+			// copy to put into the symbol table.
+
+			str.a_cpy( tokenECX.trueName );
+			mov( eax, IteratorName );
+			str.a_cpy( tokenECX.lcName );
+			mov( eax, IteratorlcName );
+
+		endif;
+		mov( tokenECX.hashValue, eax );
+		mov( eax, IteratorHash );
+
+		// The following call to lookupLocal will (probably) return NULL.
+		// We call it just to get the leaf node value into EBX:
+
+		lookupLocal( IteratorName, IteratorlcName, IteratorHash );
+
+		// Okay, enter the iterator's name into the symbol table:
+
+		enterProc
+		(
+			IteratorName,
+			IteratorlcName,
+			IteratorHash,
+			IteratorName,	// external name, use procName for now.
+			Iterator_pt,
+			curOwner,
+			NULL,		// No base class, not yet, anyway.
+			NULL,		// No pointer to intermediate code, yet.
+			[ebx]		// Leaf node pointer.
+		);
+		mov( eax, theIterator );	// Save pointer to symbol table entry.
+
+		inc( curLexLevel );
+		mov( eax, curOwner );	// The procedure owns the new symbol table.
+		mov( Iterator_ct, symEAX.symClass );
+
+		// Create a local symbol table for this iterator entry:
+
+		createLocalHashTable( theIterator );
+		mov( eax, curHashTable );	// Future symtab entries go here.
+
+		// We need to create a dummy entry to allow us to point
+		// linearSyms and lastLinear at something reasonable.
+		// Just make a copy of the current procedure object
+		// (which is good, because we don't want to allow any
+		// parameters with the same name at the new lex level).
+		// Also, we'll enter it into the hash table we just
+		// created to prevent someone from attempting to use the
+		// proc name as a parameter name.
+
+		createLocalProc( theIterator, IteratorHash );
+		mov( eax, localIterator );
+
+		// Okay, let's process the rest of the procedure declaration:
+
+		optionalParms( theIterator, false );
+
+		// Now we have to scan through the parameter list for this
+		// procedure object and assign offsets to the parameters:
+		
+		mov( theIterator, ebx );
+		mov( symEBX.cproc.callSeq, dl );		// Get the calling sequence.
+		mov( symEBX.linearSyms, ebx );		// Point EBX at dummy entry.
+		mov( symEBX.next, ebx );			// Skip dummy entry
+
+		assignOffsets( ebx, dl, startOffs );
+		
+		// The last offset value, minus the starting offset value,
+		// is the number of bytes of parameters for this iterator.
+		// Initialize the parameter size, local symbols size, and
+		// baseClass fields here.
+		
+		mov( theIterator, ebx );
+		sub( startOffs, eax );
+		mov( eax, symEBX.cproc.parmSize );
+		mov( 0, symEBX.cproc.localSize );
+		mov( NULL, symEBX.cproc.baseClass );
+
+	endif;
+
+	// Process the iterator options:
+	
+	protoOptions( theIterator );
+	mov( eax, theOptions );
+
+	// Copy the options and parameters over to the local
+	// symbol table entry:
+
+	patchLocalProc( theIterator, localIterator );
+
+
+	// Look for @forward, @external, or a procedure body:
+
+	lex( esi );
+	if( eax = tkn_at_forward ) then
+
+		// Mark this as a forward symbol:
+
+		mov( theIterator, ebx );
+		if( symEBX.isForward || symEBX.isExternal ) then
+
+			// If the symbol was already forward or external,
+			// then we have a duplicate symbol error.
+
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				symEBX.trueName, 
+				nl 
+			);
+
+		else
+
+			// Add this guy to the forward procedures list:
+
+			addFwdProc( ebx, NULL, prevLexLevel );
+
+		endif;
+		mov( true, symEBX.isForward );
+		getSemicolon();
+		mov( theOptions, eax );
+		validOptions
+		( 
+			eax,
+			optCdecl | optPascal | optStdcall | 
+				optUse | optReturns | optPreserves
+		);
+		test( optCdecl, eax );
+		if( @nz ) then
+
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+
+		else
+
+			test( optStdcall, eax );
+			if( @nz ) then
+
+				mov( stdcall_cs, symEBX.cproc.callSeq );
+
+			else
+
+				mov( pascal_cs, symEBX.cproc.callSeq );
+
+			endif;
+
+		endif;
+	elseif( eax = tkn_at_external ) then
+
+		// Note: external declarations are legal only
+		// at lex level 1:
+
+		if( curLexLevel > 2 ) then  // "2" because we already INC'd curLexLevel
+
+			HLAerror
+			( 
+				"@external declarations may not be nested inside "
+				"other procedures"
+				nl
+			);
+
+		endif;
+
+		mov( theIterator, ebx );
+		if( symEBX.isForward || symEBX.isExternal ) then
+
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				symEBX.trueName, 
+				nl 
+			);
+
+		endif;
+
+		// Mark this as an external symbol:
+
+		mov( true, symEBX.isExternal );
+
+		// Check for optional external string
+
+		mov( NULL, extName );
+		lex( esi );
+		if( eax = '(' ) then
+
+			try
+				constExpr( extStr );
+				raiseErr( @c );
+				if( extStr.pType <> String_pt ) then
+
+					HLAerror( "Expected string constant in @external clause" nl);
+					freeAttr( extStr );
+					mov( NULL, extStr.string_vt );
+
+				endif;
+				mov( extStr.string_vt, eax );
+				mov( eax, extName );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+
+			endtry;
+
+		elseif( eax <> ';' ) then
+
+			HLAerror( "Expected ';', encountered " );
+			dumpQLexeme();
+			reuseLastTkn();
+
+		endif;
+		mov( extName, eax );
+		if( eax = NULL ) then
+
+			str.a_cpy( IteratorName );
+
+		endif;
+		mov( theIterator, ebx );
+		mov( eax, symEBX.externName );
+		addExtSym( ebx, NULL );
+		mov( theOptions, eax );
+		validOptions
+		( 
+			eax,
+			optCdecl | optPascal | optStdcall | 
+				optUse | optReturns | optPreserves
+		);
+		test( optCdecl, eax );
+		if( @nz ) then
+
+			mov( cdecl_cs, symEBX.cproc.callSeq );
+
+		else
+
+			test( optStdcall, eax );
+			if( @nz ) then
+
+				mov( stdcall_cs, symEBX.cproc.callSeq );
+
+			else
+
+				mov( pascal_cs, symEBX.cproc.callSeq );
+
+			endif;
+
+		endif;
+	else
+
+		mov( theIterator, ebx );
+
+		// If it was previously a forward declaration,
+		// we limit the number of options we allow:
+
+		mov( theOptions, eax );
+		if( symEBX.isForward ) then
+
+			validOptions
+			( 
+				eax,
+				optLeave | optEnter | optDisplay |
+					optAlignStack | optFrame
+			);
+
+		else
+
+			validOptions
+			( 
+				eax,
+				optCdecl | optPascal | optStdcall | 
+					optUse | optReturns | optPreserves |
+					optLeave | optEnter | optDisplay |
+					optAlignStack | optFrame
+			);
+			test( optCdecl, eax );
+			if( @nz ) then
+
+				mov( cdecl_cs, symEBX.cproc.callSeq );
+
+			else
+
+				test( optStdcall, eax );
+				if( @nz ) then
+
+					mov( stdcall_cs, symEBX.cproc.callSeq );
+
+				else
+
+					mov( pascal_cs, symEBX.cproc.callSeq );
+
+				endif;
+
+			endif;
+		endif;
+		
+		// Because there was no @forward, we can clear the
+		// "isForward" bit for this iterator since we've got
+		// an honest-to-God iterator declaration here.
+
+		mov( false, symEBX.isForward );
+
+		reuseLastTkn();
+
+		// Parse the declarations for this iterator:
+
+		resetTknQ();
+		procDcls();
+		chkFwdPtrList();
+		chkFwdProcList();
+
+		// At this point we'd better see "begin <IteratorID>;"
+
+		begin syntaxError;
+
+			if( !matchTkn( esi, tkn_begin )) then 
+
+				HLAerror
+				( 
+					"Expected 'begin ", 
+					IteratorName ,
+					";' clause, but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+
+			endif;
+			if( !matchTknCls( esi, ID_tc )) then
+
+				HLAerror
+				(
+					"Expected '", 
+					IteratorName, 
+					"' after BEGIN but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+
+			endif;
+			if(	str.ne( IteratorName, (type token_t [ecx]).trueName ) ) then
+
+				HLAerror
+				( 
+					"Identifier after BEGIN ('", 
+					(type token_t [ecx]).trueName, 
+					"') must match '", 
+					IteratorName, 
+					"'" nl 
+				);
+				freeTkn( [ecx] );
+				exit syntaxError;
+				
+			endif;
+			
+			// Get the ";" after "begin <IteratorID>"
+
+			getSemicolon();
+
+			// Okay, process the statements following 
+			// the "BEGIN <IteratorID>;" clause:
+			
+			resetTknQ();
+			parseStmts();
+			reuseLastTkn();
+
+			// Check for any undefined forward references here:
+
+			chkFwdStaticExpr();
+			
+			
+			// We'd better see "END <IteratorID>;" here:
+			
+			if( !matchTkn( esi, tkn_end ) ) then
+			
+				HLAerror
+				( 
+					"Expected an 'END ", 
+					IteratorName, 
+					";' clause but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+				
+			endif;
+			
+			if( !matchTknCls( esi, ID_tc )) then
+			
+				HLAerror
+				( 
+					"Expected an identifier after the "
+					"'END' but encountered "
+				);
+				dumpQLexeme();
+				exit syntaxError;
+
+			endif;
+			
+			if( (type token_t [ecx]).alloc ) then
+			
+				strfree( (type token_t [ecx]).lcName );
+				
+			endif;
+						
+			if( str.ne( IteratorName, (type token_t [ecx]).trueName ) ) then
+			
+				HLAerror
+				( 
+					"Identifier after 'END' (", 
+					(type token_t [ecx]).trueName, 
+					") must match '", 
+					IteratorName, 
+					"'" nl 
+				);
+				if( (type token_t [ecx]).alloc ) then
+				
+					strfree( (type token_t [ecx]).trueName );
+					
+				endif;
+				exit syntaxError;
+				
+			endif;
+			getSemicolon();
+
+		end syntaxError;
+
+	endif;
+
+	// Restore all the "current" pointers to the value prior to
+	// the creation of this iterator's local symbol table:
+
+	pop( curLexLevel );
+	pop( curOwner );
+	pop( curHashTable );
+	pop( fwdPtrList );
+
+end parseIterator;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseIteratorProto-
+//
+//	This procedure handles Iterator prototypes appearing in a class
+// declaration.  Note that we've already seen the "procedure" token.
+//
+//	classIteratorProto-> Iterator <procID> <optionalParms> ';' <classProtoOptions>
+//
+//	classProtoOptions->
+//			@cdecl ';'
+//		|	@pascal ';'
+//		|	@preserves <reg32List>';'
+//		|	@stdcall ';'
+//		|	@use <reg32>';' 
+//		|	@returns '(' <constExpr> ')' ';'
+//		
+//	reg32List -> 
+//			<reg32> <moreRegs>
+//
+//	moreRegs ->
+//			',' <reg32> <moreRegs>
+//		|	<empty string>
+
+
+//proc( "parseIteratorProto" )
+procedure parseIteratorProto
+( 
+			classSym:symNodePtr_t; 
+	valres	methodOffset:uns32 
+);
+var
+	IteratorName	:string;
+	IteratorlcName	:string;
+	IteratorHash	:dword;
+	theIterator		:symNodePtr_t;
+	localIterator	:symNodePtr_t;
+	startOffs		:dword;
+	parmOffs		:dword;
+	prevLexLevel	:dword;
+	extName			:string;
+	extStr			:attr_t;
+
+begin parseIteratorProto;
+
+	if( !matchTknCls( esi, ID_tc )) then
+
+		HLAerror( "Expected identifer after 'Iterator' but encountered " );
+		dumpQLexeme();
+		stc();
+		exit parseIteratorProto;
+
+	endif;
+
+	// Save these values as we need to change them to point at the
+	// local symbol table we're creating for the class procedure
+
+	push( curHashTable );
+	push( curOwner );
+	mov( curLexLevel, edx );
+	mov( edx, prevLexLevel );
+	push( edx );
+
+	// If it's a local ID, then this symbol is already defined in the
+	// class (and that's bad).
+
+	cmp( eax, tkn_globalID );
+	je undefineThisID;
+	cmp( eax, tkn_localID );
+	jne ItsAnUndefinedID;
+
+		HLAerror
+		( 
+			"Duplicate symbol definition in class: ",
+			tokenECX.trueName,
+			nl
+		);
+
+	undefineThisID:
+
+		// If it's globally or locally defined, turn it into an
+		// undefined ID.
+
+		makeUndefID( [ecx] );	// Sets EAX to tkn_undefID
+
+	ItsAnUndefinedID:
+
+	// Now we need to create a new symbol table entry.
+
+	if( tokenECX.alloc ) then
+
+		mov( tokenECX.trueName, eax );
+		mov( eax, IteratorName );
+		mov( tokenECX.lcName, eax );
+		mov( eax, IteratorlcName );
+
+	else
+
+		str.a_cpy( tokenECX.trueName );
+		mov( eax, IteratorName );
+		str.a_cpy( tokenECX.lcName );
+		mov( eax, IteratorlcName );
+
+	endif;
+	mov( tokenECX.hashValue, eax );
+	mov( eax, IteratorHash );
+
+	// The following call to lookupLocal will (probably) return NULL.
+	// We call it just to get the leaf node value into EBX:
+
+	lookupLocal( IteratorName, IteratorlcName, IteratorHash );
+
+	// Okay, enter the procedure's name into the symbol table:
+
+	enterProc
+	(
+		IteratorName,
+		IteratorlcName,
+		IteratorHash,
+		IteratorName,		// external name, use procName for now.
+		ClassIter_pt,
+		curOwner,
+		classSym,		// The base class.
+		methodOffset,	// Offset in VMT for the Iterator.
+		[ebx]			// Leaf node pointer.
+	);
+	mov( eax, theIterator );	// Save pointer to symbol table entry.
+	mov( ClassIter_ct, symEAX.symClass );
+	mov( ClassIter_pt, symEAX.pType );
+	
+	// Set the VMT offset for this Iterator:
+	
+	mov( methodOffset, ecx );
+	mov( ecx, symEAX.offset );
+	
+	// Bump the VMT offset up by four:
+	
+	add( 4, methodOffset );
+
+	inc( curLexLevel );
+	mov( eax, curOwner );	// The Iterator owns the new symbol table.
+
+	// Create a local symbol table for this Iterator entry:
+
+	createLocalHashTable( theIterator );
+	mov( eax, curHashTable );	// Future symtab entries go here.
+
+	// We need to create a dummy entry to allow us to point
+	// linearSyms and lastLinear at something reasonable.
+	// Just make a copy of the current Iterator object
+	// (which is good, because we don't want to allow any
+	// parameters with the same name at the new lex level).
+	// Also, we'll enter it into the hash table we just
+	// created to prevent someone from attempting to use the
+	// Iterator name as a parameter name.
+
+	createLocalProc( theIterator, IteratorHash );
+	mov( eax, localIterator );
+
+	// Okay, let's process the rest of the Iterator declaration:
+
+	optionalParms( theIterator, false );
+
+	// Now we have to scan through the parameter list for this
+	// Iterator object and assign offsets to the parameters:
+	
+	mov( theIterator, ebx );
+	mov( symEBX.cproc.callSeq, dl );		// Get the calling sequence.
+	mov( symEBX.linearSyms, ebx );		// Point EBX at dummy entry.
+	mov( symEBX.next, ebx );			// Skip dummy entry
+
+	assignOffsets( ebx, dl, startOffs );
+	
+	// The last offset value, minus the starting offset value,
+	// is the number of bytes of parameters for this Iterator.
+	// Initialize the parameter size, local symbols size, and
+	// baseClass fields here.
+	
+	mov( theIterator, ebx );
+	sub( startOffs, eax );
+	mov( eax, symEBX.cproc.parmSize );
+	mov( 0, symEBX.cproc.localSize );
+	mov( NULL, symEBX.cproc.baseClass );
+
+	// Process the Iterator options:
+	
+	protoOptions( theIterator );
+
+	// Copy the options and parameters over to the local
+	// symbol table entry:
+
+	patchLocalProc( theIterator, localIterator );
+
+
+	// Look for an @external option here
+
+	lex( esi );
+	if( eax = tkn_at_external ) then
+
+		// Mark this as an external symbol:
+
+		mov( theIterator, ebx );
+		mov( true, symEBX.isExternal );
+
+		// Check for optional external string
+
+		mov( NULL, extName );
+		lex( esi );
+		if( eax = '(' ) then
+
+			try
+				constExpr( extStr );
+				raiseErr( @c );
+				if( extStr.pType <> String_pt ) then
+
+					HLAerror( "Expected string constant in @external clause" nl);
+					freeAttr( extStr );
+					mov( NULL, extStr.string_vt );
+
+				endif;
+				mov( extStr.string_vt, eax );
+				mov( eax, extName );
+				mustMatchRParen();
+				mustMatchSemicolon();
+
+			  exception( ex.hlaerr );
+
+				resyncOnSemicolon();
+
+			endtry;
+
+		elseif( eax <> ';' ) then
+
+			HLAerror( "Expected ';', encountered " );
+			dumpQLexeme();
+			reuseLastTkn();
+
+		endif;
+		mov( extName, eax );
+		if( eax = NULL ) then
+
+			// Create an external name by concatenating
+			// the class name with the Iterator name:
+
+			mov( classSym, ebx );
+			str.length( symEBX.trueName );
+			lea( edx, [eax+1] );	// Add 1 for "_"
+			str.length( IteratorName );
+			add( edx, eax );
+			stralloc( eax );
+			str.cpy( symEBX.trueName, eax );
+			str.cat( "_", eax );
+			str.cat( IteratorName, eax );
+
+		endif;
+		mov( theIterator, ebx );
+		mov( eax, symEBX.externName );
+		addExtSym( ebx, classSym );
+
+	else	
+	
+		// Wasn't @external, so reuse the token
+		// Note that if it isn't an external symbol, it
+		// *must* be a forward defined symbol
+
+		mov( theIterator, ebx );
+		mov( true, symEBX.isForward );
+		addFwdProc( ebx, classSym, prevLexLevel );
+
+		reuseLastTkn();
+
+	endif;
+
+	// Restore all the "current" pointers to the value prior to
+	// the creation of this Iterator's local symbol table:
+
+	pop( curLexLevel );
+	pop( curOwner );
+	pop( curHashTable );
+
+end parseIteratorProto;
+
+
+
+end parseProcs;

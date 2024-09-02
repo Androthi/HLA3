@@ -1,0 +1,975 @@
+unit parseVarUnit;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+	 
+
+?@nodisplay := true;
+?@noalignstack := true;									   
+
+
+////////////////////////////////////////////////////////////////////
+//
+// parseVar-
+//
+//	Handle a VAR declaration section here.
+// Note that we've already seen the VAR reserved word.
+//
+// Grammar:
+//
+// VarDcls ::= <optVarAlign> <vars> <optEndVar>
+//
+// optVarAlign ::=
+//				'(' <constExpr> <optMinExpr> ')' <optVarOffset>
+//			|	<optVarOffset>
+//
+// optVarOffset ::=
+//				<empty string>
+//			|	':=' <constExpr> ';'
+//
+// optMinExpr ::=
+//				<empty string>
+//			|	',' <constExpr>
+//
+// vars ::=
+//		(
+//				';'
+//			|	<ID> ':' <ForVar> ';'
+//			|	align '(' <constExpr> ')' ';'
+//		)*
+//
+// ForVar ::=
+//				<typeID> <optionalBounds>
+//			|	enum '{' <idList> '}'
+//			|	pointer to <ptrTypeID>
+//			|	procedure <optionalParms> ';' <protoOptions> 
+//			|	@forward '(' <fID> ')' ';'
+//			|	record <recStuff> ';'
+//			|	union <recStuff> ';'
+//
+// optEndVar ::=
+//				<empty string>
+//			|	endvar ';'
+//
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the VAR reserved word.
+
+//proc( "parseVar" )
+procedure parseVar;
+var
+	varID		:string;
+	varlcID		:string;
+	varHash		:dword;
+	varType		:symNodePtr_t;
+	varToken	:pointer to token_t;
+	dimensions	:dimPtr_t;
+	alignTo		:int32;
+	minAlign	:attr_t;
+	maxAlign	:attr_t;
+	varOffset	:attr_t;
+	alignment	:attr_t;
+	constResult	:attr_t; 
+	varpType	:pType_t;
+
+
+	// optVarAlign - handles the VAR ALIGN options.
+	//
+	//	VAR[align]
+	//  VAR[max,min]
+	//	VAR := offset;
+	//	VAR[align]  := offset;
+	//  VAR[max,min]  := offset;
+
+
+	//proc( "optVarAlign" )
+	procedure optVarAlign; @noframe;
+	begin optVarAlign;
+
+		// check for a "[" or ":=" after the VAR keyword:
+
+		lex( esi );
+		if( eax = '[' ) then
+
+			// Okay, we're expecting an alignment item, which
+			// takes one of the following forms:
+			// [ align ]
+			// [ maxAlign, minAlign ]
+
+			getUnsigned( ebp::maxAlign );
+			if( @nc ) then
+				
+				// Use maxAlign value as minAlign value
+				// because the minimum value is optional.
+
+				mov( ebp::maxAlign.dword_vt, eax );
+				mov( eax, minVarAlign );
+				mov( eax, maxVarAlign );
+
+			endif;
+
+			lex( esi );
+			if( eax = ',' ) then
+
+				// If we see a comma, then we must have
+				// two operands.
+
+				getUnsigned( ebp::minAlign );
+				if( @nc ) then
+
+					mov( ebp::minAlign.dword_vt, eax );
+					mov( eax, minVarAlign );
+
+				endif;
+				lex( esi );
+			
+			endif;
+			if( eax <> ']' ) then
+
+				HLAerror( "Expected a right bracket (']')" nl );
+
+			else
+
+				lex( esi );
+
+			endif;
+
+		endif;
+
+		// Check to see if we're setting the offset for this
+		// VAR section:
+
+		if( eax = tkn_assign ) then
+
+			getInteger( ebp::varOffset );
+			mov( ebp::varOffset.dword_vt, curOffset );
+			matchTkn( esi, ';' );
+			if( @c ) then
+
+				HLAerror( "Syntax error, expected a ';'" nl );
+				reuseLastTkn();
+
+			endif;
+
+		else
+
+			reuseLastTkn();
+
+		endif;
+		ret();
+
+	end optVarAlign;
+
+
+
+	// Handle the type portion of a VAR declaration.
+
+	//proc( "forVar" )
+	procedure forVar; @noframe;
+	begin forVar;
+
+		if( getTypeID() ) then
+		
+			mov( eax, ebp::varType );
+			if( eax = &text_ste ) then
+			
+				HLAerror( "TEXT type not allowed in VAR section" nl );
+				stc();
+				ret();
+				
+			endif;
+			optionalBounds();
+			mov( eax, ebp::dimensions );
+			if( eax <> NULL ) then
+
+				// We have an array type.  We need to build anonymous 
+				// type records for all array dimension and link them
+				// together:
+				
+				mov( (type dimensions_t [eax]).arity, ecx );
+				repeat
+				
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+					// We need to create a dummy name for
+					// the anonymous array type that we're
+					// about to create.  This is of the form:
+					//
+					//	" arrayXXX"
+					//
+					// where XXX is some unique numeric value.
+					// Note the '@' at the beginning of the
+					// string, this ensures that the program
+					// can never reference this symbol directly.
+					
+					makeLabel( "@array" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Array_pt,
+						ebp::varType,
+						curOwner,
+						[ebx]
+					);
+					mov( ebp::varType, edx );
+					mov( symEDX.objectSize, edx );
+					mov( eax, ebp::varType );
+
+					pop( curOwner );
+					pop( curHashTable );
+					
+					// We need to fill in the array dimensions info here:
+					
+					mov( ebp::dimensions, ebx );
+					mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+					mov( ebx, symEAX.numElements );
+					intmul( ebx, edx );
+					mov( edx, symEAX.objectSize );
+					dec( ecx );
+					
+				until( @z );
+				
+
+			endif;
+			
+		
+		else
+		
+			lex( esi );
+			if( eax = tkn_enum ) then
+			
+				// Sneak this type declaration into the global
+				// symbol table rather than putting it inside the record:
+
+				push( curHashTable );		// Save these, to restore
+				push( curOwner );			//  them later.
+
+				lea( rootHashTable, ebx );	// Point symbol table at
+				mov( ebx, curHashTable );	//  the root symbol table
+				mov( rootOwner, ebx );
+				mov( ebx, curOwner );
+				// We need to create a dummy name for
+				// the anonymous enumerate type that we're
+				// about to create.  This is of the form:
+				//
+				//	"@enumXXX"
+				//
+				// where XXX is some unique numeric value.
+				// Note the '@' at the beginning of the
+				// string, this ensures that the program
+				// can never reference this symbol directly.
+				
+				makeLabel( "@enum" );
+
+				// lookupLocal is called just to compute the leaf
+				// node value in EBX:
+
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				mov( [esp], eax );
+				lookupLocal( eax, eax, ebx );
+				pop( eax );
+
+				// Create a symbol table entry for the anonymous
+				// type:
+				
+				enterType
+				(
+					eax,
+					eax,
+					NULL,
+					Enum_pt,
+					&enum_ste,
+					curOwner,
+					[ebx]
+				);
+				mov( eax, ebp::varType );
+				pop( curOwner );
+				pop( curHashTable );
+				
+				// Go construct the constants for this anonymous
+				// enumerated type:
+				
+				buildEnumType( [eax] );
+				ret();
+				
+			endif;
+				
+					
+			///////////////////////////////////////////
+			//	
+			// Handle <id> : @forward( id ); here:					
+				
+			if( eax = tkn_at_forward ) then
+
+				// First, generate a string constant
+				// from the original type name:
+				
+				mov( ebp::varID, ebx );
+				mov( ebx, ebp::constResult.string_vt );
+				mov( &string_ste, ebp::constResult.symType );
+				mov( String_pt, ebp::constResult.pType );
+				mov( Constant_ct, ebp::constResult.symClass );
+				strfree( ebp::varlcID );
+				mov( &text_ste, ebp::varType );
+
+
+
+				// Okay, process the remainder of the FORWARD clause:
+								
+				matchLParen();
+				lex( esi );
+				if( eax = tkn_globalID ) then
+				
+					makeUndefID( [ecx] );
+					mov( tkn_undefID, eax );
+					
+				elseif( eax = tkn_localID ) then
+				
+					mov( tokenECX.symNode, ebx );
+					if( symEBX.symClass <> Value_ct ) then
+
+						HLAerror
+						( 
+							"Duplicate symbol definition: ", 
+							tokenECX.trueName,
+							nl
+						);
+						makeUndefID( [ecx] );
+						mov( tkn_undefID, eax );
+
+					endif;
+					
+				endif;
+				if( eax = tkn_undefID || eax == tkn_localID ) then
+				
+					// lookupLocal returns NULL if this is an
+					// undefined ID, it returns a pointer to
+					// a symbol table entry if it's a VAL ID.
+					// This also puts the leaf node address in EBX.
+					
+					push( ecx );
+					lookupLocal
+					( 
+						tokenECX.trueName, 
+						tokenECX.lcName, 
+						tokenECX.hashValue
+					);
+					
+					if( eax = NULL ) then
+
+						// Create a new text constant:
+						
+						mov( [esp], ecx );
+						enterConst
+						(
+							tokenECX.trueName,
+							tokenECX.lcName,
+							NULL,
+							&text_ste,
+							ebp::constResult,
+							curOwner,
+							[ebx]
+						);
+
+					elseif( symEAX.symClass = Value_ct ) then
+
+						// Change the value of the existing VAL object:
+
+						setVal
+						(
+							tokenECX.trueName,
+							tokenECX.lcName,
+							eax,
+							&text_ste,
+							ebp::constResult,
+							curOwner,
+							[ebx]
+						);
+						
+					else
+					
+						HLAerror
+						( 
+							"Symbol in @FORWARD must be undefined "
+							"or a VAL symbol" 
+							nl 
+						);
+
+					endif;
+					pop( ecx );
+					
+					
+				else
+				
+					HLAerror
+					( 
+						"Expected an identifier, encountered " 
+					);
+					dumpQLexeme();
+					reuseLastTkn();
+								
+				endif;
+				matchRParen();
+				stc();
+				ret();
+				
+			endif;
+				
+			///////////////////////////////////////////
+			//	
+			// Handle <id> : pointer to <typeID>; here:					
+				
+			if( eax = tkn_pointer ) then
+
+				// We'll need a type symbol for this guy:
+				// Sneak this type declaration into the global
+				// symbol table rather than putting it inside the record:
+
+				push( curHashTable );		// Save these, to restore
+				push( curOwner );			//  them later.
+
+				lea( rootHashTable, ebx );	// Point symbol table at
+				mov( ebx, curHashTable );	//  the root symbol table
+				mov( rootOwner, ebx );
+				mov( ebx, curOwner );
+				// We need to create a dummy name for
+				// the anonymous pointer type that we're
+				// about to create.  This is of the form:
+				//
+				//	"@pointer"
+				
+				makeLabel( "@pointer" );
+
+				// lookupLocal is called just to compute the leaf
+				// node value in EBX:
+
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				mov( [esp], eax );
+				lookupLocal( eax, eax, ebx );
+				pop( eax );
+
+				// Create a symbol table entry for the anonymous
+				// type:
+				
+				enterType
+				(
+					eax,
+					eax,
+					NULL,
+					Pointer_pt,
+					NULL,		// No base type, yet.
+					curOwner,
+					[ebx]
+				);
+				mov( eax, ebp::varType );
+				pop( curOwner );
+				pop( curHashTable );
+			
+				lex( esi );
+				if( eax <> tkn_to ) then
+				
+					HLAerror( "Expected 'TO' after 'POINTER'" nl );
+					reuseLastTkn();
+					
+				endif;
+				if( getTypeID() ) then
+					
+					mov( ebp::varType, ebx );
+					mov( eax, symEBX.baseType );
+					mov( Pointer_pt, symEBX.pType );
+					mov( 4, symEBX.objectSize );
+					clc();
+					ret();
+					
+				else
+				
+					if( getUndefTypeID( ebp::varType )) then
+
+						clc();
+						ret();
+					
+					endif;
+						
+				endif;
+				stc();
+				ret();
+				
+			endif;
+
+
+
+			//////////////////////////////////////////////////
+			//	
+			// Handle <id> :  record <fields> endrecord; here:
+			
+			if( eax = tkn_record ) then
+
+				// Sneak this type declaration into the global
+				// symbol table rather than putting it inside the record:
+
+				push( curHashTable );		// Save these, to restore
+				push( curOwner );			//  them later.
+
+				lea( rootHashTable, ebx );	// Point symbol table at
+				mov( ebx, curHashTable );	//  the root symbol table
+				mov( rootOwner, ebx );
+				mov( ebx, curOwner );
+
+				// We'll need a type symbol for this guy:
+				// We need to create a dummy name for
+				// the anonymous record type that we're
+				// about to create.  This is of the form:
+				//
+				//	"@record"
+				
+				makeLabel( "@record" );
+
+				// lookupLocal is called just to compute the leaf
+				// node value in EBX:
+
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				mov( [esp], eax );
+				lookupLocal( eax, eax, ebx );
+				pop( eax );
+
+				// Create a symbol table entry for the anonymous
+				// type:
+				
+				enterType
+				(
+					eax,
+					eax,
+					NULL,
+					Record_pt,
+					NULL,		// No base type, yet.
+					curOwner,
+					[ebx]
+				);
+				mov( eax, ebp::varType );
+				pop( curOwner );
+				pop( curHashTable );
+				// Process the actual record:
+
+				parseRecord( ebp::varType );
+				ret();
+				
+			endif;
+							
+				
+				
+			////////////////////////////////////////////////
+			//	
+			// Handle <id> :  union <fields> endunion; here:
+			
+			if( eax = tkn_union ) then
+			
+				// Sneak this type declaration into the global
+				// symbol table rather than putting it inside the record:
+
+				push( curHashTable );		// Save these, to restore
+				push( curOwner );			//  them later.
+
+				lea( rootHashTable, ebx );	// Point symbol table at
+				mov( ebx, curHashTable );	//  the root symbol table
+				mov( rootOwner, ebx );
+				mov( ebx, curOwner );
+
+				// We'll need a type symbol for this guy:
+				// We need to create a dummy name for
+				// the anonymous union type that we're
+				// about to create.  This is of the form:
+				//
+				//	"@union"
+				
+				makeLabel( "@union" );
+
+				// lookupLocal is called just to compute the leaf
+				// node value in EBX:
+
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				mov( [esp], eax );
+				lookupLocal( eax, eax, ebx );
+				pop( eax );
+
+				// Create a symbol table entry for the anonymous
+				// type:
+				
+				enterType
+				(
+					eax,
+					eax,
+					NULL,
+					Union_pt,
+					NULL,		// No base type, yet.
+					curOwner,
+					[ebx]
+				);
+				mov( eax, ebp::varType );
+				pop( curOwner );
+				pop( curHashTable );
+				// Process the actual union:
+
+				parseUnion( ebp::varType );
+				ret();
+				
+			endif;
+				
+			
+			///////////////////////////////////////////////////////////
+			//
+			// Deal with 
+			// <id>:procedure <optionalparms> ';' <protoOptions> 
+			// here:
+				
+			if( eax = tkn_procedure ) then
+			
+				mov( Proc_pt, ebp::varpType );
+				mov( &procedure_ste, ebp::varType );
+				clc();
+				ret();
+				
+			endif;
+			
+		
+			HLAerror
+			( 
+				"Expected a type identifier after the ':' "
+				"but encountered " 
+			);
+			dumpQLexeme();
+			stc();
+				
+			
+		endif;
+		ret();
+
+	end forVar;
+
+begin parseVar;
+
+	optVarAlign();
+	forever
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next var declaration.
+
+		// Handle the var identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				tokenECX.trueName, 
+				nl 
+			);
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, varID );
+			mov( tokenECX.lcName, varlcID );
+			mov( tokenECX.hashValue, varHash );
+			
+			// Okay, we've got to process a VAR declaration here.
+			// Begin by initializing the type to nothing.
+			
+			mov( NULL, varType );
+			mov( ecx, varToken );
+			
+			// Grab the ':'
+			
+			matchTkn( esi, ':' );
+			if( @c ) then
+			
+				HLAerror( "Expected a ':', encountered " );
+				dumpQLexeme();
+				stc();
+				
+			else
+			
+				forVar();
+				
+			endif;
+			
+			// Note: forVar returns type "text_ste" only for FORWARD
+			// declarations, carry will also be clear in that case.
+			
+			if( @nc ) then
+
+				// We need to compute the offset of the new
+				// VAR object. To do this, we need to subtract
+				// the object's size from curOffset:
+				
+				mov( varType, ebx );
+				mov( symEBX.pType, al );
+				mov( al, varpType );
+				mov( symEBX.objectSize, eax );
+				sub( eax, curOffset );
+
+
+				// Before entering the variable into the symbol table,
+				// let's align it as specified by the minAlign, maxAlign
+				// and tempVarAlign variables:
+
+				mov( tempVarAlign, eax );
+				mov( eax, alignTo );
+				if( eax = 0 ) then
+				
+					// If tempVarAlign is zero, then use the
+					// values found in maxVarAlign and minVarAlign.
+					// If tempVarAlign is non-zero, then we've
+					// just seen an align directive and it overrides
+					// the min/maxVarAlign values.
+					
+					// If the object size is less than minVarAlign,
+					// set alignTo to minVarAlign. If the object size
+					// is greater than maxVarAlign, then set alignTo to
+					// maxVarAlign. If minVarAlign < object size < maxVarAlign
+					// then set the alignTo value to the object's size.
+
+					mov( symEBX.objectSize, eax );
+					mov( eax, alignTo );
+					if( eax < minVarAlign ) then
+
+						mov( minVarAlign, eax );
+						mov( eax, alignTo );
+
+					endif;
+					if( eax > maxVarAlign ) then
+
+						mov( maxVarAlign, eax );
+						mov( eax, alignTo );
+
+					endif;
+
+				endif;
+
+				// In the VAR section, offset become increasingly
+				// negative. So begin by computing the absolute
+				// value of the curOffset value so we can compute
+				// remainders in a reasonable fashion:
+				
+				mov( curOffset, eax );
+				if( (type int32 eax) < 0 ) then
+
+					neg( eax );
+
+				endif;
+				if( alignTo > 1 ) then
+
+					xor( edx, edx );
+					div( alignTo );
+					if( edx <> 0 ) then
+
+						// Add in whatever offset is necessary
+						// to reduce curOffset to the next boundary
+						// specified by the alignment (alignTo):
+						
+						sub( alignTo, edx );
+						add( edx, curOffset );
+
+					endif;
+
+				endif;
+				mov( 0, tempVarAlign );	// Reset ALIGN value for next VAR.
+
+				// If it was a procedure variable, handle that
+				// specially.
+				
+				if( varpType = Proc_pt ) then
+				
+					parseProcType
+					( 
+						varID,
+						varlcID,
+						varHash, 
+						Var_ct,		// This is an auto/VAR object  
+						curOffset, 	// Current offset into activation record
+						notp_pc, 	// This is not a parameter 
+						startParmsOffs, // Starting offset for parms
+						NULL,		// This is not associated with a segment
+						NULL,		// No "enterSym" needed.
+						false 		// No initial value for proc ptr.
+					);
+					mov( eax, varType );
+					mov( Procptr_pt, symEAX.pType );
+
+				else
+				
+					// Enter the var object into the symbol table:
+					// The symbol is undefined at the local level,
+					// so the following call always returns false.
+					// We call it here to get the leaf node (in ebx)
+					// to which we must link the new symbol from.
+
+					lookupLocal( varID, varlcID, varHash );
+					enterVar
+					(
+						varID,
+						varlcID,
+						NULL,
+						varpType,
+						varType,
+						curOwner,
+						curOffset,	// Offset just computed.
+						notp_pc,	// This isn't a parameter.
+						[ebx]
+					);
+					mov( eax, ecx );
+					matchSemicolon();
+
+					// If we have a procedure type here. Copy the procedure
+					// options from the type to the VAR object:
+
+					mov( varType, ebx );
+					if( symEBX.pType = Procptr_pt ) then
+
+						mov( symEBX.cproc.returnsStr, eax );
+						mov( eax, symECX.cproc.returnsStr );
+
+						mov( symEBX.cproc.baseClass, eax );
+						mov( eax, symECX.cproc.baseClass );
+
+						mov( symEBX.cproc.parmSize, eax );
+						mov( eax, symECX.cproc.parmSize );
+
+						mov( symEBX.cproc.localSize, eax );
+						mov( eax, symECX.cproc.localSize );
+
+						mov( symEBX.cproc.preserves, eax );
+						mov( eax, symECX.cproc.preserves );
+
+						mov( symEBX.cproc.callSeq, al );
+						mov( al, symECX.cproc.callSeq );
+
+						mov( symEBX.cproc.hasFrame, al );
+						mov( al, symECX.cproc.hasFrame );
+
+						mov( symEBX.cproc.hasDisplay, al );
+						mov( al, symECX.cproc.hasDisplay );
+
+						mov( symEBX.cproc.alignsStack, al );
+						mov( al, symECX.cproc.alignsStack );
+
+						mov( symEBX.cproc.useEnter, al );
+						mov( al, symECX.cproc.useEnter );
+
+						mov( symEBX.cproc.useLeave, al );
+						mov( al, symECX.cproc.useLeave );
+
+						mov( symEBX.cproc.uses, al );
+						mov( al, symECX.cproc.uses );
+
+					endif;
+
+					
+				endif;
+				
+				
+			elseif( varType <> &text_ste ) then
+			
+				resyncOnSemicolon();
+				
+			endif;
+			
+		elseif( eax = tkn_align ) then
+		
+			matchLParen();
+			if( @nc ) then
+
+				getUnsigned( alignment );
+				if( @nc ) then
+
+					mov( alignment.dword_vt, eax );
+					mov( eax, tempVarAlign );
+					matchRParen();
+					matchSemicolon();
+
+				endif;
+
+			endif;
+									
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a VAR section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+
+	// Handle the optional endvar down here:
+
+	if( eax = tkn_endvar ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+
+end parseVar;
+
+
+end parseVarUnit;

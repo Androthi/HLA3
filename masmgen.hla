@@ -1,0 +1,13 @@
+unit masmGenUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+procedure masmGen; @nodisplay; @noalignstack;
+begin masmGen;
+
+		  
+
+end masmGen;
+
+end masmGenUnit;
+

@@ -1,0 +1,1410 @@
+unit HLAData;
+	
+	
+	
+#includeonce( "hlacompiler.hhf" )
+#includeonce( "strings.hhf" )
+#includeonce( "codegen.hhf" );
+
+
+#macro primType( typeName, id, objectSize, pType, next ):
+	lcname, truename, dummy;
+
+	typeName			:symNode_t; @nostorage;
+
+		dword			NULL;			// left
+		dword			NULL;			// right
+		dword			next;			// next
+		
+		lcname			:string := id;
+		truename		:string := @lowercase(id,0);
+				  
+		dword			NULL;		// symType
+		dword			NULL;		// localSyms
+		dword			NULL;		// seg
+		dword			NULL;		// segList
+		dword			NULL;		// linearSyms		
+		dword			0;			// Offset/Address
+		dword			NULL;		// equateList
+		dword			NULL;		// lastLinear
+		symNodePtr_t	&rootNode;	// owner
+		
+		dword			0;			// lexLevel
+		dword			objectSize;	// objectSize
+		
+		int32			-1;			// COFFSymIndex
+		word			0;			// COFF sectionNum
+		pType_t			pType;		// pType
+		classType_t		Type_ct;	// symClass
+		boolean			false;		// isExternal
+		boolean			false;		// isPublic
+		boolean			false;		// isReferenced
+		boolean			false;		// isForward
+		boolean			false;		// isPrivate
+		boolean			false;		// isReadonly
+		parmClass_t		notp_pc;	// pClass
+		register_t		_none;		// inReg
+		
+		align( 4 );
+
+		dword			NULL;		// externName
+		dword			0;			// isVolatile/etc.
+		
+		dword			NULL;		// inhType
+		dword			0;			// fieldCnt
+		dword			0;			// numElements
+		dword			0;			// fieldIndex
+		
+		dword			NULL;		// fwd		
+
+		dword			NULL;		// proc.returnsStr
+		dword			NULL;		// proc.baseClass
+		dword			0;			// proc.parmSize
+		dword			0;			// proc.localSize
+		dword			0;			// proc.preserves
+		byte			pascal_cs;	// proc.callSeq
+		byte			false;		// proc.hasFrame
+		byte			false;		// proc.hasDisplay
+		byte			false;		// proc.alignStack
+		byte			false;		// proc.useEnter
+		byte			false;		// proc.useLeave
+		byte			_none;		// proc.inReg
+
+		align( 4 );
+		
+		dummy		:byte[@size( attr_t )]
+
+#endmacro;
+
+	
+
+
+	// Here are the symbol table entries for the built-in types.
+	// Note that the compiler never searches for these symbols
+	//  since their "identifiers" are actually reserved words.
+	//	Therefore, they do not appear in the binary search tree.
+	//	They do, however, appear in the linear symbol table list
+	//	so that the symbol table dump routines can print them.
+	//	Note that the compiler always refers to these symbol table
+	//	entries directly by their name (the first parameter in the
+	//	primType macro invocation).
+
+static
+	align(4);
+	primType( boolean_ste, "boolean", 1, Boolean_pt, &uns8_ste );
+
+	align(4);
+	primType( uns8_ste, "uns8", 1, Uns8_pt, &uns16_ste );
+	align(4);
+	primType( uns16_ste, "uns16", 2, Uns16_pt, &uns32_ste );
+	align(4);
+	primType( uns32_ste, "uns32", 4, Uns32_pt, &uns64_ste );
+	align(4);
+	primType( uns64_ste, "uns64", 8, Uns64_pt, &uns128_ste );
+	align(4);
+	primType( uns128_ste, "uns128", 16, Uns128_pt, &byte_ste );
+	align(4);
+	primType( byte_ste, "byte", 1, Byte_pt, &word_ste );
+	align(4);
+	primType( word_ste, "word", 2, Word_pt, &dword_ste );
+	align(4);
+	primType( dword_ste, "dword", 4, DWord_pt, &qword_ste );
+	align(4);
+	primType( qword_ste, "qword", 8, QWord_pt, &tbyte_ste );
+	align(4);
+	primType( tbyte_ste, "tbyte", 10, TByte_pt, &lword_ste );
+	align(4);
+	primType( lword_ste, "lword", 16, LWord_pt, &int8_ste );
+	align(4);
+	primType( int8_ste, "int8", 1, Int8_pt, &int16_ste );
+	align(4);
+	primType( int16_ste, "int16", 2, Int16_pt, &int32_ste );
+	align(4);
+	primType( int32_ste, "int32", 4, Int32_pt, &int64_ste );
+	align(4);
+	primType( int64_ste, "int64", 8, Int64_pt, &int128_ste );
+	align(4);
+	primType( int128_ste, "int128", 16, Int128_pt, &char_ste );
+	align(4);
+	primType( char_ste, "char", 1, Char_pt, &xchar_ste );
+	align(4);
+	primType( xchar_ste, "xchar", 1, XChar_pt, &unicode_ste );
+	align(4);
+	primType( unicode_ste, "wchar", 2, Unicode_pt, &real32_ste );
+	align(4);
+	primType( real32_ste, "real32", 4, Real32_pt, &real64_ste );
+	align(4);
+	primType( real64_ste, "real64", 8, Real64_pt, &real80_ste );
+	align(4);
+	primType( real80_ste, "real80", 10, Real80_pt, &real128_ste );
+	align(4);
+	primType( real128_ste, "real128", 16, Real128_pt, &utf8_ste );
+	align(4);
+	primType( utf8_ste, "utf8", 4, Utf8_pt, &string_ste );
+	align(4);
+	primType( string_ste, "string", 4, String_pt, &ustring_ste );
+	align(4);
+	primType( ustring_ste, "wstring", 4, UString_pt, &cset_ste );
+	align(4);
+	primType( cset_ste, "cset", 16, Cset_pt, &xcset_ste );
+	align(4);
+	primType( xcset_ste, "xcset", 32, XCset_pt, &text_ste );
+	align(4);
+	primType( text_ste, "text", 0, Text_pt, &enum_ste );
+	align(4);
+	primType( enum_ste, "enum", 1, Enum_pt, &pointer_ste );
+	align(4);
+	primType( pointer_ste, "pointer", 4, Pointer_pt, &procptr_ste );
+	align(4);
+	primType( procptr_ste, "procptr", 4, Procptr_pt, &farptr_ste );
+	align(4);
+	primType( farptr_ste, "farptr", 6, Farptr_pt, &array_ste );
+	align(4);
+	primType( array_ste, "array", 0, Array_pt, &record_ste );
+	align(4);
+	primType( record_ste, "record", 0, Record_pt, &union_ste );
+	align(4);
+	primType( union_ste, "union", 0, Union_pt, &class_ste );
+	align(4);
+	primType( class_ste, "class", 0, Class_pt, &thunk_ste );
+	align(4);
+	primType( thunk_ste, "thunk", 8, Thunk_pt, &procedure_ste );
+	align(4);
+	primType( procedure_ste, "procedure", 4, Proc_pt, &macro_ste );
+	align(4);
+	primType( macro_ste, "macro", 4, Macro_pt, &undefined_ste );
+	align(4);
+	primType( undefined_ste, "undefined", 0, Undefined_pt, NULL );
+	
+
+
+	
+	// The following are dummy symbol table entries so that the
+	// symbol table routines don't have to deal with the special
+	// case of an empty symbol table.  Note that since these symbol
+	// table entrys' names have spaces in them, no (legal) HLA symbol will
+	// ever match these entries.
+	
+	rootNode	:symNode_t; @nostorage;
+	
+			dword			NULL;			// left
+			dword			NULL;			// right
+			dword			&rootNode2;		// next
+			
+			rootLCName		:string := "hla symbol table root node";
+			rootTrueName	:string := "HLA Symbol Table Root Node";
+			
+			symNodePtr_t	NULL;			// symType
+			hashTablePtr_t	&rootHashTable;	// localSyms
+			dword			NULL;			// seg
+			dword			NULL;			// segList
+			symNodePtr_t	&rootNode2;		// linearSyms
+			dword			0;				// Offset/Address
+			symNodePtr_t	NULL;			// equateList
+			symNodePtr_t	&rootNode2;		// lastLinear
+			symNodePtr_t	NULL;			// owner
+			
+			dword			0;				// lexLevel
+			dword			0;				// objectSize
+			
+			dword			-1;				// COFFSymIndex
+			word			0;				// COFF sectionNum
+			pType_t			Symboltbl_pt;	// pType
+			classType_t		Symboltbl_ct;	// symClass
+			boolean			false;			// isExternal
+			boolean			false;			// isPublic
+			boolean			false;			// isReferenced
+			boolean			false;			// isForward
+			boolean			false;			// isPrivate
+			boolean			false;			// isReadOnly
+			parmClass_t		notp_pc;		// pClass
+			register_t		_none;			// inReg
+			
+			dword			NULL;			// externName
+			dword			0;				// isVolatile/etc.
+
+			dword			NULL;		// inhType
+			dword			0;			// fieldCnt
+			dword			0;			// numElements
+			dword			0;			// fieldIndex
+			
+			dword			NULL;		// fwd		
+
+			dword			NULL;		// proc.returnsStr
+			dword			NULL;		// proc.baseClass
+			dword			0;			// proc.parmSize
+			dword			0;			// proc.localSize
+			dword			0;			// proc.preserves
+			byte			pascal_cs;	// proc.callSeq
+			byte			false;		// proc.hasFrame
+			byte			false;		// proc.hasDisplay
+			byte			false;		// proc.alignStack
+			byte			false;		// proc.useEnter
+			byte			false;		// proc.useLeave
+			byte			_none;		// proc.inReg
+			
+			rootValue		:byte[@size( attr_t )] :=
+								@size( attr_t ) dup [0];	// Variant fields
+
+
+	
+	rootNode2	:symNode_t; @nostorage;
+	
+			dword			NULL;			// left
+			dword			NULL;			// right
+			dword			&boolean_ste;	// next
+			
+			root2LCName		:string := "hla symbol table (placeholder)";
+			root2TrueName	:string := "HLA Symbol Table (placeholder)";
+			
+			symNodePtr_t	NULL;			// symType
+			hashTablePtr_t	NULL;			// localHash table
+			dword			NULL;			// seg
+			dword			NULL;			// segList
+			symNodePtr_t	NULL;			// linearSyms
+			dword			0;				// Offset/Address
+			symNodePtr_t	NULL;			// equateList
+			symNodePtr_t	NULL;			// lastLinear
+			symNodePtr_t	&rootNode;		// owner
+			
+			dword			0;				// lexLevel
+			dword			0;				// objectSize
+			
+			dword			-1;				// COFFSymIndex
+			word			0;				// COFF sectionNum
+			pType_t			Placeholder_pt;	// pType
+			classType_t		Placeholder_ct;	// symClass
+			boolean			false;			// isExternal
+			boolean			false;			// isPublic
+			boolean			false;			// isReferenced
+			boolean			false;			// isForward
+			boolean			false;			// isPrivate
+			boolean			false;			// isReadOnly
+			parmClass_t		notp_pc;		// pClass
+			register_t		_none;			// inReg
+			
+			dword			NULL;			// externName
+			dword			0;				// isVolatile/etc/
+
+			dword			NULL;		// inhType
+			dword			0;			// fieldCnt
+			dword			0;			// numElements
+			dword			0;			// fieldIndex
+			
+			dword			NULL;		// fwd		
+
+			dword			NULL;		// proc.returnsStr
+			dword			NULL;		// proc.baseClass
+			dword			0;			// proc.parmSize
+			dword			0;			// proc.localSize
+			dword			0;			// proc.preserves
+			byte			pascal_cs;	// proc.callSeq
+			byte			false;		// proc.hasFrame
+			byte			false;		// proc.hasDisplay
+			byte			false;		// proc.alignStack
+			byte			false;		// proc.useEnter
+			byte			false;		// proc.useLeave
+			byte			_none;		// proc.inReg
+			
+			root2Value		:byte[@size( attr_t )] :=
+								@size( attr_t ) dup [0];	// Variant fields
+
+
+	
+
+	// Here's a 4,096-entry hash table for the main program's symbol table.
+
+storage
+	align(4);
+	rootHashTable	:hashTable_t; @nostorage;
+
+			// 12-bit mask for the hash table. The program
+			// must initialize this with $fff.
+			rootMask	:dword;
+
+			// Pointer to the root symbol table entry that owns
+			// this hash table. The program must initialize
+			// this with &rootNode:
+			rootOwner	:dword;
+			
+			// Hash table entries, initialized with NULLs.
+
+			rootHash	:dword[4096];
+
+
+
+// errorCount-
+//
+//	Counts the number of errors reported in the file.
+//
+// reportErrors-
+//	If this variable contains false, then HLA does not print
+// any error diagnostic message. If true, then HLA prints the
+// messages to the standard output device.
+
+static
+	align(4);
+	errorCount		:uns32 := 0;
+	reportErrors	:boolean := true;
+
+// intelSyntax- If true, specifies the use of intel syntax
+// rather than HLA native syntax.
+
+	intelSyntax		:boolean := false;
+
+
+
+// From LEX.HLA:
+
+static
+	align(4);
+	hashValue	:dword;		// Holds the hash value computed by lexer.
+							// For internal lexer use only!
+
+// SpreadTable is used to spread around ID/RW bits (for hash value
+// computations), convert lower and upper case to the same values,
+// and to determine which characters are valid in an ID/RW.
+
+
+
+static
+	align(4);
+	SpreadTable:byte[256] := SpreadTable_c;
+// rwIsID-
+//
+//	Reserved word token values start at 256 and go up through
+//	(tkn_endTknList - 1).  This array contains true for those
+//	tokens that the lexer should treat as identifiers rather
+//	than as reserved words.  The #ID(rw) and #RESERVED(rw)
+//	compile-time statements set elements of this array to
+//	true or false (respectively) based on the token number of
+//	the reserved word supplied as a parameter.
+
+
+	rwIsID	:boolean[ tkn_endTknList - 256 ] :=
+					(tkn_endTknList - 256) dup [false];
+
+
+	// ForceString- If true, convert text objects to strings
+	// rather than expanding them in place.
+
+	ForceString	:boolean := false;
+	
+	
+	// HLAErrorException- If true, raises an exception
+	// whenever an error occurs. Used to trap errors
+	// for purpose other than displaying an error message.
+	
+	HLAErrorException	:boolean := false;
+	
+					
+
+	// From CTL.HLA:
+
+storage
+	align(4);
+	ctStack				:ctStack_t[ maxCTstk ];
+
+
+
+static
+	align(4);
+	ctSP				:int32 := -1;
+
+	// labelCntr-
+	//	Used to generate unique labels (e.g., for macro local labels).
+
+	labelCntr			:dword := 0;
+	
+	// rtnCTtkns-
+	//
+	//	This variable is set to true whenever a compile-time
+	// function should simply return a token to the caller
+	// rather than handling the CT statement directly. This is
+	// used, for example, when a CT statement like #IF is
+	// skipping over a bunch of statements because of a false
+	// conditional.
+
+	rtnCTtkns			:boolean := false;
+
+	// lastWasEOF is used to track whether the last read operation
+	// (via @read) encountered end of file.
+
+	lastWasEOF			:boolean := false;
+	
+	// The following are the file handles for the #OPENWRITE and #OPENREAD
+	// statements. If these variables contain zero, then the corresponding
+	// file is not open.
+	
+	align( 4 );
+	openWriteHandle		:dword := 0;
+	openReadHandle		:dword := 0;
+	
+
+	// From HLA.HLA:
+
+	align(4);
+
+	// File variables-
+	//				These are associated with the source file that
+	//				HLA is currently processing.
+
+	filename		:string := "";	// Base file name
+	fullFileName	:string := "";	// File name including path
+	baseFileName	:string := "";	// Initial file name (for COFF file)
+
+	// objFileName- Holds the object file name
+
+	objFileName		:str.strvar( 256 );
+
+	// Handle to the object file:
+
+	objFileHandle	:dword;
+
+	fileMapHandle	:dword := -1;	// Mapped file object for current file.
+
+	dummyfile		:char[] := [' ', ' ', #0 ];
+
+	// Pointer to start of file in mapped memory.
+	BOF				:pChar	:= &dummyfile[0];
+	
+	// Pointer to end of file in mapped memory.
+		
+	EOF				:pChar	:= &dummyfile[2];
+	
+
+	// Global Optimization flags used to control code generation:
+	//
+	// optStaticPlacement-	
+	//		If true, this tells HLA to reorganize
+	//		static variable sections in an attempt
+	//		to fill in padding bytes between declaration
+	//		sections.
+
+	optStaticPlacement	:boolean := true;
+
+	// optBranchDisp-
+	//		Automatically choose the smallest possible branch displacement
+	//		sizes.
+		
+	optBranchDisp		:boolean := true;
+	
+	// optInstrSize-
+	//		Automatically choose smallest instruction size for a
+	//		variable-length instruction.
+	
+	optInstrSize		:boolean := true;
+
+
+	// Code emission flags:
+
+	#if( @defined( Win32 ))
+
+		outputCodeType		:outputCodeType_t := COFF_output;
+
+	#elseif( @defined( Linux ))
+
+		outputCodeType		:outputCodeType_t := ELF_output;
+
+	#else
+	
+		#error( "Unknown code emission type" )
+		
+	#endif		
+
+		
+
+	// The following is a pointer to the list of files that make up
+	// this assembly.
+
+	align(4);
+	fileList		:fileListPtr_t;  @nostorage;
+						dword NULL;
+
+	// includeSP,
+	// includeStk-	This is a stack of files that have been opened via
+	//				#include statements, so we can restore the file
+	//				variables above once we reach the end of an
+	//				include file.
+
+	includeSP		:int32 := -1;	
+
+
+storage
+	align(4);
+	includeStk		:includeInfo_t[ MaxNestedIncludes ];
+
+
+	// lineNumber-	Current line number for the current source line
+	//				in the current file.
+
+static
+	align(4);
+	lineNumber		:uns32 := 1;
+	
+	// totalLineCount-
+	//				Total number of lines in the assembly to this
+	//				point, across all files.
+
+	totalLineCount	:uns32 := 1;
+
+
+	// startLexeme,
+	// endLexeme-	Pointers into the memory-mapped source code file
+	//				to the beginning and end of the lexeme that the
+	//				lexer is currently processing.
+
+	startLexeme		:dword;
+	endLexeme		:dword;
+
+	// curLexLevel- This is the lex level value that variables use
+	//				when they are declared. Incremented as we enter
+	//				nested procedures, etc.
+
+	curLexLevel		:int32;
+
+	// curEnumSize-	This is the default size, in bytes, for an
+	//				enumerated variable.
+
+	curEnumSize		:uns32 := 1;
+	
+	
+	// curObject-	This points at a string containing the name
+	//				of the last class object processed.
+	
+	curObject		:string := NULL;
+
+	firstCodeRecord :internalCode_t; @nostorage;
+			dword	NULL;		//next
+			dword	NULL;		//prev
+			dword	NULL;		//nextVar
+			dword	0;			//varDist
+
+			dword	0;			//offset
+			dword	0;			//length
+			word	0;			//prefixes
+			word	_start;		//instrTkn
+
+			// dummy srcOperand and destOperand:
+
+			#for( _i_ := 1 to 2*@size(instrOperand_t))
+				byte 0;
+			#endfor
+
+			dword	0;			//cntOperand
+
+			byte	0;			//lineNumCnt
+
+			#for( _i_ := 1 to maxInstrSize_c )
+				byte	0;		//instrCode
+			#endfor
+
+			align( 4 );
+			dword	0;			// line number record
+			string	"";
+	
+	// Pointer to the last instruction in the instruction list:
+
+	lastInstr		:internalCodePtr_t := &firstCodeRecord;
+
+	// Pointer to the last instruction object that has
+	// a variable-length opcode
+
+	lastVarInstr	:internalCodePtr_t := &firstCodeRecord;
+
+	// Pointer to data assocated with the code segment (list of instructions)
+
+	instrList		:internalCodePtr_t := &firstCodeRecord;
+
+
+storage
+	align(4);
+
+	// Pointers to symbol table entries for the TRUE and FALSE
+	// boolean identifiers:
+
+	true_stp			:symNodePtr_t;
+	false_stp			:symNodePtr_t;
+	
+	// Pointers to symbol table entries for the DATA, BSS, READONLY,
+	// CODE, and CONST segments:
+
+	dataSegment				:symNodePtr_t;
+	dataSegmentList			:segItemArrayPtr_t;
+	dataSegmentRaw			:dword;
+	dataSegmentSize			:dword;
+	dataSegmentReloc		:dword;
+	dataSegmentRelocSize	:dword;
+	
+	bssSegment				:symNodePtr_t;
+	bssSegmentList			:segItemArrayPtr_t;
+	bssSegmentRaw			:dword;
+	bssSegmentSize			:dword;
+	bssSegmentReloc			:dword;
+	bssSegmentRelocSize		:dword;
+
+	readonlySegment			:symNodePtr_t;
+	roSegmentList			:segItemArrayPtr_t;
+	roSegmentRaw			:dword;
+	roSegmentSize			:dword;
+	roSegmentReloc			:dword;
+	roSegmentRelocSize		:dword;
+
+	codeSegment				:symNodePtr_t;
+	codeSegmentList			:segItemArrayPtr_t;
+	codeSegmentRaw			:dword;
+	codeSegmentSize			:dword;
+	codeSegmentReloc		:dword;
+	codeSegmentRelocSize	:dword;
+	constSegment			:symNodePtr_t;
+	constSegmentList		:segItemArrayPtr_t;
+	constSegmentRaw			:dword;
+	constSegmentSize		:dword;
+	constSegmentReloc		:dword;
+	constSegmentRelocSize	:dword;
+
+	userSegmentsList		:userSegmentListPtr_t;
+	
+// Global objects used by HLAUTILS.HLA and multiple modules in the lexer:
+
+static
+	align(4);
+
+	// fwdPtrList - Pointer to the start of the forward pointers list
+	//				used by forward references in pointer declarations.
+	//				(see addFwdPtr).
+
+	fwdPtrList	:ptrToFwdPtrList_t := NULL;
+
+
+	// fwdProcList -Pointer to the start of the forward procedures list
+
+	fwdProcList	:ptrToFwdProcList_t := NULL;
+
+	// extList - Pointer to the list of external symbols
+
+	extList		:ptrToExtList_t := NULL;
+
+
+	// fwdStaticConstList-
+	// endStaticConstList-
+	//
+	//	Pointer to the start of the static constant list that tracks
+	// forward referenced static constants of the form:
+	//
+	//	&id1[expr]
+	//
+	// Note that only forward-referenced static constant expressions
+	// appear on this particular list. This allows HLA to check for
+	// any unresolved symbols at the end of some scope.
+	//
+	// fwdStaticConstList points to the head of the list.
+	// endStaticConstList points to the end of the list. 
+
+	fwdStaticConstList	:staticExprPtr_t := NULL;
+	endStaticConstList	:staticExprPtr_t := NULL;
+
+
+	// tknQ is used to maintain a list of token items as the lexer
+	// processes items in the source file (to maintain inherited
+	// attributes).
+
+storage
+	align(4);
+	tknQ		:token_t[ maxTknQ ];
+	endTknQ		:dword; @nostorage;
+
+static
+	align(4);
+	tknHead		:tokenPtr_t := &tknQ;
+	tknTail		:tokenPtr_t := &tknQ;
+	tknCnt		:uns32 := 0;
+	tknReuse	:uns32 := 0;
+	pendingReset:boolean := false;
+
+
+	// From ParseDcls.hla:
+
+	align(4);
+	anonTypeCntr	:uns32 := 0;
+	anonType		:str.strvar(64);
+
+	// The following boolean variables hold the HLA-wide default
+	// values for various procedure options. True means that the
+	// option is active, false means inactive.
+
+	defaultFrame		:boolean := true;
+	defaultDisplay		:boolean := true;
+	defaultStackAlign	:boolean := true;
+	defaultEnter		:boolean := false;
+	defaultLeave		:boolean := false;
+	traceCode			:boolean := false;
+	traceProcs			:boolean := false;
+	prefixProcs			:boolean := false;
+
+	align( 4 );
+
+	// segmentSTE-	This is a pointer to the current SEGMENT
+	//				declaration that parseSegment is working on.
+
+	segmentSTE		:symNodePtr_t;
+
+	// startParmsOff - Default start of parameters in a procedure.
+
+	startParmsOffs	:dword := 8;
+
+	// startLclOff - Default start of local variables in a procedure.
+	 
+	startLclOffs	:dword := 0;
+	
+	// curOffset tracks the current VAR object offset value while
+	// processing VAR objects in a procedure (or program). Note
+	// that procedures must preserve this value to prevent problems
+	// with nested procedures.
+
+	curOffset			:dword := 0;
+
+	// Alignment control for the VAR section:
+
+	maxVarAlign			:dword := 1;
+	minVarAlign			:dword := 1;
+	tempVarAlign		:dword := 0;
+
+	// The following variables must be preserved by parseRecord as
+	// parseRecord is recursive!
+
+	minRecAlign	:dword;	// Holds the minimum and maximum record alignment
+	maxRecAlign	:dword;	//  values.
+
+
+
+
+	// The following variables hold compile-time variables that are
+	// visible to the HLA program via special reserved words:
+
+	doBound				:boolean := true;
+	doInto				:boolean := true;
+
+
+	// From Symbol.hla:
+
+	align( 4 );
+	symbolTableRoot			:symNodePtr_t := &rootNode;
+	curHashTable			:symNodePtr_t := &rootHashTable;
+	curOwner				:symNodePtr_t := &rootNode;
+
+	// undefSymTable-
+	//	This is a hash table used to track forward references and
+	// undefined symbols that the lexer encounters. The symbol table
+	// format is quite simple (as we don't expect a large number
+	// of undefined symbols at any one given time):
+	//
+	//	An eight-bit hash value (L.O. eight bits of token_t.hashValue)
+	// indexes into this table and collisions are handled by a simple
+	// doubly-linked linear search via the symNode_t "next" and
+	// "prev" fields.
+
+	undefSymTable			:symNodePtr_t[256] := 256 dup [NULL];
+
+
+
+
+
+
+
+// typeChkMap-
+//
+//	Used to create a result type given two input types.
+//	Two pTypes index into this array and the resulting array
+//	element is the result of making the two types compatible.
+//	If a cell contains "Error_pt" then the two types are
+//	incompatible.
+//
+// Note: This has to be in the static segment rather than
+//		 the readonly segment because changing the @enumsize
+//		 value forces some changes to this table.  The default
+//		 entries in this table assume @enumsize = 1.
+//		 The entries for BYTE, WORD, DWORD, and ENUM must be
+//		 modified (at the Enum_pt index for b/w/d and at the
+//		 b/w/d indices for enum) if the @enumsize value changes.
+
+type
+	pTypeRow_t: pType_t[ numpTypes ];
+
+const
+	bytePT :pTypeRow_t :=
+			[  
+				Byte_pt, Word_pt, DWord_pt, QWord_pt, TByte_pt, LWord_pt,
+				Uns8_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int8_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Boolean_pt, Byte_pt,
+				Char_pt, XChar_pt, Unicode_pt,
+				[ (numpTypes - uns32( Utf8_pt )) dup [Error_pt]]
+			];
+
+	wordPT :pTypeRow_t :=
+			[  
+				Word_pt, Word_pt, DWord_pt, QWord_pt, TByte_pt, LWord_pt,
+				Uns16_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int16_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Word_pt,
+				Error_pt, Error_pt, Unicode_pt,
+				[ (numpTypes - uns32( Utf8_pt )) dup [Error_pt]]
+			];
+
+	dwordPT :pTypeRow_t :=
+			[  
+				DWord_pt, DWord_pt, DWord_pt, QWord_pt, TByte_pt, LWord_pt,
+				Uns32_pt, Uns32_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int32_pt, Int32_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, DWord_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	qwordPT :pTypeRow_t :=
+			[  
+				QWord_pt, QWord_pt, QWord_pt, QWord_pt, TByte_pt, LWord_pt,
+				Uns64_pt, Uns64_pt, Uns64_pt, Uns64_pt, Uns128_pt,
+				Int64_pt, Int64_pt, Int64_pt, Int64_pt, Int128_pt,
+				Real64_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, QWord_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	tbytePT :pTypeRow_t := 
+			[  
+				TByte_pt, TByte_pt, TByte_pt, TByte_pt, TByte_pt, LWord_pt,
+				Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt,
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				Error_pt, TByte_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+			
+	lwordPT :pTypeRow_t := 
+			[  
+				LWord_pt, LWord_pt, LWord_pt, LWord_pt, LWord_pt, LWord_pt,
+				Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt,
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				Error_pt, LWord_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	uns8PT :pTypeRow_t := 
+			[  
+				Uns8_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt, Uns128_pt,
+				Uns8_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int16_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Uns8_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	uns16PT :pTypeRow_t := 
+			[  
+				Uns16_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt, Uns128_pt,
+				Uns16_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int32_pt, Int32_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Uns16_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	uns32PT :pTypeRow_t := 
+			[  
+				Uns32_pt, Uns32_pt, Uns32_pt, Uns64_pt, Uns128_pt, Uns128_pt,
+				Uns32_pt, Uns32_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int64_pt, Int64_pt, Int64_pt, Int64_pt, Int128_pt,
+				Real64_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Uns32_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	uns64PT :pTypeRow_t := 
+			[  
+				Uns64_pt, Uns64_pt, Uns64_pt, Uns64_pt, Uns128_pt, Uns128_pt,
+				Uns64_pt, Uns64_pt, Uns64_pt, Uns64_pt, Uns128_pt,
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				Error_pt, Uns64_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	uns128PT :pTypeRow_t := 
+			[  
+				Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt,
+				Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt, Uns128_pt,
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				Error_pt, Uns128_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+
+	int8PT :pTypeRow_t := 
+			[  
+				Int8_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt, Int128_pt,
+				Int16_pt, Int32_pt, Int64_pt, Int128_pt, Int128_pt,
+				Int8_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Int8_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+
+	int16PT :pTypeRow_t := 
+			[  
+				Int16_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt, Int128_pt,
+				Int16_pt, Int32_pt, Int64_pt, Int128_pt, Int128_pt,
+				Int16_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Int16_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+
+	int32PT :pTypeRow_t := 
+			[  
+				Int32_pt, Int32_pt, Int32_pt, Int64_pt, Int128_pt, Int128_pt,
+				Int32_pt, Int32_pt, Int64_pt, Int128_pt, Uns128_pt,
+				Int32_pt, Int32_pt, Int32_pt, Int64_pt, Int128_pt,
+				Real64_pt, Real64_pt, Real80_pt, Real128_pt,
+				Error_pt, Int32_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	int64PT :pTypeRow_t := 
+			[  
+				Int64_pt, Int64_pt, Int64_pt, Int64_pt, Uns128_pt, Uns128_pt,
+				Int64_pt, Int64_pt, Int64_pt, Int128_pt, Uns128_pt,
+				Int64_pt, Int64_pt, Int64_pt, Int64_pt, Int128_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				Error_pt, Int64_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+
+	int128PT :pTypeRow_t := 
+			[  
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Int128_pt, Int128_pt, Int128_pt, Int128_pt, Int128_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				Error_pt, Int128_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	real32PT :pTypeRow_t := 
+			[  
+				Real32_pt, Real32_pt, Real64_pt, Real80_pt, Real80_pt, Real80_pt,
+				Real32_pt, Real32_pt, Real64_pt, Real80_pt, Real80_pt,
+				Real32_pt, Real32_pt, Real64_pt, Real80_pt, Real80_pt,
+				Real32_pt, Real64_pt, Real80_pt, Real128_pt,
+				[ (numpTypes - uns32( Boolean_pt )) dup [Error_pt]]
+			];
+
+	real64PT :pTypeRow_t := 
+			[  
+				Real64_pt, Real64_pt, Real64_pt, Real80_pt, Real80_pt, Real80_pt,
+				Real64_pt, Real64_pt, Real64_pt, Real80_pt, Real80_pt,
+				Real64_pt, Real64_pt, Real64_pt, Real80_pt, Real80_pt,
+				Real64_pt, Real64_pt, Real80_pt,  Real128_pt,
+				[ (numpTypes - uns32( Boolean_pt )) dup [Error_pt]]
+			];
+
+
+	real80PT :pTypeRow_t := 
+			[  
+				Real80_pt, Real80_pt, Real80_pt, Real80_pt, Real80_pt, Real80_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real80_pt, Real80_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real80_pt, Real80_pt,
+				Real80_pt, Real80_pt, Real80_pt, Real128_pt,
+				[ (numpTypes - uns32( Boolean_pt )) dup [Error_pt]]
+			];
+
+	real128PT :pTypeRow_t := 
+			[  
+				Real128_pt, Real128_pt, Real128_pt, 
+				Real128_pt, Real128_pt, Real128_pt,
+				Real128_pt, Real128_pt, Real128_pt, Real128_pt, Real128_pt,
+				Real128_pt, Real128_pt, Real128_pt, Real128_pt, Real128_pt,
+				Real128_pt, Real128_pt, Real128_pt, Real128_pt,
+				[ (numpTypes - uns32( Boolean_pt )) dup [Error_pt]]
+			];
+
+	booleanPT :pTypeRow_t := 
+			[  
+				Boolean_pt,
+				[ uns32(Boolean_pt) - 1 dup [Error_pt]],
+				Boolean_pt,
+				[ (numpTypes - uns32( Enum_pt )) dup [Error_pt]]
+			];
+
+
+	enumPT :pTypeRow_t := 
+			[  
+				Byte_pt, Word_pt, DWord_pt, QWord_pt, TByte_pt, LWord_pt,
+				Uns8_pt, Uns16_pt, Uns32_pt, Uns64_pt, Uns128_pt,
+				Int8_pt, Int16_pt, Int32_pt, Int64_pt, Int128_pt,
+				Error_pt, Error_pt, Error_pt, Error_pt,
+				Error_pt, Enum_pt,
+				[ (numpTypes - uns32( Char_pt )) dup [Error_pt]]
+			];
+
+	charPT :pTypeRow_t := 
+			[  
+				Char_pt,
+				[ uns32(Char_pt) - 1 dup [Error_pt]],
+				Char_pt, XChar_pt,
+				[ (numpTypes - uns32( Unicode_pt )) dup [Error_pt]]
+			];
+
+	xcharPT :pTypeRow_t := 
+			[  
+				XChar_pt,
+				[ uns32(Char_pt) - 1 dup [Error_pt]],
+				XChar_pt, XChar_pt,
+				[ (numpTypes - uns32( Unicode_pt )) dup [Error_pt]]
+			];
+
+	unicodePT :pTypeRow_t := 
+			[  
+				Unicode_pt, Unicode_pt,
+				[ (uns32(Char_pt) - 2) dup [Error_pt]],
+				Unicode_pt, Unicode_pt, Unicode_pt,
+				[ (numpTypes - uns32( Utf8_pt )) dup [Error_pt]]
+			];
+
+	utf8PT :pTypeRow_t := 
+			[  
+				[ uns32(Char_pt) dup [Error_pt]],
+				Utf8_pt, Utf8_pt, Utf8_pt,
+				Utf8_pt, Utf8_pt, UString_pt,
+				[ (numpTypes - uns32( UString_pt ) - 1) dup [Error_pt]]
+			];
+
+	stringPT :pTypeRow_t := 
+			[  
+				[ uns32(Char_pt) dup [Error_pt]],
+				String_pt, String_pt, UString_pt,
+				Utf8_pt, String_pt, UString_pt,
+				[ (numpTypes - uns32( UString_pt ) - 1) dup [Error_pt]]
+			];
+
+	ustringPT :pTypeRow_t := 
+			[  
+				[ uns32(Char_pt) dup [Error_pt]],
+				UString_pt, UString_pt, UString_pt,
+				UString_pt, UString_pt, UString_pt,
+				[ (numpTypes - uns32( UString_pt ) - 1) dup [Error_pt]]
+			];
+
+	csetPT :pTypeRow_t := 
+			[  
+				[ uns32(Cset_pt) dup [Error_pt]],
+				Cset_pt, XCset_pt,
+				[ (numpTypes - uns32( XCset_pt ) - 1) dup [Error_pt]]
+			];
+
+	xcsetPT :pTypeRow_t := 
+			[  
+				[ uns32(Cset_pt) dup [Error_pt]],
+				XCset_pt, XCset_pt,
+				[ (numpTypes - uns32( XCset_pt ) - 1) dup [Error_pt]]
+			];
+
+
+
+static
+	align(4);
+	typeChkMap	:pType_t [ numpTypes, numpTypes ] :=
+		[
+			bytePT, wordPT, dwordPT, qwordPT, tbytePT, lwordPT,
+			uns8PT, uns16PT, uns32PT, uns64PT, uns128PT,
+			int8PT, int16PT, int32PT, int64PT, int128PT,			
+			real32PT, real64PT, real80PT, real128PT,
+			booleanPT,
+			enumPT,
+			charPT, xcharPT, unicodePT,
+			utf8PT, stringPT, ustringPT,
+			csetPT, xcsetPT,
+
+			// The remaining pTypes are all incompatible because they
+			// are not primitive types.
+			
+			[numpTypes - uns32(Thunk_pt) dup [ numpTypes dup [Error_pt]]]
+			
+		];
+
+
+
+
+
+readonly
+	align(4);
+
+	// From HLAUtils.HLA:
+
+	pTypeStrs: 
+		string[ numpTypes ] :=
+		[
+			"Byte",		
+			"Word",		
+			"DWord",		
+			"QWord",		
+			"TByte",		
+			"LWord",		
+			"Uns8",		
+			"Uns16",		
+			"Uns32",		
+			"Uns64",		
+			"Uns128",		
+			"Int8",		
+			"Int16",		
+			"Int32",		
+			"Int64",		
+			"Int128",		
+			"Real32",		
+			"Real64", 		
+			"Real80",
+			"Real128",		
+			"Boolean",		
+			"Enum",		
+			"Char", 		
+			"XChar",		
+			"WChar",
+			"Utf8",		
+			"String",		
+			"WString",		
+			"Cset",		
+			"XCset",		
+			"Thunk",		
+			"Deferred",	
+			"Array",		
+			"Record",		
+			"Union",		
+			"Class",		
+			"Pointer",
+			"FarPtr",		
+			"Procptr",		
+			"AnonRec",
+			"EndAnonRec",
+			"AnonUnion",
+			"EndAnonUnion",		
+			"Namespace",
+			"Symboltbl",	
+			"Segment",		
+			"Label",		
+			"Proc",		
+			"Method",		
+			"ClassProc",	
+			"ClassIter",	
+			"Iterator",	
+			"Program",		
+			"Macro",		
+			"Text",		
+			"Variant",
+			"Placeholder",
+			"Undefined",
+			"Error"	
+		];
+		
+
+
+	// A list that converts instruction token values to the corresponding
+	// instruction strings
+
+	instrStrs :string[ @elements( instrStrs_c )] := instrStrs_c;
+	align( 4 );
+
+	// Note: all the following character sets are 256 bits long so that
+	// they can handle eight-bit characters.
+	
+	goodNumDelimiters	:cset; @nostorage;
+		cset -{'0'..'9', 'A'..'Z', 'a'..'z' }, -{};
+		
+	_binDigits			:cset; @nostorage; 
+		cset {'0', '1', '_' }, {};
+		
+	LegalCharLiteral	:cset; @nostorage; 
+		cset -{#0..#$1f, #$7f}, -{};
+		
+	GoodRWID				:cset; @nostorage; 
+		cset {'0'..'9', 'A'..'Z', 'a'..'z' }, {};
+		
+	GoodID				:cset; @nostorage; 
+		cset {'0'..'9', 'A'..'Z', 'a'..'z', '_' }, {};
+		
+	HexDigits			:cset; @nostorage; 
+		cset {'0'..'9', 'A'..'F', 'a'..'f' }, {};
+		
+	_HexDigits			:cset; @nostorage; 
+		cset {'0'..'9', 'A'..'F', 'a'..'f', '_' }, {};
+		
+	WhiteSpace			:cset; @nostorage; 
+		cset { #8, #9, #10, #13, ' ', #$7f }, {};
+
+
+
+	align(4);
+
+	// From EXPR.HLA:
+
+	// pToT- Maps pType values for the primitive types to the
+	//		 corresponding symType value.
+	
+	pToT	: symNodePtr_t [numpTypes] :=
+			[
+				&byte_ste, &word_ste, &dword_ste, 
+				&qword_ste, &tbyte_ste, &lword_ste,
+				&uns8_ste, &uns16_ste, &uns32_ste, &uns64_ste, &uns128_ste,
+				&int8_ste, &int16_ste, &int32_ste, &int64_ste, &int128_ste,
+				&real32_ste, &real64_ste, &real80_ste, &real128_ste,
+				&boolean_ste, &enum_ste,
+				&char_ste, &xchar_ste, &unicode_ste,
+				&utf8_ste, &string_ste, &ustring_ste,
+				&cset_ste, &xcset_ste,
+				numpTypes - uns32(Thunk_pt) dup [&byte_ste]
+			];
+	
+	tknToT	: symNodePtr_t[32] :=
+			[
+				&boolean_ste,
+				&byte_ste,
+				&char_ste,   
+				&cset_ste,   
+				&dword_ste,  
+				&dword_ste,   	// enum
+				&int128_ste, 
+				&int16_ste,  
+				&int32_ste,  
+				&int64_ste,  
+				&int8_ste,   
+				&lword_ste,  
+				&qword_ste,  
+				&real128_ste,
+				&real32_ste, 
+				&real64_ste, 
+				&real80_ste, 
+				&string_ste, 
+				&tbyte_ste,  
+				&string_ste,   	// text
+				&uns128_ste, 
+				&uns16_ste,  
+				&uns32_ste,  
+				&uns64_ste,  
+				&uns8_ste,
+				&utf8_ste,   
+				&word_ste,   
+				&unicode_ste,  
+				&ustring_ste,
+				&xchar_ste,  
+				&xcset_ste,  
+				&thunk_ste  
+			];
+		
+	align(4);		
+	builtinPtrs	:dword [ tkn_thunk - tkn_boolean + 1 ] :=
+		[
+			&boolean_ste,
+			&byte_ste,   
+			&char_ste,   
+			&cset_ste,   
+			&dword_ste,  
+			&enum_ste,   
+			&int128_ste, 
+			&int16_ste,  
+			&int32_ste,  
+			&int64_ste,  
+			&int8_ste,   
+			&lword_ste,  
+			&qword_ste,  
+			&real128_ste,
+			&real32_ste, 
+			&real64_ste, 
+			&real80_ste, 
+			&string_ste, 
+			&tbyte_ste,  
+			&text_ste,   
+			&uns128_ste, 
+			&uns16_ste,  
+			&uns32_ste,  
+			&uns64_ste,  
+			&uns8_ste,
+			&utf8_ste,   
+			&word_ste,   
+			&unicode_ste,
+			&ustring_ste,
+			&xchar_ste,  
+			&xcset_ste,  
+			&thunk_ste  
+		];  
+
+			
+			
+	align(4);
+	classTypeStrs:
+		string[ uns32( Placeholder_ct ) + 1 ] :=
+		[
+			"None",		
+			"Constant",	
+			"Value", 		
+			"Type", 		
+			"Var",			
+			"Parm",		
+			"Static",		
+			"Label",		
+			"Proc",		
+			"Iterator",	
+			"ClassProc",	
+			"ClassIter",	
+			"Method",		
+			"Macro",		
+			"Keyword",		
+			"Terminator",	
+			"Program", 	
+			"Namespace",
+			"Symboltbl",	
+			"Segment",		
+			"Register",
+			"Memory",
+			"Placeholder"
+		];
+		
+static
+	align(4);
+	COFF_file_Header :IMAGE_FILE_HEADER :=
+		IMAGE_FILE_HEADER:
+		[
+			IMAGE_FILE_MACHINE_I386,	// machine type
+			0,							// # of sections
+			0,							// Time/Date stamp
+			0,							// Pointer to symbol table
+			0,							// Number of symbols
+			0,							// Size of optional header (0 for Obj)
+
+			// Characteristics:
+
+				IMAGE_FILE_LINE_NUMS_STRIPPED
+			|	IMAGE_FILE_LOCAL_SYMS_STRIPPED
+			|	IMAGE_FILE_BYTES_REVERSED_LO
+			|	IMAGE_FILE_DEBUG_STRIPPED
+		];
+
+	// Note: HLA produces OBJ files, so there is no optional header
+	// (optional headers are only needed for executable files).
+
+	// Section headers must be allocated dynamically as we don't know
+	// the total number of sections until code generation time.
+
+	Section_Headers		:IMAGE_SECTION_HEADER_Ptr := NULL;
+	Section_Header_Cnt	:uns32 := 0;
+	Section_Header_Size	:uns32 := 0;
+
+			
+
+end HLAData;

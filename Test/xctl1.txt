@@ -1,0 +1,71 @@
+Compiling 'test/xctl1.hla2' to 'test/xctl1.obj'
+codelen = 00000000
+codelen = 00000000
+
+Intermediate Code:
+------------------
+
+$0(0): start
+cnt: 0
+File: '', line: 0
+
+$0(0): pgm
+cnt: 0
+File: 'D:\dev\Projects\HIDE\Complete_Projects\HLA3\test\xctl1.hla2', line: 12
+
+
+HLA Symbol Table (placeholder) 0:Placeholder :
+static             0:Segment :external( "data" )
+storage            0:Segment :external( "bss" )
+readonly           0:Segment :external( "readonly" )
+code               0:Segment :external( "text" )
+const              0:Segment :external( "const" )
+true               0:Constant :Boolean  size:  1  := true
+false              0:Constant :Boolean  size:  1  := false
+
+------------------------------------------------------------------------------
+
+
+
+--------------------------------------------------------
+Data for segment: static
+--------------------------------------------------------
+
+
+-----------------------------
+Variable offsets into segment
+
+Number of declaration sections: 0
+
+
+--------------------------------------------------------
+Data for segment: storage
+--------------------------------------------------------
+
+
+-----------------------------
+Variable offsets into segment
+
+Number of declaration sections: 0
+
+
+--------------------------------------------------------
+Data for segment: readonly
+--------------------------------------------------------
+
+
+-----------------------------
+Variable offsets into segment
+
+Number of declaration sections: 0
+
+
+--------------------------------------------------------
+Data for segment: consts
+--------------------------------------------------------
+
+
+-----------------------------
+Variable offsets into segment
+
+Number of declaration sections: 0

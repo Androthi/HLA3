@@ -1,0 +1,5487 @@
+unit hlaUtils;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )						
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// popIncStack-						
+//
+//	Pops an item off the include stack and sets up the text pointers to
+// resuming processing the previous file (before the include, text, or
+// macro).
+
+//proc( "popIncStack" )
+procedure popIncStack; @noframe;
+begin popIncStack;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	assert( includeSP > 0 );
+	assert( includeSP < MaxNestedIncludes );
+
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+
+	mov( ctSP, eax );
+	assert( (type int32 eax) < maxCTstk );
+	if( eax <> includeStk.ctSP[ebx] ) then
+
+		intmul( @size( ctStack_t ), eax );
+		mov( ctStack.lineNumber[eax], eax );
+		HLAwarning
+		( 
+			"At EOF or end of macro, there was an outstanding compile-time "
+			"statement active" nl
+			"The original compile-time statement was at line #", 
+			(type uns32 eax),
+			nl
+		);
+		mov( includeStk.ctSP[ebx], eax );
+		mov( eax, ctSP );
+
+	endif;
+
+	// If we're popping a macro entry from the include stack, then
+	// we need to free up all the storage associated with the copy
+	// of the local symbols list we created in pushBackMacro.
+
+	mov( includeStk.incRecType, al );
+	if( al >= irt_macro ) then
+
+		mov( includeStk.macroSyms[ebx], ecx );
+		while( ecx <> NULL ) do
+
+			mov( ecx, eax );
+			mov( symECX.next, ecx );
+			freeAttr( symEAX.va );
+			free( eax );
+
+		endwhile;
+
+	endif;
+
+	// Get important values from the current fileList record
+	// that we have to restore:
+	
+	mov( includeStk.lineNumber[ebx], eax );
+	mov( eax, lineNumber );
+	
+	mov( includeStk.fullFileName[ebx], eax );
+	mov( eax, fullFileName );
+	assert( fullFileName <> NULL );
+	mov( includeStk.shortFileName[ebx], eax );
+	mov( eax, filename );
+	assert( filename <> NULL );
+	mov( includeStk.fileMapHandle[ebx], eax );
+	mov( eax, fileMapHandle );
+
+	mov( includeStk.cursor[ebx], esi );
+	mov( includeStk.BOF[ebx], eax );
+	mov( eax, BOF );
+	mov( includeStk.EOF[ebx], eax );
+	mov( eax, EOF );
+
+	dec( includeSP );
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	ret();
+
+end popIncStack;
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// pushIncStk-
+//
+//	This procedure pushes the information for the current file
+// onto the include stack.
+
+////proc( "pushIncStk" )
+procedure pushIncStk;  	
+begin pushIncStk;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	// Push this include record onto the "include stack."
+	
+	inc( includeSP );
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	if( includeSP >= MaxNestedIncludes ) then
+
+		HLAerror
+		( 
+			"Too many nested include files when processing ",
+			filename,
+			nl
+		);
+		quitHLA();
+		
+	endif;
+	
+	// Copy the current file data to the new top of the include stack
+
+	mov( fullFileName, eax );
+	mov( eax, includeStk.fullFileName[ebx] );
+	mov( filename, eax );
+	mov( eax, includeStk.shortFileName[ebx] );
+	mov( fileMapHandle, eax );
+	mov( eax, includeStk.fileMapHandle[ebx] );
+	mov( BOF, eax );
+	mov( eax, includeStk.BOF[ebx] );
+	mov( esi, includeStk.cursor[ebx] );
+	mov( EOF, eax );
+	mov( eax, includeStk.EOF[ebx] );
+	mov( lineNumber, eax );
+	mov( eax, includeStk.lineNumber[ebx] );
+	mov( ctSP, eax );
+	mov( eax, includeStk.ctSP[ebx] );
+	
+	// Assume it's not a macro:
+	
+	mov( false, includeStk.active[ebx] );
+	mov( NULL, includeStk.macroSyms[ebx] );
+	mov( NULL, includeStk.keyTerms[ebx] );
+	mov( irt_include, includeStk.incRecType[ebx] );
+	
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end pushIncStk;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getIncStack-
+//
+//	Restores text stream to the source found on the top of the include
+// stack, but does not pop the item from the stack. This is done when
+// a context-free #macro returns input to the original source, but has
+// #keyword and #terminator sections left to process.
+
+////proc( "getIncStack" )
+procedure getIncStack; @noframe;
+begin getIncStack;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	assert( includeSP > 0 );
+	assert( includeSP < MaxNestedIncludes );
+
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+
+	mov( ctSP, eax );
+	assert( (type int32 eax) < maxCTstk );
+	if( eax <> includeStk.ctSP[ebx] ) then
+
+		intmul( @size( ctStack_t ), eax );
+		mov( ctStack.lineNumber[eax], eax );
+		HLAwarning
+		( 
+			"At EOF or end of macro, there was an outstanding compile-time "
+			"statement active" nl
+			"The original compile-time statement was at line #", 
+			(type uns32 eax),
+			nl
+		);
+		mov( includeStk.ctSP[ebx], eax );
+		mov( eax, ctSP );
+
+	endif;
+
+	// Get important values from the current includeInfo_t record
+	// that we have to restore:
+	
+	mov( includeStk.lineNumber[ebx], eax );
+	mov( eax, lineNumber );
+	
+	mov( includeStk.fullFileName[ebx], eax );
+	mov( eax, fullFileName );
+	mov( includeStk.shortFileName[ebx], eax );
+	mov( eax, filename );
+	assert( filename <> NULL );
+	
+	mov( includeStk.fileMapHandle[ebx], eax );
+	mov( eax, fileMapHandle );
+
+	mov( includeStk.cursor[ebx], esi );
+	mov( includeStk.BOF[ebx], eax );
+	mov( eax, BOF );
+	mov( includeStk.EOF[ebx], eax );
+	mov( eax, EOF );
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	ret();
+
+end getIncStack;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// pushBackStr-
+//
+//	This procedure tells the lexer to use the string passed
+// as a parameter as input, until it exhausts the string (after
+// which it will continue fetching data from the current source).
+//
+// Input:
+//
+//	s-
+//		This is the string the lexer will use as input.
+
+////proc( "pushBackStr" )
+procedure pushBackStr( s:string );  	
+begin pushBackStr;
+
+	push( eax );
+
+	// Save current file info on the include stack:
+	pushIncStk();
+	
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, eax );
+	mov( irt_text, includeStk.incRecType[eax] );
+	
+	// Okay, set up ESI so that we start processing the
+	// text in our string and this is the new file BOF.
+	// The current "end of file" will correspond to the end
+	// of the string in memory:
+	
+	mov( s, esi );
+	canAccess( [esi] );
+	mov( esi, BOF );
+	mov( esi, eax );
+	add( (type str.strRec [esi]).length, eax );
+	mov( eax, EOF );
+	
+	pop( eax );
+
+end pushBackStr;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getMacroParm-
+//	Processes input text until we find an (unmatched) ")" or ","
+// symbol. Returns a pointer to the captured text in EBX. Returns
+// either ")",  ",", or tkn_EOF in EAX so the caller knows how this 
+// parameter ended. 
+//
+// HLA macro parameters consist of a sequence of characters that end with
+// either a comma or a closing parentheses subject to the following rules:
+//
+// (1) If an opening parenthesis is encountered, all text (including
+//		matched parentheses and commas) is included as part of the
+//		parameter until HLA encounters the corresponding closing paren.
+//
+// (2)	All text between the "#(" and ")#" symbols is included as part
+//		of a macro parameter, including commas and unmatched parentheses.
+//
+// (3)	All text enclosed within quotes or apostrophes (including commas,
+//		parentheses, and the "#(" and ")#" symbols) is included as part
+//		of the macro parameter text.
+//
+// Note that HLA eliminates any leading and trailing white space and
+// control characters from a macro parameter (even if you enclose the
+// text with "#(" and ")#").
+//
+// HLA also eliminates any comment text appearing inside a macro
+// parameter.
+
+
+
+//proc( "getMacroParm" )
+procedure getMacroParm; @returns( "ebx" );
+var
+	parmIndex	:dword;			// Put the next parm string here.
+	bracketCnt	:int32;			// Used to match parentheses.
+	hasParmData	:boolean;		// Does the parameter have any substance?
+	parameter	:char[64*1024];	// Yep, a large buffer, 'cause macro
+								//  parms are, theoretically, unbounded.
+
+begin getMacroParm;
+
+	push( ecx );
+	push( edx );
+
+	mov( 0, parmIndex );
+	mov( false, hasParmData );	// Assume there's an empty parameter
+	forever
+		lex( esi );
+		breakif( eax = ',' || eax = ')' || eax = tkn_EOF );
+
+		if( eax = tkn_poundParen ) then
+
+			// Grab all text up to (but not including) the ")#" and
+			// shove it into the parameter array. Note that we use
+			// fastLex here because HLA does not eagerly expand all
+			// the text between the "#(" and ")#" tokens.
+
+			mov( true, hasParmData );	// We've got some parameter data
+			forever
+
+				push( esi );	// Save start of text
+				fastLex( esi );
+				breakif( eax = tkn_parenPound );
+				if( eax = tkn_EOF ) then
+
+					HLAerror
+					(
+						"Expected ')#' before end of file" nl
+					);
+					break;
+
+				endif;
+				pop( edx );		// Retrieve ptr to start of text.
+				push( esi );
+				push( edi );
+				mov( esi, ecx );
+				sub( edx, ecx );
+				mov( edx, esi );
+				mov( parmIndex, ebx );
+				lea( edi, parameter[ebx] );
+				add( ecx, parmIndex );
+				cld();
+				rep.movsb();
+				pop( edi );
+				pop( esi );
+
+			endfor;
+			pop( edx );	// Clean up stack.
+
+			// Inject an extra space to separate lexemes
+			// in the parameter string we are creating:
+
+			mov( parmIndex, ebx );
+			mov( ' ', parameter[ebx] );
+			inc( parmIndex );
+
+		elseif( eax = '(' ) then
+
+			// If we see an opening parenthesis, then capture all text
+			// until we get to the matching parenthesis.
+
+			mov( true, hasParmData );	// We've got some parameter data
+			mov( 0, bracketCnt );
+			mov( parmIndex, ebx );
+			mov( '(', parameter[ebx] );
+			inc( parmIndex );
+			forever
+
+				lex( esi );
+				if( eax = ')' ) then
+				
+					mov( parmIndex, ebx );
+					mov( ')', parameter[ebx] );
+					inc( parmIndex );
+					dec( bracketCnt );
+					breakif( bracketCnt <= 0 );
+
+				elseif( eax = '(' ) then
+
+					inc( bracketCnt );
+					mov( parmIndex, ebx );
+					mov( '(', parameter[ebx] );
+					inc( parmIndex );
+
+				else
+
+					push( esi );
+					push( edi );
+					mov( esi, ecx );
+					sub( edi, ecx );
+					mov( edi, esi );
+					mov( parmIndex, ebx );
+					lea( edi, parameter[ebx] );
+					add( ecx, parmIndex );
+					cld();
+					rep.movsb();
+
+					// Separate each lexeme by a space:
+
+					mov( ' ', al );
+					stosb();
+					inc( parmIndex );
+
+					pop( edi );
+					pop( esi );
+
+				endif;
+					
+			endfor;
+
+		elseif( eax = '[' ) then
+
+			// If we see an opening bracket, then capture all text
+			// until we get to the matching closing bracket.
+
+			mov( true, hasParmData );	// We've got some parameter data
+			mov( 0, bracketCnt );
+			mov( parmIndex, ebx );
+			mov( '[', parameter[ebx] );
+			inc( parmIndex );
+			forever
+
+				lex( esi );
+				if( eax = ']' ) then
+				
+					mov( parmIndex, ebx );
+					dec( bracketCnt );
+					mov( ']', parameter[ebx] );
+					inc( parmIndex );
+					breakif( bracketCnt <= 0 );
+
+				elseif( eax = '[' ) then
+
+					inc( bracketCnt );
+					mov( parmIndex, ebx );
+					mov( '[', parameter[ebx] );
+					inc( parmIndex );
+
+				else
+
+					push( esi );
+					push( edi );
+					mov( esi, ecx );
+					sub( edi, ecx );
+					mov( edi, esi );
+					mov( parmIndex, ebx );
+					lea( edi, parameter[ebx] );
+					add( ecx, parmIndex );
+					cld();
+					rep.movsb();
+
+					// Inject an extra space between lexemes:
+
+					mov( ' ', al );
+					stosb();
+					inc( parmIndex );
+
+					pop( edi );
+					pop( esi );
+
+				endif;
+					
+			endfor;
+
+		elseif( eax = '{' ) then
+
+			// If we see an opening brace, then capture all text
+			// until we get to the matching closing brace.
+
+			mov( true, hasParmData );	// We've got some parameter data
+			mov( 0, bracketCnt );
+			mov( parmIndex, ebx );
+			mov( '{', parameter[ebx] );
+			inc( parmIndex );
+			forever
+
+				lex( esi );
+				if( eax = '}' ) then
+				
+					mov( parmIndex, ebx );
+					dec( bracketCnt );
+					mov( '}', parameter[ebx] );
+					inc( parmIndex );
+					breakif( bracketCnt <= 0 );
+
+				elseif( eax = '{' ) then
+
+					inc( bracketCnt );
+					mov( parmIndex, ebx );
+					mov( '{', parameter[ebx] );
+					inc( parmIndex );
+
+				else
+
+					push( esi );
+					push( edi );
+					mov( esi, ecx );
+					sub( edi, ecx );
+					mov( edi, esi );
+					mov( parmIndex, ebx );
+					lea( edi, parameter[ebx] );
+					add( ecx, parmIndex );
+					cld();
+					rep.movsb();
+
+					// Inject an extra space between lexemes:
+
+					mov( ' ', al );
+					stosb();
+					inc( parmIndex );
+
+					pop( edi );
+					pop( esi );
+
+				endif;
+					
+			endfor;
+
+
+		else	// Nothing that is particularly special, so just copy lexeme.
+
+			mov( true, hasParmData );	// We've got some parameter data
+			push( esi );
+			push( edi );
+			mov( esi, ecx );
+			sub( edi, ecx );
+			mov( edi, esi );
+			mov( parmIndex, ebx );
+			lea( edi, parameter[ebx] );
+			add( ecx, parmIndex );
+			cld();
+			rep.movsb();
+			pop( edi );
+			pop( esi );
+
+			// Inject an extra space to separate lexemes
+			// in the parameter string we are creating:
+
+			mov( parmIndex, ebx );
+			mov( ' ', parameter[ebx] );
+			inc( parmIndex );
+
+		endif;
+
+	endfor;
+
+	// If there was some actual parameter data, convert it to a string.
+
+	mov( NULL, ebx );	// Assume no parameter data.
+	if( hasParmData ) then
+
+		// We need to create a string out of the data we've captured
+		// and return a pointer to that string in EBX:
+
+		push( eax );	// Save ")", ",", or tkn_EOF lexeme
+		push( esi );
+		push( edi );
+		mov( parmIndex, ecx );	// # of chars in string.
+		str.alloc( ecx );		// Create storage for the string
+		mov( ecx, (type str.strRec [eax]).length );	// Set string length
+		mov( #0, (type char [eax+ecx]));				// Zero terminate string
+		mov( eax, edi );
+		lea( esi, parameter );
+		cld();
+		rep.movsb();
+		pop( edi );
+		pop( esi );
+		str.trim( eax );		// Eliminate leading and trailing spaces
+		mov( eax, ebx );		// Return string pointer in EBX.
+		pop( eax );				// Retrieve ")", ",", or tkn_EOF lexeme.
+
+	else
+
+		push( eax );
+		str.a_cpy( "" );
+		mov( eax, ebx );
+		pop( eax );
+
+	endif;
+	pop( edx );
+	pop( ecx );
+
+end getMacroParm;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getOptionalMacroParm-
+//
+//	Handle optional (variable) parameters in the macro.
+//
+// 	optParm points at the symbol table entry for the optional parameter.
+// Grab all remaining parameters, create strings for them, and put that
+// string array into the symbol table entry specified by optParm.
+
+
+
+procedure getOptionalMacroParm( optParm:symNodePtr_t );
+var
+	parmCntr	:uns32;
+	numElements	:uns32;
+	attrArray	:pointer to attr_t;
+
+	// processOptParms -
+  
+	procedure processOptParms; @noframe;
+	begin processOptParms;
+
+		getMacroParm();
+		if( eax = ',' ) then
+
+			inc( ebp::parmCntr );
+			push( ebx );		// Save ptr to current parameter string.
+			processOptParms();
+			pop( ebx );			// Get our parameter string back.
+			dec( ebp::parmCntr );
+
+			// Okay, initialize the current attr_t object:
+
+			canAccess( [edx] );
+			intmul( @size( attr_t ), ebp::parmCntr, ecx );
+			mov( 0, attrEDX.numElements[ecx] );
+			mov( &string_ste, attrEDX.symType[ecx] );
+			mov( String_pt, attrEDX.pType[ecx] );
+			mov( Constant_ct, attrEDX.symClass[ecx] );
+			mov( ebx, attrEDX.string_vt[ecx] );
+			ret();
+
+		endif;
+
+		// We've just see the last actual parameter.
+		// Create an array of attr_t objects with parmCntr
+		// elements and leave a pointer to this guy in EDX
+		// for the return trip.
+
+		mov( ebp::parmCntr, eax );
+		inc( eax );
+		mov( eax, ebp::numElements );	// Save for getOptionalMacroParm
+		intmul( @size( attr_t ), eax );	// Size of array.
+		malloc( eax );
+		mov( eax, edx );				// Return pointer in EDX
+
+		// Okay, initialize the current attr_t object:
+
+		intmul( @size( attr_t ), ebp::parmCntr, ecx );
+		mov( 0, attrEDX.numElements[ecx] );
+		mov( &string_ste, attrEDX.symType[ecx] );
+		mov( String_pt, attrEDX.pType[ecx] );
+		mov( Constant_ct, attrEDX.symClass[ecx] );
+		mov( ebx, attrEDX.string_vt[ecx] );
+		ret();
+
+	end processOptParms;
+
+begin getOptionalMacroParm;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	// First, create an array of string with any remaining
+	// actual parameters:
+
+	mov( 0, parmCntr );
+	processOptParms();		// On return, EDX is pointer to array.
+	mov( edx, attrArray );	// Save for later use.
+
+	mov( optParm, ebx );	// Pointer to symbol table entry for this guy.
+	canAccess( [ebx] );
+	mov( edx, symEBX.va.arrayValues_vt );
+	mov( Array_pt, symEBX.pType );
+	mov( String_pt, symEBX.va.pType );
+	mov( &string_ste, symEBX.symType );
+	mov( &string_ste, symEBX.va.symType );
+	mov( Constant_ct, symEBX.symClass );
+	mov( Constant_ct, symEBX.va.symClass );
+	
+	mov( numElements, eax );
+	mov( eax, symEBX.numElements );
+	mov( eax, symEBX.va.numElements );
+	shl( 2, eax );
+	mov( eax, symEBX.objectSize );
+	if( numElements > 0 ) then
+
+		mov( attrArray, eax );
+		mov( eax, symEBX.va.arrayValues_vt );
+
+		// Sneak this type declaration into the global
+		// symbol table rather than putting it inside the record:
+
+		push( curHashTable );		// Save these, to restore
+		push( curOwner );			//  them later.
+
+		// We need to create a dummy name for
+		// the anonymous array type that we're
+		// about to create.  This is of the form:
+		//
+		//	"@arrayXXX"
+		//
+		// where XXX is some unique numeric value.
+		// Note the '@' at the beginning of the
+		// string, this ensures that the program
+		// can never reference this symbol directly.
+		
+		makeLabel( "@array" );
+
+		// lookupLocal is called just to compute the leaf
+		// node value in EBX:
+
+		push( eax );
+		computeHash( eax );
+		mov( eax, ebx );
+		mov( [esp], eax );
+		lookupLocal( eax, eax, ebx );
+		pop( eax );
+
+		// Create a symbol table entry for the anonymous
+		// type:
+		
+		enterType
+		(
+			eax,
+			eax,
+			NULL,
+			Array_pt,
+			&string_ste,
+			curOwner,
+			[ebx]
+		);
+		mov( optParm, edx );
+		mov( eax, symEDX.symType );
+		mov( symEDX.objectSize, ebx );
+		mov( ebx, symEAX.objectSize );
+
+		mov( numElements, ebx );
+		mov( ebx, symEAX.numElements );
+
+		pop( curOwner );
+		pop( curHashTable );
+
+	else
+
+		// If there weren't any optional parameters,
+		// then create a dummy entry for the optional parameter item.
+
+		mov( String_pt, symEBX.pType );
+		mov( str.a_cpy( "" ), symEBX.va.string_vt );
+
+	endif;
+
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end getOptionalMacroParm;
+ 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// pushBackMacro-
+//
+//	This procedure tells the lexer to use the range of text passed
+// as parameters as input, until it exhausts the string (after
+// which it will continue fetching data from the current source).
+//
+// Input:
+//
+//	textStart-
+//		This points at the start of the text to use
+//
+//	textEnd-
+//		This points at the first byte beyond the text to use.
+////proc( "pushBackMacro" )
+procedure pushBackMacro( macSym:symNodePtr_t );
+type
+	processingState_t:
+		enum
+		{
+			processingParms,
+			processingLocals,
+			processingMacros,
+			processingComplete
+		};
+		
+var
+	// theLocals is a pointer to the first local symbol in the linear list
+	// associated with the macro. May be NULL if there are no local syms.
+
+	theLocals		:symNodePtr_t;
+
+	// afterLocals points at the first keyword or terminator symbol in the
+	// macro's linear list of local symbols. This might contain NULL.
+
+	afterLocals		:symNodePtr_t;
+
+	// token is used to track the ending symbol for a macro parameter
+	// (typically ")", ",", or tkn_EOF).
+
+	token			:dword;
+
+	// noMoreActual is set to true when we encounter the physical end
+	// of the actual macro parameter list.
+
+	noMoreActual	:boolean;
+	
+	// The following variable tracks whether this code is processing
+	// macro parameters, macro local symbols, or keyword/terminator symbols
+	
+	curState		:processingState_t;
+
+begin pushBackMacro;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Okay, construct a list of symbol table entries to hold
+	// the parameters, locals, keywords, and terminator for this
+	// macro (if any).
+
+	mov( processingParms, curState );	// Assume we start with parameters.
+
+	// After the execution of the following sequence, EAX will contain
+	// a pointer to the first symbol in the macro's local linear list,
+	// or it will contain NULL if the macro has no symbols at all.
+
+	mov( NULL, theLocals );
+	mov( macSym, ecx );
+	canAccess( [ecx] );
+	mov( symECX.macro.locals, eax );
+	mov( eax, theLocals );
+	mov( symECX.macro.keywords, eax );
+	if( eax = NULL ) then
+	
+		mov( symECX.macro.terminator, eax );
+		
+	endif;
+	mov( eax, afterLocals );
+	
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	mov( symECX.macro.macroParms, eax );
+	if( eax = NULL ) then
+	
+		// If macroParms is NULL, then there are no parameters. So
+		// we start processing with the locals (assuming there are
+		// locals).
+		
+		mov( processingLocals, curState );
+		
+		mov( theLocals, eax );
+		if( eax = NULL ) then
+
+			// If there are no parameters or locals, then we start
+			// our processing with the keyword/terminator macros:
+			
+			mov( processingMacros, curState );
+			mov( afterLocals, eax );
+			if( eax = NULL ) then
+			
+				// If there was nothing, then we're basically done.
+
+				mov( processingComplete, curState );
+
+			endif;
+
+		endif;
+
+	endif;
+
+	// If we're expecting a parameter list, then fetch the "(" token:
+
+	mov( true, noMoreActual );		// Assume there are no parameters.
+	if( curState = processingParms ) then
+
+		mov( false, noMoreActual );		// Must have parameters.
+		push( eax );
+		lex( esi );
+		if( eax <> '(' ) then
+
+			HLAerror
+			( 
+				"Expected '(' and a parameter list after macro invocation" nl
+			);
+			pop( eax );
+			pop( edx );
+			pop( ecx );
+			pop( ebx );
+			pop( eax );
+			exit pushBackMacro;
+			
+		endif;
+		pop( eax );	// Retrieve pointer to macro symbol list.
+
+	endif;
+
+	// If this macro has any parameters, local symbols, keywords,
+	// or terminators, then process these symbols. Because we can
+	// have nested (and recursive) macro invocations, we have to
+	// make a new copy of each of the local symbols present in the
+	// macro. The following code does this.
+
+	if( eax <> NULL ) then
+
+		mov( eax, ecx );
+		mov( NULL, edx );
+
+		// The following loop repeats once for each of the macro's
+		// symbols:
+
+		while( ecx <> NULL ) do
+
+			// Create a symbol table entry to hold the current item:
+
+			malloc( @size( symNode_t ));
+
+			// Link this to the previous symbol (we're putting them
+			// in backwards, but that's okay, we fix this later):
+			
+			mov( edx, symEAX.next );
+
+			// We need to track when:
+			//
+			//	1. We're processing parameters,
+			//	2. We're processing locals, and
+			//	3. We're processing keywords/terminators
+
+			if( ecx = theLocals ) then
+
+				mov( processingLocals, curState );
+
+			elseif( ecx = afterLocals ) then
+
+				mov( processingMacros, curState );
+				
+			endif;
+
+			if( curState < processingMacros ) then
+			
+				// We've got a parameter or a local symbol.
+				//
+				// Copy the important fields over. We don't need to copy
+				// the entire symbol table record because we know that
+				// all the entries are either TEXT or STRING ARRAY objects.
+
+				mov( symECX.symClass, bl );
+				mov( bl, symEAX.symClass );
+				
+				mov( symECX.pType, bl );		// This is either TEXT or
+				mov( bl, symEAX.pType );		//  STRING (base type of array).
+
+				mov( symECX.symType, ebx );		// This is either TEXT or
+				mov( ebx, symEAX.symType );		//  ARRAY (of strings).
+
+				mov( symECX.numElements, ebx );	// If a STRING array
+				mov( ebx, symECX.numElements );
+
+				mov( symECX.lcName, ebx );		// Don't make a copy. We won't
+				mov( ebx, symEAX.lcName );		// change these, so why spend
+				mov( symECX.trueName, ebx );	// the time copying them?
+				mov( ebx, symEAX.trueName );
+
+				if( curState = processingParms ) then
+				
+					if( !noMoreActual ) then
+					
+						// Processing actual parameters and matching them
+						// up with formal parameters.
+
+						if( symEAX.pType = Text_pt ) then
+
+							// Okay, we're expecting a required parameter here.
+							// Get the text for the macro parameter:
+
+							push( eax );
+							getMacroParm();
+							mov( eax, token );
+							pop( eax ); 
+							mov( ebx, symEAX.va.string_vt );
+							mov( Text_pt, symEAX.va.pType );
+							mov( Text_pt, symEAX.pType );
+							mov( &string_ste, symEAX.va.symType );
+							mov( &text_ste, symEAX.symType );
+							mov( Constant_ct, symEAX.va.symClass );
+							mov( Constant_ct, symEAX.symClass );
+
+							// "token" is holding the lexeme we return upon.
+							// This is either ")", ",", or tkn_EOF. If
+							// we get a "," then there are (presumably) more
+							// parameters following. If we get ")" then there
+							// aren't any more parameters. If we get tkn_EOF,
+							// then there was an error (which has already been
+							// reported).
+
+							if( token = ')' ) then
+
+								// Flag the fact that we've seen the last
+								// actual parameter.
+
+								mov( true, noMoreActual );
+
+							elseif( token = tkn_EOF ) then
+
+								mov( true, noMoreActual );	// No more parameters!
+								break;	// Already printed error msg.
+
+							endif;
+
+						elseif( symEAX.pType = String_pt ) then
+
+							// Okay, we're processing optional (variable)
+							// parameters here:
+
+							getOptionalMacroParm( eax );
+							mov( true, noMoreActual );	// A given at this point.
+							mov( ')', token );			// Also a given. 
+
+						else
+
+							// This is an internal error - we're in the
+							// parameters section but the type isn't
+							// TEXT or STRING
+
+							HLAerror
+							( 
+								"Internal HLA error! Unexpected local macro "
+								"symbol type!" nl
+							);
+							quitHLA();
+
+						endif;
+
+						
+					else
+					
+						// We've still got more parameter symbols to
+						// allow for, but we've run out of actual parameters.
+						// Dummy up an entry for the current macro instance:
+
+						push( edx );
+						mov( eax, edx );
+						str.a_cpy( "" );
+						mov( eax, symEDX.va.string_vt );
+						mov( edx, eax );
+						pop( edx );
+						if( symEAX.pType = String_pt ) then
+						
+							// Must be a string parameter (optional/variable)
+
+							mov( 0, symEAX.numElements );
+
+						endif;
+
+					endif;
+					
+					
+				elseif( curState = processingLocals ) then
+
+					mov( eax, ebx );
+
+					// The unique ID is generated by concantenating
+					// a unique number to the end of the symbols true name:
+
+					str.length( tokenECX.trueName );
+					add( 16, eax ); 
+					stralloc( eax );
+					str.put
+					(
+						(type string eax), 
+						'_',
+						symECX.trueName,
+						'_', 
+						(type uns32 labelCntr), 
+						'_' 
+					);
+					inc( labelCntr );
+					xchg( eax, ebx );
+					mov( ebx, symEAX.va.string_vt );
+					mov( Text_pt, symEAX.va.pType );
+					mov( Text_pt, symEAX.pType );
+					mov( &string_ste, symEAX.va.symType );
+					mov( &text_ste, symEAX.symType );
+					mov( Constant_ct, symEAX.va.symClass );
+					mov( Constant_ct, symEAX.symClass );
+					
+				endif;
+				
+			else // (curState = processingMacros)
+				
+				// For keyword and terminator entries, we have to
+				// copy the whole symbol table record. Fortunately,
+				// we don't have to do a deep copy.
+
+				push( esi );
+				push( edi );
+				push( ecx );
+				cld();
+
+				mov( eax, edi );
+				mov( ecx, esi );
+				mov( @size( symNode_t ), ecx );
+				rep.movsb();
+
+				pop( ecx );
+				pop( edi );
+				pop( esi );
+
+			endif;
+
+			// EDX holds the address of the previous entry in the list.
+
+			mov( edx, symEAX.next );
+			mov( eax, edx );
+			mov( symECX.next, ecx );
+
+		endwhile;
+
+		// Okay, make a quick pass through this list and reverse all
+		// the "next" pointers:
+
+		mov( symEAX.next, ecx );
+		mov( NULL, symEAX.next );
+		while( ecx <> NULL ) do
+
+			mov( symECX.next, edx );
+			mov( eax, symECX.next );
+			mov( ecx, eax );
+			mov( edx, ecx );
+
+		endwhile;
+
+	endif;
+	
+	// See if there were any left-over actual parameters:
+
+	if( !noMoreActual ) then
+
+		HLAerror( "Macro invocation has too many actual parameters" nl );
+
+	endif;
+
+	// Set up the include stack entry:
+
+	pushIncStk();	// Push current info into the include stack.
+
+	// Finish setting up the include stack entry for a macro:
+	
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	mov( eax, includeStk.macroSyms[ebx] );
+	mov( afterLocals, eax );
+	mov( eax, includeStk.keyTerms[ebx] );
+	mov( true, includeStk.active[ebx] );
+	
+	// Okay, now set up all the global values based on the value
+	// in the macro's symbol table entry:
+
+	mov( macSym, ecx );
+	canAccess( [ecx] );
+	mov( symECX.macro.textStart, esi );		// Fetch macro text starting here.
+	mov( esi, BOF );						// Also sets the cursor position.
+	mov( symECX.macro.textEnd, eax );
+	mov( eax, EOF );
+
+
+	mov( symECX.macro.fullFileName, eax );
+	mov( eax, fullFileName );
+	mov( symECX.macro.filename, eax );
+	mov( eax, filename );
+	assert( filename <> NULL );
+	
+	mov( symECX.macro.fileMapHandle, eax );
+	mov( eax, fileMapHandle );
+
+	mov( symECX.macro.lineNumber, eax );
+	mov( eax, lineNumber );
+
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+end pushBackMacro;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// resetTknQ-
+//
+//	Resets the token queue to the start of the queue.
+// Generally used at the beginning of a new production that
+// doesn't have any (or need to pass through) any inherited
+// attributes.  Note that this procedure simply sets a global
+// flag to defer the reset if there are pending "reuse" tokens
+// in the queue.
+
+
+////proc( "resetTknQ" )
+procedure resetTknQ;  @noframe;
+begin resetTknQ;
+
+	if( tknReuse = 0 ) then
+	
+		// Technically, we should reset the queue all the
+		// way back to zero elements, but it turns out that
+		// a few routines still call "reuseLastTkn" after
+		// calling resetTknQ, so we'll preserve the last
+		// token, just in case.
+		
+		mov( &tknQ, ecx );
+		mov( ecx, tknHead );
+		mov( &tknQ, tknTail );
+		mov( 0, tknCnt );
+		mov( 0, tknReuse );
+		mov( false, pendingReset );
+		ret();
+		
+	endif;
+	mov( true, pendingReset );
+	ret();
+	
+end resetTknQ;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// reuseLastTkn-
+//
+//	Reuses the token created by the last call to lex.
+//	The next call to lex will return the same token as the last call to lex.
+
+////proc( "reuseLastTkn" )
+procedure reuseLastTkn;  @noframe;
+begin reuseLastTkn;
+
+	push( eax );
+	mov( tknTail, eax );
+	if( eax > &tknQ ) then
+	
+		sub( @size( token_t ), eax );
+		mov( eax, tknHead );
+		inc( tknReuse );
+
+	endif;
+	pop( eax );
+	ret();
+	
+end reuseLastTkn;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// matchTkn-
+//
+// Inputs:
+//
+//	ESI-
+//		Cursor into the source file.
+//
+//	EAX-
+//		Token value to match.
+//
+// Returns:
+//
+//	Carry-
+//		Set if lexer call encounters token value passed in EAX.
+//		Clear otherwise (also cleans up the attribute).
+//
+// Desc:
+//
+//	This procedure calls the lexer and compares the returned token
+// against the value passed in through the "token" parameter (eax).
+// If they are equal, this function returns the carry flag clear.
+// If they are not equal, then this function cleans up the attribute
+// and returns with the carry flag set.
+
+//proc( "matchTkn" )
+procedure matchTkn
+( 
+		Cursor:dword in esi; 
+		token:dword in eax
+); 
+	@noframe;
+	
+begin matchTkn;
+
+	push( eax );
+	lex( esi );
+	if( eax = [esp] ) then
+	
+		add( 4, esp );
+		clc();
+		ret();
+		
+	endif;
+	
+	// Note that the pointer to token_t (ECX) was returned by LEX:
+	
+	add( 4, esp );
+	stc();
+	ret();
+	
+end matchTkn;
+
+
+
+	
+//////////////////////////////////////////////////////////////////////////////
+//
+// matchTknCls-
+//
+// Inputs:
+//
+//	ESI-
+//		Cursor into the source file.
+//
+//	EAX-
+//		Token value to match.
+//
+// Returns:
+//
+//	Carry-
+//		Set if lexer call encounters token value passed in EAX.
+//		Clear otherwise (also cleans up the attribute).
+//
+// Desc:
+//
+//	Similar to matchTkn above, except this procedure tests for
+// a token class value rather than an actual token value.
+
+//proc( "matchTknCls" )
+procedure matchTknCls( Cursor:dword in ESI; tokenCls:dword in EBX ); 
+	@noframe;
+	
+begin matchTknCls;
+
+	push( ebx );
+	lex( esi );
+	if( ebx = [esp] ) then
+	
+		add( 4, esp );
+		clc();
+		ret();
+		
+	endif;
+	add( 4, esp );
+	stc();
+	ret();
+	
+end matchTknCls;
+
+
+
+/////////////////////////////////////////////////////////////////
+//
+// matchLParen, matchRParen, matchColon-
+//
+//	Matches the appropriate parenthesis or a colon.
+//
+// Returns carry clear if it properly matches the symbol,
+// returns carry set if there was an error.
+
+////proc( "matchLParen" )
+procedure matchLParen; @noframe;
+begin matchLParen;
+
+	pushABCD;
+	lex( esi );
+	cmp( eax, '(' );
+	clc();
+	if( @ne ) then
+		
+		HLAerror( "Expected '(', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+
+	endif;
+	popABCD;
+	ret();
+	
+end matchLParen;
+
+
+
+//proc( "matchRParen" )
+procedure matchRParen; @noframe;
+begin matchRParen;
+
+	pushABCD;
+	lex( esi );
+	cmp( eax, ')' );
+	clc();
+	if( @ne ) then
+
+		HLAerror( "Expected ')', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+		
+	endif;
+	popABCD;
+	ret();
+	
+end matchRParen;
+
+
+
+//proc( "matchRBracket" )
+procedure matchRBracket; @noframe;
+begin matchRBracket;
+
+	pushABCD;
+	lex( esi );
+	cmp( eax, ']' );
+	clc();
+	if( @ne ) then
+
+		HLAerror( "Expected ']', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+		
+	endif;
+	popABCD;
+	ret();
+	
+end matchRBracket;
+
+
+
+////proc( "matchRBracketOrParen" )
+procedure matchRBracketOrParen; @noframe;
+begin matchRBracketOrParen;
+
+	pushABCD;
+	lex( esi );
+	if( eax <> ']' && eax <> ')' ) then
+
+		HLAerror( "Expected ')', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+
+	else
+
+		clc();
+		
+	endif;
+	popABCD;
+	ret();
+	
+end matchRBracketOrParen;
+
+
+
+
+
+
+//proc( "matchColon" )
+procedure matchColon; @noframe;
+begin matchColon;
+
+	pushABCD;
+	lex( esi );
+	cmp( eax, ':' );
+	clc();
+	if( @ne ) then
+		
+		HLAerror( "Expected ':', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+		
+	endif;
+	popABCD;
+	ret();
+	
+end matchColon;
+
+
+//proc( "matchComma" )
+procedure matchComma; @noframe;
+begin matchComma;
+
+	pushABCD;
+	lex( esi );
+	cmp( eax, ',' );
+	clc();
+	if( @ne ) then
+		
+		HLAerror( "Expected ',', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+		
+	endif;
+	popABCD;
+	ret();
+	
+end matchComma;
+
+
+
+
+
+//proc( "matchSemicolon" )
+procedure matchSemicolon; @noframe;
+begin matchSemicolon;
+
+	pushABCD;
+	lex( esi );
+	cmp( eax, ';' );
+	clc();
+	if( @ne ) then
+		
+		HLAerror( "Expected ';', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		stc();
+		
+	endif;
+	popABCD;
+	ret();
+	
+end matchSemicolon;
+
+/////////////////////////////////////////////////////////////////////
+//
+// getRightParen - eats tokens until it encounters an unmatched
+// right parenthesis.  Returns true in EAX if the first token
+// it encounters is a right parenthesis, false otherwise.
+
+//proc( "getRightParen" )
+procedure getRightParen; @nodisplay; @nostackalign;
+var
+	parenCnt:dword;
+	rtnResult:dword;
+
+begin getRightParen;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	mov( 1, parenCnt );
+	mov( true, rtnResult ); // Assume next char is ')'
+	forever
+
+		lex( esi );
+		if( eax = '(' ) then
+
+			inc( parenCnt );
+
+		elseif( eax = ')' ) then
+
+			dec( parenCnt );
+			breakif( @z );
+
+		endif;
+		mov( false, rtnResult );
+
+	endfor;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	mov( rtnResult, eax );
+
+end getRightParen;
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getSemicolon-
+//
+//	Reads the next lexeme and reports an error if it's not
+// a semicolon.  It will automatically skip to the next semicolon
+// it finds if the next lexeme is not a semicolon.
+//
+// Returns carry set if it couldn't find a semicolon (i.e., an error ).
+
+//proc( "getSemicolon" )
+procedure getSemicolon;  @noframe;
+begin getSemicolon;
+	pushABCD;
+	lex( esi );
+	if( eax <> ';' ) then
+	
+		HLAerror
+		( 
+			"Syntax error, expected ';' "
+			"but encountered " 
+		);
+		dumpQLexeme();
+		HLAerror2( "Throwing away """ );
+		mov( edi, ebx );
+		repeat
+
+			push( ebx );
+			fastLex( esi );
+			pop( ebx );
+			while( ebx < esi && ebx < EOF ) do
+
+				HLAerror2( (type char [ebx]) );
+				inc( ebx );
+
+			endwhile;
+			mov( esi, ebx );
+
+		until( eax = ';' || ebx >= EOF );
+		HLAerror2( """" nl );
+		popABCD;
+		stc();
+		ret();
+		
+	endif;
+	popABCD;
+	clc();
+	ret();
+
+end getSemicolon;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// mustMatchSemicolon-
+//
+//	Reads the next lexeme and reports an error if it's not
+// a semicolon.  It will automatically skip to the next semicolon
+// it finds if the next lexeme is not a semicolon.
+//
+// Returns carry set if it couldn't find a semicolon (i.e., an error ).
+
+//proc( "mustMatchSemicolon" )
+procedure mustMatchSemicolon;  @noframe;
+begin mustMatchSemicolon;
+			   
+	pushABCD;
+	lex( esi );
+	if( eax <> ';' ) then
+	
+		HLAerror
+		( 
+			"Syntax error, expected ';' "
+			"but encountered " 
+		);
+		dumpQLexeme();
+		HLAerror2( "Throwing away """ );
+		mov( edi, ebx );
+		repeat
+
+			push( ebx );
+			fastLex( esi );
+			pop( ebx );
+			while( ebx < esi && ebx < EOF ) do
+
+				HLAerror2( (type char [ebx]) );
+				inc( ebx );
+
+			endwhile;
+			mov( esi, ebx );
+
+		until( eax = ';' || ebx >= EOF );
+		HLAerror2( """" nl );
+		raise( ex.hlaerr );
+		
+	endif;
+	popABCD;
+	ret();
+
+end mustMatchSemicolon;
+
+
+
+// mustMatchRParen - like matchRParen, but raises an exception if it doesn't
+// match a ")".
+
+//proc( "mustMatchRParen" )
+procedure mustMatchRParen; @noframe;
+begin mustMatchRParen;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	lex( esi );
+	cmp( eax, ')' );
+	if( @ne ) then
+
+		HLAerror( "Expected ')', encountered " );
+		dumpQLexeme();
+		reuseLastTkn();
+		raise( ex.hlaerr );
+		
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	clc();
+	ret();
+	
+end mustMatchRParen;
+
+////////////////////////////////////////////////////////////////////////
+//
+// lexemeToStr( beginLexeme:pointer; endLexeme:pointer );
+//
+//	On entry, beginLexeme points at the start of a lexeme and
+// endLexeme points one character beyond the end of the lexeme.
+// This function creates an HLA string on the heap and copies the
+// characters between these to pointers to that string variable.
+// Then this function returns a pointer to that string in the EAX
+// register.
+
+//proc( "lexemeToStr" )
+procedure lexemeToStr( beginLexeme:dword; endLexeme:dword ); 
+begin lexemeToStr;
+
+	push( esi );
+	push( edi );
+	push( ecx );
+	mov( beginLexeme, esi );
+	mov( endLexeme, eax );
+	sub( esi, eax );
+	mov( eax, ecx );
+	stralloc( eax );
+	if( eax <> NULL ) then
+	
+		mov( ecx, (type str.strRec [eax]).length );
+		inc( ecx );
+		mov( eax, edi );
+		cld;
+		rep.movsb();
+
+	endif;
+	pop( ecx );
+	pop( edi );
+	pop( esi );
+
+end lexemeToStr;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// dumpLexeme-
+//
+//	This procedure displays the text between EDI (inclusive) and 
+// ESI (exclusive) to the error reporting device.
+
+//proc( "dumpLexeme" )
+procedure dumpLexeme;  @noframe;
+begin dumpLexeme;
+
+	if( reportErrors ) then
+		push( edi );
+		while( edi < esi ) do
+		
+			HLAerror2( (type char [edi] ) );
+			inc( edi );
+			
+		endwhile;
+		pop( edi );
+
+	endif;
+	ret();
+	
+end dumpLexeme;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// dumpQLexeme-
+//
+//	Dumps a lexeme with a pair of apostrophies around it and a new line.
+
+//proc( "dumpQLexeme" )
+procedure dumpQLexeme;  @noframe;
+begin dumpQLexeme;
+
+	if( reportErrors ) then
+		HLAerror2( '''' );
+		dumpLexeme();
+		HLAerror2( "'" nl );
+
+	endif;
+	ret();
+	
+end dumpQLexeme;
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// pTypePrint-
+//
+//	This procedure displays the string version of a pType value.
+
+//proc( "pTypePrint" )
+procedure pTypePrint( p:pType_t );
+	@noframe;
+	
+begin pTypePrint;
+	
+	push( eax );
+	movzx( (type pType_t [esp+8]), eax );
+	HLAerror2( pTypeStrs[ eax*4 ] );
+	pop( eax );
+	ret( _parms_ );
+	
+end pTypePrint;
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// printPassBy-
+//
+//	Prints the string associated with a parmClass_t value.
+
+//proc( "printPassBy" )
+procedure printPassBy( passBy:parmClass_t );
+readonly
+	passByStrs:string[8] :=
+		[
+			"",
+			"value",
+			"var",
+			"var",
+			"valres",
+			"result",
+			"name",
+			"lazy"
+		];
+
+begin printPassBy;
+
+	push( ebx );
+	movzx( passBy, ebx );
+	HLAerror2( passByStrs[ebx*4] );
+	pop( ebx );
+
+end printPassBy;
+
+
+
+//proc( "printInReg" )
+procedure printInReg( inReg:register_t );
+readonly
+	inRegStrs:string[140] :=
+		[
+			"(none)",		//0		(not a register)
+			"al",			//1
+			"ah",			//2
+			"bl",			//3
+			"bh",			//4
+			"cl",			//5
+			"ch",			//6
+			"dl",			//7
+			"dh",			//8
+			"dib",			//9
+			"sib",			//10
+			"bpb",			//11
+			"spb",			//12
+			"r8b",			//13
+			"r9b",			//14
+			"r10b",			//15
+			"r11b",			//16
+			"r12b",			//17
+			"r13b",			//18
+			"r14b",			//19
+			"r15b",			//20
+			
+			"ax",			//21
+			"bx",			//22
+			"cx",			//23
+			"dx",			//24
+			"di",			//25
+			"si",			//26
+			"bp",			//27
+			"sp",			//28
+			"r8w",			//29
+			"r9w",			//30
+			"r10w",			//31
+			"r11w",			//32
+			"r12w",			//33
+			"r13w",			//34
+			"r14w",			//35
+			"r15w",			//36
+			
+			"eax",			//37
+			"ebx",			//38
+			"ecx",			//39
+			"edx",			//40
+			"edi",			//41
+			"esi",			//42
+			"ebp",			//43
+			"esp",			//44
+			"r8d",			//45
+			"r9d",			//46
+			"r10d",			//47
+			"r11d",			//48
+			"r12d",			//49
+			"r13d",			//50
+			"r14d",			//51
+			"r15d",			//52
+			
+			"rax",			//53
+			"rbx",			//54
+			"rcx",			//55
+			"rdx",			//56
+			"rdi",			//57
+			"rsi",			//58
+			"rbp",			//59
+			"rsp",			//60
+			"r8",			//61
+			"r9",			//62
+			"r10",			//63
+			"r11",			//64
+			"r12",			//65
+			"r13",			//66
+			"r14",			//67
+			"r15",			//68
+			
+			"st0",			//69
+			"st1",			//70
+			"st2",			//71
+			"st3",			//72
+			"st4",			//73
+			"st5",			//74
+			"st6",			//75
+			"st7",			//76
+			
+			"mm0",			//77
+			"mm1",			//78
+			"mm2",			//79
+			"mm3",			//80
+			"mm4",			//81
+			"mm5",			//82
+			"mm6",			//83
+			"mm7",			//84
+			
+			"xmm0",			//85
+			"xmm1",			//86
+			"xmm2",			//87
+			"xmm3",			//88
+			"xmm4",			//89
+			"xmm5",			//90
+			"xmm6",			//91
+			"xmm7",			//92
+			"xmm8",			//93
+			"xmm9",			//94
+			"xmm10",		//95
+			"xmm11",		//96
+			"xmm12",		//97
+			"xmm13",		//98
+			"xmm14",		//99
+			"xmm15",		//100
+			
+			"dr0",			//101
+			"dr1",			//102
+			"dr2",			//103
+			"dr3",			//104
+			"dr4",			//105
+			"dr5",			//106
+			"dr6",			//107
+			"dr7",			//108
+			"dr8",			//109
+			"dr9",			//110
+			"dr10",			//111
+			"dr11",			//112
+			"dr12",			//113
+			"dr13",			//114
+			"dr14",			//115
+			"dr15",			//116
+			
+			"cr0",			//117
+			"cr1",			//118
+			"cr2",			//119
+			"cr3",			//120
+			"cr4",			//121
+			"cr5",			//122
+			"cr6",			//123
+			"cr7",			//124
+			"cr8",			//125
+			"cr9",			//126
+			"cr10",			//127
+			"cr11",			//128
+			"cr12",			//129
+			"cr13",			//130
+			"cr14",			//131
+			"cr15",			//132
+			
+			"cseg",			//133
+			"dseg",			//134
+			"eseg",			//135
+			"fseg",			//136
+			"gseg",			//137
+			"sseg",			//138
+			"rip"			//139
+		];
+begin printInReg;
+
+	push( eax );
+	movzx( inReg, eax );
+	assert( eax < @elements( inRegStrs ));
+	HLAerror2( inRegStrs[eax*4] );
+	pop( eax );
+
+end printInReg;
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//   
+// ReSync-
+//
+//	Resynchronizes lexer whenever a lexer error occurs.
+// Accomplishes resynchronization by scanning for the end
+// of the current line.
+
+//proc( "reSync" )
+procedure reSync;  @noframe;
+begin reSync;
+
+
+	// Skip to the end of the line to resynchronize:
+	
+	while
+	(
+			esi < EOF
+		&&	(type char [esi]) <> stdio.lf
+	) do
+		
+		inc( esi );
+		
+	endwhile;
+	ret();
+
+end reSync;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// ResynchOnSemicolon-
+//
+//	Well, we've had some sort of syntax error.  Let's print an
+// error message and then try to resynchronize by skipping everything
+// until we encounter the next semicolon.
+
+//proc( "resyncOnSemicolon" )
+procedure resyncOnSemicolon;  
+var
+	badLexeme	:string;
+	
+begin resyncOnSemicolon;
+
+	mov( lexemeToStr( edi, esi ), badLexeme );
+	
+	// To resynchronize, eat all the lexemes until we encounter
+	// a semicolon.
+
+	if( str.ne( badLexeme, ";" ) ) then
+		HLAerror2( "Throwing away """ );
+		mov( edi, ebx );
+		repeat
+
+			push( ebx );
+			fastLex( esi );
+			pop( ebx );
+			while( ebx < esi && ebx < EOF ) do
+
+				HLAerror2( (type char [ebx]) );
+				inc( ebx );
+
+			endwhile;
+			mov( esi, ebx );
+
+		until( eax = ';' || ebx >= EOF );
+		HLAerror2( """" nl );
+
+	endif;
+	strfree( badLexeme );
+
+end resyncOnSemicolon;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// setHexType-
+//
+//	attribute contains a byte/word/dword/qword/tbyte/lword value.
+// This procedure sets the attribute.attrType field based on
+// the size of the value in attribute.v_lword.
+//
+// Inputs:
+//
+//	EBX-	Points at the attribute variable.
+//
+// Note: zeros out EAX.
+
+//proc( "setHexType" )
+procedure setHexType( var attr:attr_t in ebx );  @noframe;
+begin setHexType;
+
+	assert( attr <> NULL );
+	xor( eax, eax );
+	mov( Constant_ct, attrEBX.symClass );
+	mov( LWord_pt, attrEBX.pType );
+	mov( &lword_ste, attrEBX.symType );
+	if
+	( 
+			eax = (type dword attrEBX.lword_vt[12])
+		&&	ax = (type word attrEBX.lword_vt[10])  
+	) then
+	
+		mov( TByte_pt, attrEBX.pType );
+		mov( &tbyte_ste, attrEBX.symType );
+		if( eax = (type dword attrEBX.lword_vt[8]) ) then
+		
+			mov( QWord_pt, attrEBX.pType );
+			mov( &qword_ste, attrEBX.symType );
+			if( eax = (type dword attrEBX.lword_vt[4]) ) then
+			
+				mov( DWord_pt, attrEBX.pType );
+				mov( &dword_ste, attrEBX.symType );
+				if( ax = (type word attrEBX.lword_vt[2]) ) then
+				
+					mov( Word_pt, attrEBX.pType );
+					mov( &word_ste, attrEBX.symType );
+					if( al = (type byte attrEBX.lword_vt[1]) ) then
+					
+						mov( &byte_ste, attrEBX.symType );
+						mov( Byte_pt, attrEBX.pType );
+						
+					endif;
+					
+				endif;
+				
+			endif;
+			
+		endif;
+		
+	endif;
+	ret();
+
+end setHexType;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getHexConst-
+//
+// Inputs:
+//
+//	ESI-	pointer to lexeme (string of hex digits).
+//	EBX-	pointer to attribute (place to store hex value and pType).
+//
+// Outputs:
+//
+//	Attribute ([ebx])-	
+//		Holds the hex value and it's pType (byte, word, dword, qword,
+//		tbyte, or lword).
+//
+//	ESI-
+//		Points at first character beyond lexeme.
+//
+//	Carry-
+//		"1" indicates failure to convert, "0" indicates successful conversion.
+
+//proc( "getHexConst" )
+procedure getHexConst( cursor:dword in esi; var attr:attr_t in ebx ); 
+	@noframe;
+	
+begin getHexConst;
+
+	assert( attr <> NULL );
+	canAccess( [esi] );
+	
+	// See if the first digit is a hex character:
+	
+	movzx( (type char [esi]), eax );
+	bt( eax, HexDigits );
+	if( @nc ) then
+	
+		stc;
+		ret();
+		
+	endif;
+	
+	// Convert "A".."F" to $xA..$xF
+	if( al > '9' ) then
+	
+		add( 9, al );
+		
+	endif;
+	
+	// Convert character to a numeric value and initialize the attribute
+	// variable.
+	
+	and( $f, al );
+	mov( eax, (type dword attrEBX.lword_vt[0]) );
+	mov( 0, (type dword attrEBX.lword_vt[4]) );
+	mov( 0, (type dword attrEBX.lword_vt[8]) );
+	mov( 0, (type dword attrEBX.lword_vt[12]) );
+	mov( 0, (type dword attrEBX.lword_vt[16]) );
+	mov( 0, (type dword attrEBX.lword_vt[20]) );
+	mov( 0, (type dword attrEBX.lword_vt[24]) );
+	mov( 0, (type dword attrEBX.lword_vt[28]) );
+	
+	// Process the remaining characters in the hexadecimal number:
+	
+	push( ecx );
+	forever
+	
+		// Move on to next character:
+		
+		inc( esi );
+		canAccess( [esi] );
+	
+		// See if it's a hex digit or an underscore:
+		
+		mov( [esi], al );
+		bt( eax, _HexDigits );
+		breakif( @nc );
+		if( al <> '_' ) then
+		
+			// If it was a hex digit, then shift it into the attribute value:
+			
+			if( al > '9' ) then
+
+				add( 9, al );
+				
+			endif;
+			and( $f, al );
+			
+			// Shift the attribute value to the left four bits to make
+			// room for the new hex digit:
+			
+			mov( 4, ecx );
+			repeat
+			
+				shl( 1, (type dword attrEBX.lword_vt[0]) ); 
+				rcl( 1, (type dword attrEBX.lword_vt[4]) ); 
+				rcl( 1, (type dword attrEBX.lword_vt[8]) ); 
+				rcl( 1, (type dword attrEBX.lword_vt[12]) );
+				jc BadHexConst;	// Branch if overflow occurs.
+				dec( ecx ); 
+				
+			until( @z );
+			
+			// Merge in the new digit:
+			
+			or( al, (type byte attrEBX.lword_vt[0]) );
+			
+		endif;
+	
+	endfor;
+	
+	// Can't allow an underscore at the end of a hex constant.
+	
+	cmp( (type char [esi-1]), '_' );
+	je BadHexConst;
+	
+	// Make sure we've got a decent delimiter character marking the
+	// end of the hex constant.
+	
+	bt( eax, goodNumDelimiters );
+	jnc BadHexConst;
+	
+	// Okay, we've accumulated the hexadecimal constant
+	// in the attribute.lword variable.  Now determine the
+	// size of that value:
+	
+	GoodHexConst:
+		setHexType( [ebx] );
+		pop( ecx );
+		clc;
+		ret();
+		
+	BadHexConst:
+		pop( ecx );
+		stc;
+		ret();
+	
+end getHexConst;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getBinConst-
+//
+//	ESI-	pointer to lexeme (string of hex digits).
+//	EBX-	pointer to attribute (place to store hex value and pType).
+//
+//	ESI points, presumably, at the start of a string of binary
+// digits.  This function converts that string to the corresponding
+// numeric value and stores the result in the "attribute" variable.
+// This function returns the carry flag clear if the conversion
+// was successful, it returns the carry flag set if there was an error.
+
+//proc( "getBinConst" )
+procedure getBinConst( cursor:dword in esi; var attr:attr_t in ebx ); 
+	@noframe;
+	
+begin getBinConst;
+
+	assert( attr <> NULL );
+	canAccess( [esi] );
+	
+	// Verify that the first digit is zero or one:
+	
+	mov( [esi], al );
+	if( al not in '0'..'1' ) then
+	
+		stc;
+		ret();
+		
+	endif;
+	
+	// Convert from character to a number and initialize the attr value:
+	
+	and( 1, eax );
+	mov( eax, (type dword attrEBX.lword_vt[0]) );
+	mov( 0, (type dword attrEBX.lword_vt[4]) );
+	mov( 0, (type dword attrEBX.lword_vt[8]) );
+	mov( 0, (type dword attrEBX.lword_vt[12]) );
+	mov( 0, (type dword attrEBX.lword_vt[16]) );
+	mov( 0, (type dword attrEBX.lword_vt[20]) );
+	mov( 0, (type dword attrEBX.lword_vt[24]) );
+	mov( 0, (type dword attrEBX.lword_vt[28]) );
+	
+	// Process the remaining binary digits:
+	
+	forever
+	
+		// Move on to the next input character:
+		
+		inc( esi );
+		canAccess( [esi] );
+	
+		// Verify that it's zero, one, or an underscore:
+		
+		mov( [esi], al );
+		continueif( al = '_' );			// Just ignore underscores.
+		breakif( al not in '0'..'1' );
+	
+		// Shift the current bit into the attribute:
+		
+		shr( 1, al );
+		rcl( 1, (type dword attrEBX.lword_vt[0]) ); 
+		rcl( 1, (type dword attrEBX.lword_vt[4]) ); 
+		rcl( 1, (type dword attrEBX.lword_vt[8]) ); 
+		rcl( 1, (type dword attrEBX.lword_vt[12]) );
+		jc BadBinConst;
+	
+	endfor;
+	
+	// Can't allow an underscore at the end of a hex constant.
+	
+	cmp( (type char [esi-1]), '_' );
+	je BadBinConst;
+	
+	// Make sure we've got a decent delimiter character marking the
+	// end of the hex constant.
+	
+	bt( eax, goodNumDelimiters );
+	jnc BadBinConst;
+	
+	// Okay, we've accumulated the hexadecimal constant
+	// in the attribute.lword variable.  Now determine the
+	// size of that value:
+	
+	GoodBinConst:
+		setHexType( [ebx] );
+		clc;
+		ret();
+		
+	BadBinConst:
+		stc;
+		ret();
+	
+end getBinConst;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getDecConst-
+//
+//	ESI-	pointer to lexeme (string of hex digits).
+//	EBX-	pointer to attribute (place to store hex value and pType).
+//
+//	ESI points, presumably, at the start of a string of decimal
+// digits.  This function converts that string to the corresponding
+// numeric value and stores the result in the "attribute" variable.
+// This function returns the carry flag clear if the conversion
+// was successful, it returns the carry flag set if there was an error.
+
+//proc( "getDecConst" )
+procedure getDecConst( cursor:dword in esi; var attr:attr_t in ebx ); 
+	@noframe;
+
+	procedure attrTimes10PlusEAX( var attr:attr_t in ebx ); 
+		@noframe;
+		
+	const	
+		attrCopy	:text := "(type attr_t [esp+4])";
+		
+	begin attrTimes10PlusEAX;
+
+		sub( @size( attr_t ), esp );	// Make room for attrCopy.
+			
+		push( eax );	// Save value to add in for later.
+		
+		// Compute 2*attribute and save in attrCopy:
+		
+		shl( 1, (type dword attrEBX.lword_vt[0]) );
+		rcl( 1, (type dword attrEBX.lword_vt[4]) );
+		rcl( 1, (type dword attrEBX.lword_vt[8]) );
+		rcl( 1, (type dword attrEBX.lword_vt[12]) );
+		jc Overflow;
+		
+		mov
+		( 
+			(type dword attrEBX.lword_vt[0]), 
+			(type dword attrCopy.lword_vt[0])
+		);	
+		mov
+		( 
+			(type dword attrEBX.lword_vt[4]), 
+			(type dword attrCopy.lword_vt[4])
+		);	
+		mov
+		( 
+			(type dword attrEBX.lword_vt[8]), 
+			(type dword attrCopy.lword_vt[8])
+		);	
+		mov
+		( 
+			(type dword attrEBX.lword_vt[12]), 
+			(type dword attrCopy.lword_vt[12])
+		);	
+
+		// Compute 4*attribute:
+		
+		shl( 1, (type dword attrEBX.lword_vt[0]) );
+		rcl( 1, (type dword attrEBX.lword_vt[4]) );
+		rcl( 1, (type dword attrEBX.lword_vt[8]) );
+		rcl( 1, (type dword attrEBX.lword_vt[12]) );
+		jc Overflow;
+		
+		// Compute 8*attribute:
+		
+		shl( 1, (type dword attrEBX.lword_vt[0]) );
+		rcl( 1, (type dword attrEBX.lword_vt[4]) );
+		rcl( 1, (type dword attrEBX.lword_vt[8]) );
+		rcl( 1, (type dword attrEBX.lword_vt[12]) );
+		jc Overflow;
+		
+		// Compute 10*attribute as 8*attribute + 2*attribute:
+		
+		mov( (type dword attrCopy.lword_vt[0]), eax );
+		add( eax, (type dword attrEBX.lword_vt[0]) );
+		mov( (type dword attrCopy.lword_vt[4]), eax );
+		adc( eax, (type dword attrEBX.lword_vt[4]) );
+		mov( (type dword attrCopy.lword_vt[8]), eax );
+		adc( eax, (type dword attrEBX.lword_vt[8]) );
+		mov( (type dword attrCopy.lword_vt[12]), eax );
+		adc( eax, (type dword attrEBX.lword_vt[12]) );
+		jc	Overflow;
+		
+		// Add the value in EAX to 10*attribute:
+		
+		mov( [esp], eax );
+		add( eax, (type dword attrEBX.lword_vt[0]) );
+		mov( 0, eax );
+		adc( eax, (type dword attrEBX.lword_vt[4]) );
+		adc( eax, (type dword attrEBX.lword_vt[8]) );
+		adc( eax, (type dword attrEBX.lword_vt[12]) );
+				
+	Overflow:
+		if( @c ) then
+		
+			pop( eax );
+			add( @size( attr_t ), esp );
+			stc();
+			ret();
+			
+		else
+		
+			pop( eax );
+			add( @size( attr_t ), esp );
+			clc();
+			ret();
+			
+		endif;
+				
+	end	attrTimes10PlusEAX;
+	 
+begin getDecConst;
+
+	assert( attr <> NULL );
+	canAccess( [esi] );
+	
+	// Verify that the first character is a decimal digit:
+	
+	mov( [esi], al );
+	if( al not in '0'..'9' ) then
+	
+		stc;
+		ret();
+		
+	endif;
+	
+	// Convert from character to number and use to initialize attribute:
+	
+	and( $f, eax );
+	mov( eax, (type dword attrEBX.lword_vt[0]) );
+	mov( 0, (type dword attrEBX.lword_vt[4]) );
+	mov( 0, (type dword attrEBX.lword_vt[8]) );
+	mov( 0, (type dword attrEBX.lword_vt[12]) );
+	mov( 0, (type dword attrEBX.lword_vt[16]) );
+	mov( 0, (type dword attrEBX.lword_vt[20]) );
+	mov( 0, (type dword attrEBX.lword_vt[24]) );
+	mov( 0, (type dword attrEBX.lword_vt[28]) );
+	
+	// Process the remaining decimal digits (and underscores):
+	
+	forever
+	
+		// Move on to next character:
+		
+		inc( esi );
+		canAccess( [esi] );
+			
+		// See if the current character is a decimal digit or an underscore.
+		
+		mov( [esi], al );
+		continueif( al = '_' );
+		breakif( al not in '0'..'9' );
+		
+		// Add in the current digit to attribute:
+		
+		and( $f, eax );
+		attrTimes10PlusEAX( [ebx] );
+		jc BadDecConst;			
+	
+	endfor;
+	
+	// Can't allow an underscore at the end of a decimal constant.
+	
+	cmp( (type char [esi-1]), '_' );
+	je BadDecConst;
+	
+	// Make sure we've got a decent delimiter character marking the
+	// end of the hex constant.
+	
+	bt( eax, goodNumDelimiters );
+	jnc BadDecConst;
+	
+	// Okay, we've accumulated the decimal constant
+	// in the attribute.lword variable.  Now determine the
+	// size of that value:
+	
+	GoodDecConst:
+		xor( eax, eax );
+		mov( Constant_ct, attrEBX.symClass );
+		mov( Uns128_pt, attrEBX.pType );
+		mov( &uns128_ste, attrEBX.symType );
+		setSmallestSize( [ebx] );
+		clc;
+		ret();
+		
+	BadDecConst:
+		stc;
+		ret();
+	
+end getDecConst;
+
+													
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getBitSet-
+//
+// Inputs:
+//
+//	ESI-	pointer to lexeme (sequence of integer values).
+//	EBX-	pointer to attribute (place to store value and pType).
+//
+// Outputs:
+//
+//	Attribute ([ebx])-	
+//		Holds the bitset value and it's pType (byte, word, dword, qword,
+//		tbyte, or lword).
+//
+//	ESI-
+//		Points at first character beyond lexeme.
+//
+//	Carry-
+//		"1" indicates failure to convert, "0" indicates successful conversion.
+
+//proc( "getBitSet" )
+procedure getBitSet( cursor:dword in esi; var attr:attr_t );
+var
+	bitSetValue	:lword;
+	curBit		:attr_t;
+	error		:boolean;
+	 
+begin getBitSet;
+
+	assert( attr <> NULL );
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( false, error );	// Assume no error.
+	defaultAttr( attr );	// Zero out the attribute region.  
+	xor( eax, eax );
+	mov( eax, (type dword bitSetValue[0]) );
+	mov( eax, (type dword bitSetValue[4]) );
+	mov( eax, (type dword bitSetValue[8]) );
+	mov( eax, (type dword bitSetValue[12]) );
+	  
+	// Special check for the empty set:
+
+	lex( esi );
+	if( eax = '}' ) then
+
+		setHexType( attr );
+		clc();
+
+	else	// Must have at least one item in the set.
+
+		reuseLastTkn();	// Put back token we just grabbed.
+
+		try
+			// Okay, for each item in the list, process the bit numbers:
+
+			forever
+
+				if( esi >= EOF ) then
+				
+					HLAerror( "Unexpected EOF in bitset constant" nl );
+					defaultAttr( attr );
+					stc;
+					break;
+					
+				endif;
+
+				// Okay, at this point we'd best have a numeric
+				// expression specifying a bit number between zero and 127:
+
+				constExpr( curBit );
+
+				mov( curBit.pType, al );
+				mov( curBit.uns32_vt, ebx );
+				if
+				( 
+						isSmallNum( al )
+					&&	ebx < 128 
+				) then
+
+					// Set the specified bit to one:
+
+					bts( ebx, (type dword bitSetValue) );
+
+				else
+
+					HLAerror
+					( 
+						"Bit numbers must be small integer numbers "
+						"between 0 and 127"
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+
+
+
+				// Now, check to see if we've got a "}" marking the
+				// end of this set's list:
+
+				lex( esi );
+				if( eax = '}' ) then
+
+					mov( attr, ebx );
+					mov( (type dword bitSetValue[0]), eax );
+					mov( eax, attrEBX.dword_vt[0] );
+					mov( (type dword bitSetValue[4]), eax );
+					mov( eax, attrEBX.dword_vt[4] );
+					mov( (type dword bitSetValue[8]), eax );
+					mov( eax, attrEBX.dword_vt[8] );
+					mov( (type dword bitSetValue[12]), eax );
+					mov( eax, attrEBX.dword_vt[12] );
+					setHexType( [ebx] );
+					xor( eax, eax );
+					mov( eax, attrEBX.dword_vt[16] );
+					mov( eax, attrEBX.dword_vt[20] );
+					mov( eax, attrEBX.dword_vt[24] );
+					mov( eax, attrEBX.dword_vt[28] );
+					clc();
+					break;
+
+				endif;
+
+				// If not "}", then it had best be a "," separating
+				// items in the set:
+
+				if( eax <> ',' ) then
+
+					HLAerror( "Syntax error, expected ',' or '}', saw " );
+					dumpQLexeme();
+					raise( ex.hlaerr );
+
+				endif;
+
+			endfor;
+
+		  exception( ex.hlaerr );
+			defaultAttr( attr );	// Zero out the attribute region.  
+			mov( true, error );
+
+		endtry;
+
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	shr( 1, error );	// Move error status into carry flag.
+	
+end getBitSet;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// hlaErrorPrefix-
+//
+//	Error message output calls this procedure before actually
+// printing the error message.
+
+//proc( "hlaErrorPrefix" )
+procedure hlaErrorPrefix( srcFilename:string; linenum:int32 ); 
+begin hlaErrorPrefix;
+
+	if( reportErrors ) then
+
+		inc( errorCount );
+		HLAerror2
+		( 
+			"Error at line ", 
+			lineNumber, 
+			" in file "
+		);
+		
+		if( testMode ) then
+		
+			HLAerror2( filename );
+		
+		else
+		
+			HLAerror2
+			( 
+				fullFileName,
+				" (",
+				srcFilename,
+				":",
+				linenum,
+				")"
+			);
+
+		endif;
+		HLAerror2( nl );
+		if( includeSP >= 0 ) then
+
+			push( eax );
+			push( ebx );
+			push( ecx );
+			push( edx );
+
+			mov( includeSP, ecx );
+			while( (type int32 ecx) >= 0 ) do
+
+				intmul( @size( includeInfo_t ), ecx, ebx );
+				if
+				( 
+						includeStk.incRecType[ebx] >= irt_macro
+					&&	includeStk.active[ ebx ] 
+				) then
+
+					// Only print the macro information if the
+					// macro is active.
+
+					HLAerror2
+					( 
+						"Macro invocation at line ", 
+						includeStk.lineNumber[ebx], 
+						" in file ", 
+						includeStk.fullFileName[ebx],
+						nl 
+					);
+					
+				endif;
+				dec( ecx );
+
+			endwhile;
+
+			pop( edx );
+			pop( ecx );
+			pop( ebx );
+			pop( eax );
+
+		endif;
+
+	endif;
+
+end hlaErrorPrefix;
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// hlaWarnPrefix-
+//
+//	Warning message output calls this procedure before actually
+// printing the warning.
+
+//proc( "hlaWarnPrefix" )
+procedure hlaWarnPrefix( srcFilename:string; linenum:int32 ); 
+begin hlaWarnPrefix;
+	
+	if( reportErrors ) then
+		HLAerror2
+		( 
+			"Warning at line ", 
+			lineNumber, 
+			" in file "
+		);
+		if( testMode ) then
+		
+			HLAerror2( filename );
+		
+		else
+		
+			HLAerror2
+			( 
+				fullFileName,
+				" (",
+				srcFilename,
+				":",
+				linenum,
+				")"
+			);
+
+		endif;
+		HLAerror2( nl );
+
+	endif;
+
+end hlaWarnPrefix;
+
+
+////////////////////////////////////////////////////////////////////////////
+//
+// freeAttr-
+//
+//	Frees up any heap storage associated with an attribute value.
+//	This would include strings, arrays, and records.  Note that
+//	only constant types produce attributes that have to be freed
+//	(hence, we don't need unions, classes, and other composite types
+//	here.)
+
+//proc( "freeAttr" )
+procedure freeAttr( var attr:attr_t );
+begin freeAttr;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	movzx( attrEBX.pType, eax );
+	switch( eax )
+	
+		case( String_pt, Utf8_pt, UString_pt, Text_pt )
+		
+			// Free the string and then mark this
+			// as an uns8 object so later code doesn't
+			// get confused.
+			
+			strfree( attrEBX.string_vt );
+			mov( Uns8_pt, attrEBX.pType );
+			mov( &uns8_ste, attrEBX.symType );
+			
+		case( Array_pt )
+		
+			// Free the attribute associated with each
+			// element of the array:
+			
+			mov( attrEBX.numElements, ecx );
+			mov( attrEBX.arrayValues_vt, edx );
+			canAccess( [edx] );
+			while( ecx > 0 ) do
+			
+				freeAttr( [edx] );
+				add( @size( attr_t ), edx );
+				dec( ecx );
+				
+			endwhile;
+			
+			// Free the actual array storage:
+			
+			free( attrEBX.arrayValues_vt );
+			
+			// After freeing all the array elements, mark
+			// this as an UNS8 object so later code doesn't
+			// get confused.
+			
+			mov( Uns8_pt, attrEBX.pType );
+			mov( &uns8_ste, attrEBX.symType );
+		
+			
+		case( Record_pt )
+		
+		
+			// Free the attribute associated with each
+			// field of the record:
+			
+			mov( attrEBX.numFields, ecx );
+			mov( attrEBX.fieldValues_vt, edx );
+			canAccess( [edx] );
+			while( ecx > 0 ) do
+			
+				freeAttr( [edx] );
+				add( @size( attr_t ), edx );
+				dec( ecx );
+				
+			endwhile;
+			
+			// Free the actual record storage:
+			
+			free( attrEBX.fieldValues_vt );
+			
+			// After freeing all the record fields, mark
+			// this as an UNS8 object so later code doesn't
+			// get confused.
+			
+			mov( Uns8_pt, attrEBX.pType );
+			mov( &uns8_ste, attrEBX.symType );
+		
+			
+		case( Union_pt )
+		
+		
+			// There is only one field for the union, free it:
+			
+			mov( attrEBX.fieldValues_vt, edx );
+			canAccess( [edx] );
+			freeAttr( [edx] );
+			
+			// Free the actual union storage:
+			
+			free( attrEBX.fieldValues_vt );
+			
+			// After freeing all the union element, mark
+			// this as an UNS8 object so later code doesn't
+			// get confused.
+			
+			mov( Uns8_pt, attrEBX.pType );
+			mov( &uns8_ste, attrEBX.symType );
+		
+			
+
+		case( Error_pt )
+		
+			// Don't do anything for the error code.
+			
+		case
+		(
+		   Boolean_pt,	
+		   Enum_pt,		
+			
+		   Uns8_pt,		
+		   Uns16_pt,		
+		   Uns32_pt,		
+		   Uns64_pt,		
+		   Uns128_pt,		
+			
+		   Byte_pt,		
+		   Word_pt,		
+		   DWord_pt,		
+		   QWord_pt,		
+		   TByte_pt,		
+		   LWord_pt,		
+			
+		   Int8_pt,		
+		   Int16_pt,		
+		   Int32_pt,		
+		   Int64_pt,		
+		   Int128_pt,		
+						
+		   Char_pt, 		
+		   XChar_pt,		
+		   Unicode_pt,	
+			
+		   Real32_pt,		
+		   Real64_pt, 	
+		   Real80_pt,		
+		    	
+		   Cset_pt,		
+		   XCset_pt,
+		   
+		   Pointer_pt, 
+		   Procptr_pt
+		)
+		
+			// These types don't have any storage allocated to them, 
+			// so just ignore them.		
+			
+			
+		case
+		( 
+			Class_pt,
+			Thunk_pt,
+			Deferred_pt,
+			AnonRec_pt,
+			Namespace_pt,
+			Symboltbl_pt,
+			Segment_pt,
+			Label_pt,
+			Proc_pt,
+			Method_pt,
+			ClassProc_pt,
+			ClassIter_pt,
+			Iterator_pt,
+			Program_pt,
+			Macro_pt,
+			Variant_pt,
+			Placeholder_pt 
+		)
+		
+			HLAerror
+			( 
+				"Internal HLA error "
+				"(attempt to free illegal constant type)"
+				nl
+			);
+			
+			
+		default
+		
+			HLAerror
+			( 
+				"Unexpected pType in freeAttr: ",
+				(type uns32 eax),
+				" (internal HLA error)" 
+				nl 
+			);
+			int( 3 );
+			
+			
+	endswitch;
+		
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end freeAttr;
+
+
+
+////////////////////////////////////////////////////////////////////////////
+//
+// freeTkn-
+//
+//	Frees up any heap storage associated with an attribute value.
+//	This would include strings, arrays, and records.  Note that
+//	only constant types produce attributes that have to be freed
+//	(hence, we don't need unions, classes, and other composite types
+//	here.)
+
+//proc( "freeTkn" )
+procedure freeTkn( var token:token_t );
+const
+	tknEBX	:text := "tokenEBX";
+	  
+begin freeTkn;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	mov( token, ebx );
+	canAccess( [ebx] );
+	if( tokenEBX.isID ) then
+	
+		// Identifiers use the attr field differently
+		// than other objects.
+ 
+		if( tknEBX.alloc ) then
+		
+			strfree( tknEBX.trueName );
+			strfree( tknEBX.lcName );
+			mov( false, tknEBX.alloc );
+			mov( false, tknEBX.isID );
+			mov( false, tknEBX.hasAttr );
+			
+			// Mark this as an uns8 type so nobody will
+			// get confused by this value.
+			
+			mov( Uns8_pt, tknEBX.attr.pType );
+			mov( &uns8_ste, tknEBX.attr.symType );
+			
+		endif;
+		
+	elseif( tknEBX.hasAttr ) then
+	
+		freeAttr( tknEBX.attr );
+
+	endif;	   
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end freeTkn;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// deepCopy-
+//
+//	Copies a value_t object (with pType and symType values to specify the
+// type of the object) to an attr_t object.
+//
+// Inputs:
+//
+//	v-
+//		Pointer to value_t object to copy to attr.
+//
+//	pType-
+//		This is the pType value for the v object.
+//
+//	symType-
+//		This is the symType value for the v object.
+//
+//	attr-
+//		Pointer to the destination where deepCopy will copy the
+//		result.
+//
+//	As its name implies, this procedure does a recursive "deep copy"
+// of the value_t object to the value_t object.  This means that
+// new copies are made of string, array, record, and other composite
+// types represented by pointers in the value_t record.
+
+//proc( "deepCopy" )
+procedure deepCopy
+( 
+	var	v:attr_t; 
+		pType:pType_t; 
+	var	symType:symNode_t; 
+	var	attr:attr_t 
+);
+var
+	arrayType	:symNodePtr_t;
+	arraypType	:pType_t;
+	
+begin deepCopy;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	mov( v, ecx );
+	canAccess( [ecx] );
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	mov( symType, eax );
+	canAccess( [eax] );
+	getBaseIsoType( eax );
+	mov( eax, attrEBX.symType );
+	mov( Constant_ct, attrEBX.symClass );	
+
+	movzx( pType, eax );
+	mov( al, attrEBX.pType );
+	switch( eax )
+	
+		case
+		( 
+			Boolean_pt,
+			Enum_pt,		
+		 	Uns8_pt,		
+		 	Uns16_pt,		
+		 	Uns32_pt,		
+		 	Byte_pt,		
+		 	Word_pt,		
+		 	DWord_pt,		
+		 	Int8_pt,		
+		 	Int16_pt,		
+		 	Int32_pt,		
+		 	Char_pt, 		
+		 	XChar_pt,		
+		 	Unicode_pt,		
+		 	Real32_pt,		
+			 
+			Uns64_pt,		
+			QWord_pt,		
+			Int64_pt,		
+			Int128_pt,		
+			Real64_pt,
+			
+			Uns128_pt,		
+			TByte_pt,		
+			LWord_pt,		
+			Real80_pt		
+		)
+		
+			// For the non-cset primitive types, we've got to
+			// copy 256 bits (technically, this is unnecessary
+			// for strings and ustrings since they never require
+			// sign/zero extension, but it's no big deal to
+			// copy all 32 bytes here).		
+
+			mov( attrECX.dword_vt, eax );
+			mov( eax, attrEBX.dword_vt );
+			mov( attrECX.dword_vt[4], eax );
+			mov( eax, attrEBX.dword_vt[4] );
+			mov( attrECX.dword_vt[8], eax );
+			mov( eax, attrEBX.dword_vt[8] );
+			mov( attrECX.dword_vt[12], eax );
+			mov( eax, attrEBX.dword_vt[12] );
+			xor( eax, eax );
+			mov( eax, attrEBX.dword_vt[16] );
+			mov( eax, attrEBX.dword_vt[20] );
+			mov( eax, attrEBX.dword_vt[24] );
+			mov( eax, attrEBX.dword_vt[28] );
+
+		
+		// For strings, we need to duplicate the string data:
+
+		case( String_pt, Utf8_pt, UString_pt )
+
+			str.a_cpy( attrECX.string_vt );
+			mov( eax, attrEBX.string_vt );
+			xor( eax, eax );
+			mov( eax, attrEBX.dword_vt[4] );
+			mov( eax, attrEBX.dword_vt[8] );
+			mov( eax, attrEBX.dword_vt[12] );
+			mov( eax, attrEBX.dword_vt[16] );
+			mov( eax, attrEBX.dword_vt[20] );
+			mov( eax, attrEBX.dword_vt[24] );
+			mov( eax, attrEBX.dword_vt[28] );
+		
+
+		case( Text_pt )
+
+			str.a_cpy( attrECX.string_vt );
+			mov( eax, attrEBX.string_vt );
+			xor( eax, eax );
+			mov( eax, attrEBX.dword_vt[4] );
+			mov( eax, attrEBX.dword_vt[8] );
+			mov( eax, attrEBX.dword_vt[12] );
+			mov( eax, attrEBX.dword_vt[16] );
+			mov( eax, attrEBX.dword_vt[20] );
+			mov( eax, attrEBX.dword_vt[24] );
+			mov( eax, attrEBX.dword_vt[28] );
+			mov( String_pt, attrEBX.pType );
+			mov( &string_ste, attrEBX.symType );
+		
+		case( Cset_pt )
+		
+			// For the cset primitive types, we've got to
+			// copy all 32 bytes (256 bits).		
+		
+			mov( attrECX.dword_vt, eax );
+			mov( eax, attrEBX.dword_vt );
+			mov( attrECX.dword_vt[4], eax );
+			mov( eax, attrEBX.dword_vt[4] );
+			mov( attrECX.dword_vt[8], eax );
+			mov( eax, attrEBX.dword_vt[8] );
+			mov( attrECX.dword_vt[12], eax );
+			mov( eax, attrEBX.dword_vt[12] );
+			xor( eax, eax );
+			mov( attrECX.dword_vt[16], eax );
+			mov( attrECX.dword_vt[20], eax );
+			mov( attrECX.dword_vt[24], eax );
+			mov( attrECX.dword_vt[28], eax );
+		
+		
+		case( XCset_pt  )
+		
+			// For the cset primitive types, we've got to
+			// copy all 32 bytes (256 bits).		
+		
+			mov( attrECX.dword_vt, eax );
+			mov( eax, attrEBX.dword_vt );
+			mov( attrECX.dword_vt[4], eax );
+			mov( eax, attrEBX.dword_vt[4] );
+			mov( attrECX.dword_vt[8], eax );
+			mov( eax, attrEBX.dword_vt[8] );
+			mov( attrECX.dword_vt[12], eax );
+			mov( eax, attrEBX.dword_vt[12] );
+			mov( attrECX.dword_vt[16], eax );
+			mov( eax, attrEBX.dword_vt[16] );
+			mov( attrECX.dword_vt[20], eax );
+			mov( eax, attrEBX.dword_vt[20] );
+			mov( attrECX.dword_vt[24], eax );
+			mov( eax, attrEBX.dword_vt[24] );
+			mov( attrECX.dword_vt[28], eax );
+			mov( eax, attrEBX.dword_vt[28] );
+		
+		
+		case( Pointer_pt, Procptr_pt )
+		
+			// For pointer types, simply copy the appropriate fields:
+			
+			mov( attrECX.p.dispBaseAdrs, eax );
+			mov( eax, attrEBX.p.dispBaseAdrs );
+			mov( attrECX.p.dispMinusAdrs, eax );
+			mov( eax, attrEBX.p.dispMinusAdrs );
+			mov( attrECX.p.constant, eax );
+			mov( eax, attrEBX.p.constant );
+			mov( attrECX.p.constant[4], eax );
+			mov( eax, attrEBX.p.constant[4] );
+			
+			
+		case( Array_pt )
+		
+			// For arrays, we need to allocate storage for
+			// the array and then recursively do a deepCopy
+			// on each element of the array.
+			//
+			// First, we have to get the actual array element type.
+			// The computation earlier only gave us the array type.
+
+			mov( attrEBX.symType, eax );
+
+			// Iteratively compute the total number of elements in
+			// this array (by following the chain of array types):
+
+			mov( 1, edx );
+			while( symEAX.pType = Array_pt ) do
+
+				
+				intmul( symEAX.numElements, edx );
+				mov( symEAX.baseType, eax );
+
+			endwhile;
+			mov( eax, arrayType );
+			mov( symEAX.pType, al );
+			mov( al, arraypType );
+			
+			// We have to allocate storage to hold the new
+			// array:
+			
+			intmul( @size( attr_t ), edx, eax );
+			malloc( eax );
+			mov( eax, attrEBX.arrayValues_vt );
+			mov( edx, attrEBX.numElements );
+			
+			// Okay, for each array element, do a deep copy
+
+			mov( attrECX.arrayValues_vt, ecx );
+			repeat
+
+				push( ecx );
+				push( (type dword arraypType ));
+				push( arrayType );
+				push( eax );
+				call deepCopy;
+				add( @size( attr_t ), ecx );
+				add( @size( attr_t ), eax );
+				dec( edx );
+				
+			until( @z );
+			
+		
+		case( Record_pt )
+		
+			// For records, we need to allocate storage for
+			// the record and then recursively do a deepCopy
+			// on each field of the record.
+			
+			mov( attrECX.numFields, edx );
+			assert( ecx <> 0 );
+			mov( edx, attrEBX.numFields );
+			
+			// We have to allocate storage to hold the new
+			// array:
+			
+			intmul( @size( attr_t ), edx, eax );
+			malloc( eax );
+			mov( eax, attrEBX.fieldValues_vt );
+			
+			// Okay, for each record field, do a deep copy
+
+			mov( attrECX.fieldValues_vt, ecx );
+			repeat
+			
+				push( ecx );
+				movzx( attrECX.pType, ebx );
+				push( ebx );
+				push( attrECX.symType );
+				push( eax );
+				call deepCopy;
+				add( @size( attr_t ), ecx );
+				add( @size( attr_t ), eax );
+				dec( edx );
+				
+			until( @z );
+			
+		
+		case( Union_pt )
+		
+			// Unions are just like records except that there
+			// is only a single field to copy in a union.
+			//
+			// We have to allocate storage to hold the new
+			// array:
+			
+			malloc( @size( attr_t ) );
+			mov( eax, attrEBX.fieldValues_vt );
+			
+			// Okay, for the union field, do a deep copy
+
+			mov( attrECX.fieldValues_vt, ecx );
+			push( ecx );
+			movzx( attrECX.pType, ebx );
+			push( ebx );
+			push( attrECX.symType );
+			push( eax );
+			call deepCopy;
+			
+		
+		default
+		
+			HLAerror
+			( 
+				"HLA Internal Error (deepCopy), pType=",
+				(type uns32 eax), 
+				nl 
+			);
+
+	endswitch;
+
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+		
+end deepCopy;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//		
+// makeUndefID-
+//
+//	The caller requires an undefined local symbol.
+// The current symbol is actually a globally defined symbol (but that's
+// syntactically okay).  This procedure converts the globally defined
+// symbol to an undefined symbol by dup'ing the lcName and trueName
+// fields on the heap (and updating the pointers in the token_t object)
+// and then this procedure returns tkn_undefID in EAX.
+//
+// Input:
+//
+//	ECX-
+//		Points at a token_t object that contains the tkn_globalID
+//		information.
+//
+// Returns-
+//	ECX-
+//		Still points at the token_t object, but it has updated fields.
+//
+//	EAX-
+//		tkn_undefID
+
+//proc( "makeUndefID" )
+procedure makeUndefID( var sym: token_t in ecx );  @noframe;
+begin makeUndefID;
+
+	assert( sym <> NULL );
+	str.a_cpy( tokenECX.lcName );
+	mov( eax, tokenECX.lcName );
+	
+	str.a_cpy( tokenECX.trueName );
+	mov( eax, tokenECX.trueName );
+	
+	mov( true, tokenECX.alloc );
+	mov( tkn_undefID, eax );
+	ret();	
+
+end makeUndefID;
+
+
+
+
+
+
+
+/*************************************************************/
+/*                                                           */
+/* addFwdPtr-                                                */
+/*                                                           */
+/* This procedure adds an identifier to the forward pointers */
+/* type list.  After processing all the code at the current  */
+/* lex level, the compiler scans through this list to verify */
+/* that all forward references have been satisfied.          */
+/*                                                           */
+/* Inputs:                                                   */
+/*                                                           */
+/* symEntry:                                                 */
+/* 			Pointer to the symbol table entry whose          */
+/* 			baseType field points at an undefined            */
+/* 			symbol.                                          */
+/* 			                                                 */
+/* tkn:                                                      */
+/* 			Pointer to the undefined symbol.                 */
+/* 			                                                 */
+/* symClass:                                                 */
+/* 			Specifies the symbol class that tkn              */
+/* 			will need to be (usually Type_ct).               */
+/*                                                           */
+/*************************************************************/
+
+	
+//proc( "addFwdPtr" )
+procedure addFwdPtr
+( 
+		symEntry	:symNodePtr_t; 
+	var	tkn			:token_t;
+		symClass	:classType_t
+);
+const
+	fwdListEAX	:text := "(type fwdPtrList_t [eax])";
+	fwdListEBX	:text := "(type fwdPtrList_t [ebx])";
+	
+begin addFwdPtr;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	mov( fwdPtrList, eax ); 
+	if( eax = NULL ) then
+	
+		// This is the first call, create a brand-new node.
+		
+		safe_malloc( @size( fwdPtrList_t ) );
+		mov( eax, fwdPtrList );
+		mov( symEntry, ebx );
+		canAccess( [ebx] );
+		mov( ebx, fwdListEAX.symbolList );
+		
+		// Initialize all the link fields:
+				
+		xor( ecx, ecx );
+		mov( ecx, fwdListEAX.next );
+		mov( ecx, fwdListEAX.prev );
+		mov( ecx, symEBX.fwd );
+		
+		// Use a generic pointer type for the time being
+		// (this will get patched later when we satisfy
+		// the forward reference):
+		
+		mov( &pointer_ste, symEBX.baseType );
+		
+		// Get the name of the forward referenced pointer
+		// and add it to the record we're creating:
+		
+		mov( tkn, ebx );
+		canAccess( [ebx] );
+		if( tokenEBX.alloc ) then
+		
+			mov( tokenEBX.trueName, ecx );
+			mov( tokenEBX.lcName, edx );
+			
+		else
+		
+			str.a_cpy( tokenEBX.trueName );
+			mov( eax, ecx );
+			str.a_cpy( tokenEBX.trueName );
+			mov( eax, edx );
+			mov( fwdPtrList, eax );
+			
+		endif;
+		mov( ecx, fwdListEAX.fwdRef );
+		mov( edx, fwdListEAX.fwdReflc );
+		mov( tokenEBX.hashValue, fwdListEAX.hashValue );
+		
+		// Initialize the remaining fields of this record:
+		
+		mov( symClass, cl );
+		mov( cl, fwdListEAX.expectedClass );
+		mov( curOwner, ecx );
+		mov( ecx, fwdListEAX.ptrOwner );
+		mov( symECX.localHash, ecx );
+		mov( ecx, fwdListEAX.ptrHashTable );
+		
+	else
+	
+		// Okay, the list exists.  First, search
+		// through the list to see if we already have
+		// an entry for this symbol:
+		
+		mov( tkn, edx );
+		canAccess( [edx] );
+		mov( tokenEDX.trueName, ecx );
+		mov( eax, ebx );
+		while( ebx <> NULL && str.ne( ecx, fwdListEBX.fwdRef )) do
+		
+			mov( fwdListEBX.next, ebx );
+			
+		endwhile;
+		mov( ebx, eax );
+		if( eax = NULL ) then
+		
+			// Okay, it's a new symbol to this list.  Create
+			// a new node and add it to the list.
+			
+			safe_malloc( @size( fwdPtrList_t ) );
+			mov( fwdPtrList, ebx );
+			mov( ebx, fwdListEAX.next );
+			mov( NULL, fwdListEAX.prev );
+			mov( eax, fwdListEBX.prev );
+			
+			// Okay, fill in the fields of this new node and
+			// patch the type fields of the original type entry.
+			
+			mov( symEntry, ebx );
+			mov( &pointer_ste, symEBX.baseType );
+			mov( NULL, symEBX.fwd );
+			mov( ebx, fwdListEAX.symbolList );
+			
+			// Add the name field to the new record:
+			
+			mov( tkn, ebx );
+			if( tokenEBX.alloc ) then
+			
+				mov( tokenEBX.trueName, ecx );
+				mov( tokenEBX.lcName, edx );
+				
+			else
+			
+				str.a_cpy( tokenEBX.trueName );
+				mov( eax, ecx );
+				str.a_cpy( tokenEBX.lcName );
+				mov( eax, edx );
+				mov( fwdPtrList, eax );
+				
+			endif;
+			mov( ecx, fwdListEAX.fwdRef );
+			mov( edx, fwdListEAX.fwdReflc );
+			mov( tokenEBX.hashValue, fwdListEAX.hashValue );
+			mov( symClass, cl );
+			mov( cl, fwdListEAX.expectedClass );
+			mov( curOwner, ecx );
+			mov( ecx, fwdListEAX.ptrOwner );
+			mov( symECX.localHash, ecx );
+			mov( ecx, fwdListEAX.ptrHashTable );
+			
+			mov( eax, fwdPtrList );
+			
+		else
+		
+			// If we get here, we've got an existing entry
+			// for this particular symbol.  We need to add
+			// the current symbol table entry to the chain
+			// associated with this entry so we can back-patch
+			// it later.
+			//
+			// Note: EAX points at the fwdListPtr_t record.
+			
+			mov( symEntry, ebx );
+			mov( fwdListEAX.symbolList, edx );
+			mov( edx, symEBX.fwd );
+			mov( ebx, fwdListEAX.symbolList );
+		
+		endif;
+		
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end addFwdPtr;
+
+
+
+
+
+
+/************************************************************/
+/*                                                          */
+/* chkFwdPtrList-                                           */
+/*                                                          */
+/* Scans through the forward pointers definition list.      */
+/* Verifies that all forward references have been satisfied */
+/* at the current lex level.  Back-patches symbol table     */
+/* entries as needed.                                       */
+/*                                                          */
+/************************************************************/
+
+
+
+//proc( "chkFwdPtrList" )
+procedure chkFwdPtrList;
+const
+	fwdEBX	:text := "(type fwdPtrList_t [ebx])";
+	fwdECX	:text := "(type fwdPtrList_t [ecx])";
+	fwdEDX	:text := "(type fwdPtrList_t [edx])";
+	
+begin chkFwdPtrList;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( fwdPtrList, ebx );
+	while( ebx <> NULL ) do
+	
+		mov( fwdEBX.ptrOwner, eax );
+		if( curLexLevel = 1 || symEAX.pType <> Namespace_pt ) then
+
+			lookupGlobalIn
+			( 
+				fwdEBX.fwdRef, 
+				fwdEBX.fwdReflc, 
+				fwdEBX.hashValue,
+				fwdEBX.ptrHashTable 
+			);
+			if( eax = NULL ) then
+			
+				// The forward-referenced pointer type has
+				// not been defined with the current scope:
+				
+				mov( fwdEBX.symbolList, ecx );
+				canAccess( [ecx] );
+				HLAerror
+				( 
+					"Forward reference to ", 
+					fwdEBX.fwdRef,
+					" by definition of ",
+					symECX.trueName,
+					" is unresolved"
+					nl
+				);
+					
+			elseif( symEAX.symClass <> Type_ct ) then
+			
+				HLAerror
+				(
+					"ID '",
+					fwdEBX.fwdRef,
+					"' was used as 'pointer to '",
+					fwdEBX.fwdRef,
+					"' but was not defined as a type"
+					nl
+				);
+				
+			else
+			
+				// Okay, the forward reference was satisfied.  Now
+				// step through the chain of symbol table entries
+				// and patch their baseType fields with the pointer
+				// to the correct (type) symbol table entry.
+					
+				getBaseIsoType( eax );
+				mov( fwdEBX.symbolList, ecx );
+				while( ecx <> NULL ) do
+				
+					mov( eax, symECX.baseType );
+					mov( symECX.fwd, ecx );
+					
+				endwhile;
+				
+			endif;
+
+		endif;
+			
+		// Okay, we're done with the current forward reference node,
+		// free the data associated with it.
+		
+		mov( fwdEBX.next, ecx );
+		mov( fwdEBX.prev, edx );
+		if( ecx <> NULL ) then
+		
+			mov( edx, fwdECX.prev );
+			
+		endif;
+		if( edx <> NULL ) then
+		
+			mov( ecx, fwdEDX.next );
+			
+		else
+		
+			mov( ecx, fwdPtrList );
+			
+		endif;
+		
+		strfree( fwdEBX.fwdRef );
+		strfree( fwdEBX.fwdReflc );
+		free( ebx );
+		mov( ecx, ebx );
+		
+	endwhile;
+	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end chkFwdPtrList; 
+
+
+
+
+/****************************************************************/
+/*                                                              */
+/* addFwdProc-                                                  */
+/*                                                              */
+/* This procedure adds an identifier to the forward procedures  */
+/* list.  After processing all the code at the current          */
+/* lex level, the compiler scans through this list to verify    */
+/* that all forward procedure references have been satisfied.   */
+/*                                                              */
+/* Inputs:                                                      */
+/*                                                              */
+/* symEntry:                                                    */
+/* 			Pointer to the symbol table entry for               */
+/* 			this forward procedure declaration.                 */
+/* 			                                                    */
+/****************************************************************/
+
+
+	
+//proc( "addFwdProc" )
+procedure addFwdProc
+( 
+	symEntry	:symNodePtr_t; 
+	theClass	:symNodePtr_t;
+	curLexLevel	:dword 
+);
+const
+	fwdListEAX	:text := "(type fwdProcList_t [eax])";
+	fwdListEBX	:text := "(type fwdProcList_t [ebx])";
+	
+begin addFwdProc;
+
+	push( eax );
+	push( ebx );
+	mov( fwdProcList, eax ); 
+	if( eax = NULL ) then
+	
+		// This is the first call, create a brand-new node.
+		
+		safe_malloc( @size( fwdProcList_t ) );
+		mov( eax, fwdProcList );
+		mov( symEntry, ebx );
+		mov( ebx, fwdListEAX.procSym );
+		mov( theClass, ebx );
+		mov( ebx, fwdListEAX.classSym );
+		mov( curLexLevel, ebx );
+		mov( ebx, fwdListEAX.lexLevel );
+		
+		// Initialize all the link fields:
+				
+		xor( ebx, ebx );
+		mov( ebx, fwdListEAX.next );
+		mov( ebx, fwdListEAX.prev );		
+		
+	else
+
+		// Okay, the forward procedures list already exists.
+		// Insert the current symbol at the beginning of the
+		// list. We know that the symbol doesn't already exist
+		// on the list at the current lex level (because we would
+		// have gotten a duplicate symbol definition), so there
+		// is no need to check for that.
+		//
+		// Create a brand-new node and insert it in the list:
+		
+		safe_malloc( @size( fwdPtrList_t ) );
+		mov( fwdProcList, ebx );
+		mov( eax, fwdProcList );
+		mov( eax, fwdListEBX.prev );
+		mov( ebx, fwdListEAX.next );
+		mov( NULL, fwdListEAX.prev );
+		mov( symEntry, ebx );
+		mov( ebx, fwdListEAX.procSym );
+		mov( theClass, ebx );
+		mov( ebx, fwdListEAX.classSym );
+		mov( curLexLevel, ebx );
+		mov( ebx, fwdListEAX.lexLevel );
+		
+	endif;
+	pop( ebx );
+	pop( eax );
+
+end addFwdProc;
+
+
+
+/*******************************************************************/
+/*                                                                 */
+/* chkFwdProcList-                                                 */
+/*                                                                 */
+/* Scans through the forward procedures definition list.           */
+/* Verifies that all forward references have been satisfied        */
+/* at the current lex level.                                       */
+/*                                                                 */
+/*******************************************************************/
+
+
+
+//proc( "chkFwdProcList" )
+procedure chkFwdProcList;
+const
+	fwdEBX	:text := "(type fwdProcList_t [ebx])";
+	fwdECX	:text := "(type fwdProcList_t [ecx])";
+	fwdEDX	:text := "(type fwdProcList_t [edx])";
+	
+begin chkFwdProcList;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( fwdProcList, ebx );
+	while( ebx <> NULL ) do
+
+		mov( fwdEBX.lexLevel, ecx );
+		if
+		( 
+				(
+						(type int32 ecx) >= 0 
+					&&	(type int32 ecx) >= curLexLevel
+				)
+
+				// Note: Because classes exist at a weird lex level,
+				// we have to do a special test on them. We only check
+				// for an undefined forward class procedure, method,
+				// or iterator at lex levels zero and one.
+				 
+			||	(
+						ecx = classLexLevel
+					&&	(type uns32 curLexLevel) <= 1
+				)
+		) then
+			mov( fwdEBX.procSym, edx );
+			canAccess( [edx] );
+			if( symEDX.isForward ) then
+			
+				// The forward-referenced procedure has
+				// not been defined within the current scope:
+
+				mov( fwdEBX.classSym, ecx );
+				if( ecx <> NULL ) then
+					
+					HLAerror
+					( 
+						'''',
+						symECX.trueName,
+						'.',
+						symEDX.trueName,
+						"' was declared in class ",
+						symECX.trueName,
+						nl
+						"but has not been declared at the current lex level"
+						nl
+					); 
+
+				else
+
+					// Standard (non-class) procedure:
+
+					HLAerror
+					( 
+						'''',
+						symEDX.trueName,
+						"' was declared as @forward but has not been"
+						nl
+						"declared at the current lex level"
+						nl
+					); 
+
+				endif;
+					
+				
+			endif;
+			
+		
+			// Okay, we're done with the current forward reference node,
+			// free the data associated with it.
+			
+			mov( fwdEBX.next, ecx );
+			mov( fwdEBX.prev, edx );
+			if( ecx <> NULL ) then
+			
+				mov( edx, fwdECX.prev );
+				
+			endif;
+			if( edx <> NULL ) then
+			
+				mov( ecx, fwdEDX.next );
+				
+			else
+			
+				mov( ecx, fwdProcList );
+				
+			endif;
+			free( ebx );
+			mov( ecx, ebx );
+			
+		else
+		
+			mov( fwdEBX.next, ebx );
+			
+		endif; 
+		
+	endwhile;
+	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end chkFwdProcList; 
+
+
+
+
+
+/***************************************************************/
+/*                                                             */
+/* addExtSym-                                                  */
+/*                                                             */
+/* This procedure adds an identifier to the external symbols   */
+/* list.                                                       */
+/*                                                             */
+/* Inputs:                                                     */
+/*                                                             */
+/* symEntry:                                                   */
+/* 			Pointer to the symbol table entry for              */
+/* 			this external declaration.                         */
+/*                                                             */
+/***************************************************************/
+	
+	
+	
+//proc( "addExtSym" )
+procedure addExtSym( symEntry:symNodePtr_t; theClass:symNodePtr_t );
+const
+	extEAX	:text := "(type extList_t [eax])";
+	extEBX	:text := "(type extList_t [ebx])";
+	
+begin addExtSym;
+
+	push( eax );
+	push( ebx );
+	mov( extList, eax ); 
+	if( eax = NULL ) then
+	
+		// This is the first call, create a brand-new node.
+		
+		safe_malloc( @size( extList_t ) );
+		mov( eax, extList );
+		mov( symEntry, ebx );
+		mov( ebx, extEAX.extSym );
+		mov( theClass, ebx );
+		mov( ebx, extEAX.theClass );
+		mov( false, extEAX.isPublic );
+		mov( NULL, extEAX.next );
+		
+	else
+
+		// Okay, the external list already exists.
+		// As we only call this when there is an @external
+		// declaration, we know it won't be in the list
+		// already (or we would have gotten a duplicate symbol
+		// error), so there is no need to check for duplicates.
+				
+		safe_malloc( @size( extList_t ) );
+		mov( extList, ebx );
+		mov( eax, extList );
+		mov( ebx, extEAX.next );
+		mov( symEntry, ebx );
+		mov( ebx, extEAX.extSym );
+		mov( theClass, ebx );
+		mov( ebx, extEAX.theClass );
+		mov( false, extEAX.isPublic );
+		
+	endif;
+	pop( ebx );
+	pop( eax );
+
+end addExtSym;
+
+
+
+/******************************************************/
+/*                                                    */
+/* setPublic-                                         */
+/*                                                    */
+/* This procedure searches for an external symbol in  */
+/* the extList and sets the isPublic field to true    */
+/*                                                    */
+/* symEntry:                                          */
+/* 			Pointer to the symbol table entry for     */
+/* 			this external declaration.                */
+/*                                                    */
+/******************************************************/
+
+
+
+//proc( "setPublic" )
+procedure setPublic( symEntry:symNodePtr_t );
+const
+	extEBX	:text := "(type extList_t [ebx])";
+	
+begin setPublic;
+
+	push( eax );
+	push( ebx );
+	mov( extList, ebx ); 
+	mov( symEntry, eax );
+	canAccess( [eax] );
+	mov( true, symEAX.isPublic );
+	mov( false, symEAX.isExternal );
+	while( ebx <> NULL ) do
+	
+		if( eax = extEBX.extSym ) then
+
+			mov( true, extEBX.isPublic );
+			break;
+
+		endif;
+		mov( extEBX.next, ebx );
+		
+	endwhile;
+	pop( ebx );
+	pop( eax );
+
+end setPublic;
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////
+//
+// addFwdStaticExpr-
+//
+//	Adds a static expression item to the forward reference static
+// expression list.
+//
+// Inputs:
+//
+//	staticExprPtr-	Pointer to item to add to list.
+//
+// Globals:
+//
+//	fwdStaticConstList-
+//		Pointer to head of the forward reference static constants list
+//
+//	endStaticConstList
+//		Pointer to tail of the forward reference static constants list
+
+
+
+//proc( "addFwdStaticExpr" )
+procedure addFwdStaticExpr( staticExprPtr:staticExprPtr_t ); 
+begin addFwdStaticExpr;
+
+	push( eax );
+
+	// First, see if the list is empty:
+
+	if( fwdStaticConstList = NULL ) then
+
+		// Assume that if the fwdStaticConstList is NULL, the
+		// endStaticConstList pointer is NULL also. Point both
+		// global pointers at the node we're adding.
+
+		mov( staticExprPtr, eax );
+		canAccess( [eax] );
+		mov( eax, fwdStaticConstList );
+		mov( eax, endStaticConstList );
+
+		// As this is the only node in the list, clear out the
+		// next and prev links:
+
+		mov( NULL, staticEAX.next );
+		mov( NULL, staticEAX.prev );
+
+	else // There's already at least one item in the fwd static consts list.
+
+		push( ebx );
+
+		// Add staticExprPtr to the end of the doubly-linked list:
+
+		mov( endStaticConstList, ebx );
+		mov( staticExprPtr, eax );
+		canAccess( [eax] );
+		canAccess( [ebx] );
+		mov( eax, staticEBX.next );
+		mov( ebx, staticEAX.prev );
+		mov( NULL, staticEAX.next );
+		mov( eax, endStaticConstList );
+
+	endif;
+	pop( eax );
+
+end addFwdStaticExpr;
+
+
+
+/////////////////////////////////////////////////////////////////
+//
+// chkFwdStaticExpr-
+//
+//	This function scans through the forward static constant
+// expression list to make sure that all forward static symbols
+// used in constant expressions are defined prior to leaving the
+// current lex level.
+//
+// This function also removes all symbols at the current lex level
+// (or above, as a defensive action) from the list so that they
+// don't affect the use of static constants in other code.
+//
+// Note that this procedure does *not* deallocate the storage
+// associated with the staticExpr_t object, as the compilation
+// continues to use that data structure during code generation.
+//
+// Globals:
+//
+//	curLexLevel
+//		All symbols at this lex level are to be flagged. Symbols at
+//		a lower lex level can be ignored.
+//
+//	fwdStaticConstList
+//		Pointer to the start of the forward reference static constants list.
+//
+//	endStaticConstList
+//		Pointer to tail of the forward reference static constants list
+//		which this code will search through (in the backwards direction).
+
+
+
+//proc( "chkFwdStaticExpr" )
+procedure chkFwdStaticExpr;
+begin chkFwdStaticExpr;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( endStaticConstList, ecx );
+	while( ecx <> NULL ) do
+
+		mov( curLexLevel, eax );
+		if( (type int32 eax) <= staticECX.lexLevel ) then
+
+
+			// Okay, this entry's lex level is greater than or equal
+			// to the current lex level. So process this record.
+			//
+			// If this symbol is global, look it up to see if it
+			// has been defined locally (after the forward reference)
+
+			if( staticECX.symbol <> NULL ) then // It must be global
+
+				// Although the symbol is defined at the global level,
+				// it could turn out that there is a local definition
+				// of this same symbol. If that is the case, we want
+				// to use the local definition rather than the global
+				// definition.
+
+				lookupLocal
+				( 
+					staticECX.trueName, 
+					staticECX.lcName,
+					staticECX.hashValue
+				);
+				if( eax <> NULL ) then
+
+					// We have a local definition, so patch the
+					// static definition with the address of the
+					// local object:
+
+					mov( eax, staticECX.symbol );
+
+					// Mark as referenced, in case this is an
+					// external symbol:
+
+					mov( true, symEAX.isReferenced );
+
+					// Set the segment value in the static segment list:
+
+					mov( symEAX.seg, edx );
+					mov( edx, staticECX.seg );
+
+				endif;				
+
+			else // It must be undefined
+
+				// The original symbol was purely a forward referenced
+				// object. Let's see if it was defined before the
+				// end of the declaration scope.
+
+				lookupLocal
+				( 
+					staticECX.trueName, 
+					staticECX.lcName,
+					staticECX.hashValue
+				);
+				if( eax <> NULL ) then
+
+					// We have a local definition, so patch the
+					// static definition with the address of the
+					// local object:
+
+					mov( eax, staticECX.symbol );
+
+					// Mark as referenced, in case this is an external
+
+					mov( true, symEAX.isReferenced );
+
+					// Set the segment value in the static segment list:
+
+					mov( symEAX.seg, edx );
+					mov( edx, staticECX.seg );
+
+				else
+
+					// We have an undefined symbol. Display an
+					// error message.
+
+					HLAerror
+					(
+						"Symbol <",
+						staticECX.trueName,
+						"> must be defined in the current scope"
+						nl
+						"Original use at line ",
+						(type uns32 staticECX.lineNumber),
+						nl
+					);
+
+				endif;				
+				
+
+			endif;
+
+			// Now we need to remove the symbol from the fwd static
+			// constant expression list:
+
+			mov( staticECX.prev, eax );
+			mov( staticECX.next, edx );
+			mov( NULL, staticECX.next );  // Just done for defensive
+			mov( NULL, staticECX.prev );  // purposes.
+			if( edx = NULL ) then
+
+				mov( eax, endStaticConstList );
+
+			endif;
+			if( eax <> NULL ) then
+
+				mov( edx, staticEAX.next );
+
+			else
+
+				mov( edx, fwdStaticConstList );
+
+			endif;
+			
+			// Prepare to process the previous node.
+							
+			mov( eax, ecx );
+
+		else
+
+			// If the current node is not at the current
+			// lex level (or above), skip over it:
+
+			mov( staticECX.prev, ecx );
+
+		endif;
+
+	endwhile;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end chkFwdStaticExpr;
+
+
+
+/////////////////////////////////////////////////////////////////
+//
+// zeroAttr - Clears the data field of an attr_t object.
+//
+// On entry- EBX points at the attr_t structure.
+
+//proc( "zeroAttr" )
+procedure zeroAttr( var attr:attr_t );
+begin zeroAttr;
+
+	push( eax );
+	push( ebx );
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	mov( Constant_ct, attrEBX.symClass );
+	xor( eax, eax );
+	mov( eax, attrEBX.dword_vt[0] );
+	mov( eax, attrEBX.dword_vt[4] );
+	mov( eax, attrEBX.dword_vt[8] );
+	mov( eax, attrEBX.dword_vt[12] );
+	mov( eax, attrEBX.dword_vt[16] );
+	mov( eax, attrEBX.dword_vt[20] );
+	mov( eax, attrEBX.dword_vt[24] );
+	mov( eax, attrEBX.dword_vt[28] );
+	pop( ebx );
+	pop( eax );
+	
+end zeroAttr;
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////
+//
+// defaultAttr - initializes the attr_t object passed in
+// EBX to a safe, default, value (uns8 with the value zero).
+
+//proc( "defaultAttr" )
+procedure defaultAttr( var attr:attr_t );
+begin defaultAttr;
+
+	// Return an arbitrary value to help avoid cascading problems.
+
+	push( ebx );
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	mov( Uns8_pt, attrEBX.pType );
+	mov( &uns8_ste, attrEBX.symType );
+	mov( Constant_ct, attrEBX.symClass );
+	mov( 0, attrEBX.dword_vt );
+	mov( 0, attrEBX.dword_vt[4] );
+	mov( 0, attrEBX.dword_vt[8] );
+	mov( 0, attrEBX.dword_vt[12] );
+	mov( 0, attrEBX.dword_vt[16] );
+	mov( 0, attrEBX.dword_vt[20] );
+	mov( 0, attrEBX.dword_vt[24] );
+	mov( 0, attrEBX.dword_vt[28] );
+	pop( ebx );
+	stc();		// Required by some routines that call this guy.
+
+end defaultAttr;
+
+
+// dummyAttr-
+//
+//	Fills an attribute with a dummy value (generally happens
+// when there has been an error and we need to return *something*
+// valid in an attribute).
+
+//proc( "dummyAttr" )
+procedure dummyAttr( var attr:attr_t );
+begin dummyAttr;
+
+	push( ebx );
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	defaultAttr( [ebx] );
+	mov( 1, attrEBX.dword_vt );
+	pop( ebx );
+
+end dummyAttr;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// checkValID - tkn is a token we've scanned and it is some sort of ID.
+// This function verifies that we've got an undefined ID or a VAL
+// ID. If undefined, it creates a VAL id from the symbol.
+// Returns carry set on error, carry clear if success.
+
+//proc( "checkValID" )
+procedure checkValID( var tkn:token_t );
+var
+	dummy	:attr_t;
+
+begin checkValID;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	defaultAttr( dummy );
+	mov( tkn, ecx );
+	canAccess( [ecx] );
+	if( tokenECX.tknValue = tkn_globalID ) then
+
+		// If it's a global object, and it's not a VAL object,
+		// then create a new local symbol and make the new
+		// symbol a VAL object. If it's a global object
+		// and it *is* a VAL object, then just use it.
+		
+		mov( tokenECX.symNode, ebx );
+		if( symEBX.symClass <> Value_ct ) then
+
+			if( !tokenECX.alloc ) then
+
+				str.a_cpy( tokenECX.trueName );
+				mov( eax, tokenECX.trueName );
+				str.a_cpy( tokenECX.lcName );
+				mov( eax, tokenECX.lcName );
+				mov( false, tokenECX.alloc );
+
+			endif;
+
+			enterNewVal
+			(
+				tokenECX.trueName,
+				tokenECX.lcName,
+				tokenECX.hashValue,
+				&uns8_ste,
+				dummy,
+				curOwner
+			);
+			mov( eax, tokenECX.symNode );
+
+		endif;
+		clc();
+
+	elseif( tokenECX.tknValue = tkn_undefID ) then
+
+		// If the symbol is undefined, then
+		// create a new, local, VAL object.
+		
+		if( !tokenECX.alloc ) then
+
+			str.a_cpy( tokenECX.trueName );
+			mov( eax, tokenECX.trueName );
+			str.a_cpy( tokenECX.lcName );
+			mov( eax, tokenECX.lcName );
+			mov( false, tokenECX.alloc );
+
+		endif;
+
+		enterNewVal
+		(
+			tokenECX.trueName,
+			tokenECX.lcName,
+			tokenECX.hashValue,
+			&uns8_ste,
+			dummy,
+			curOwner
+		);
+		mov( eax, tokenECX.symNode );
+		clc();
+
+	else // Must be a local ID. Error if not a value object
+
+		mov( tokenECX.symNode, ebx );
+		cmp( symEBX.symClass, Value_ct );
+		clc();
+		if( @ne ) then
+
+			HLAerror
+			( 
+				"Destination parameter must be a VAL object or undefined" 
+				nl 
+			);
+			stc();
+
+		endif;
+
+	endif;
+
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end checkValID;	
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+//
+// getIDorExpr Function:
+//
+// First checks to see if the item in the code stream is an identifier
+// (which must be followed by a comma or a closing parenthesis). If so,
+// returns EAX containing ID_tc and ECX pointing at the token information.
+// Also backs up the lexer to re-read the token following the ID.
+//
+// If the first item scanned is not an identifier, or the ID is followed by
+// something other than a comma or closing parenthesis, then this function
+// calls ConstExpr to process the argument. On success, it stores the result
+// in the attr passed as a parameter and returns const_tc in EAX.
+
+//proc( "getIDorExpr" )
+procedure getIDorExpr( var attr:attr_t );
+var
+	esiSave:	dword;
+	ediSave:	dword;
+	tknCntSave:	dword;
+	tknTailSave:dword;
+	tknPtr:		tokenPtr_t;
+
+begin getIDorExpr;
+
+	assert( attr <> NULL );
+	// Save ESI/EDI pointers so we can back up lexer, if necessary:
+	mov( esi, esiSave );
+	mov( edi, ediSave );
+	mov( tknCnt, tknCntSave );
+	mov( tknTail, tknTailSave );
+
+	// Begin by checking for an identifier:
+
+	lex( esi );
+	if( ebx <> ID_tc && ebx <> type_tc ) then
+
+		reuseLastTkn();
+		try
+			constExpr( attr );
+
+		  exception( ex.hlaerr );
+
+			defaultAttr( attr );
+
+		endtry;
+		mov( const_tc, eax );
+
+	else
+		// It wasn't an identifier, see if it was
+		// one of the <type> reserved words (int32, boolean, etc.):
+		
+		if( ebx = type_tc ) then
+
+			switch( eax )
+
+				case( tkn_byte )			//0
+					mov( &byte_ste, ecx );
+			
+				case( tkn_word )
+					mov( &word_ste, ecx );
+				   
+				case( tkn_dword )
+					mov( &dword_ste, ecx );
+				  
+				case( tkn_qword )
+					mov( &qword_ste, ecx );
+				  
+				case( tkn_tbyte )
+					mov( &tbyte_ste, ecx );
+				  
+				case( tkn_lword )
+					mov( &lword_ste, ecx );
+
+				case( tkn_uns8 )
+					mov( &uns8_ste, ecx );
+				   
+				case( tkn_uns16 )
+					mov( &uns16_ste, ecx );
+				  
+				case( tkn_uns32 )
+					mov( &uns32_ste, ecx );
+
+				case( tkn_uns64 )
+					mov( &uns64_ste, ecx );
+				  
+				case( tkn_uns128 )
+					mov( &uns128_ste, ecx );
+
+				case( tkn_int8 )
+					mov( &int8_ste, ecx );
+				   
+				case( tkn_int16 )
+					mov( &int16_ste, ecx );
+				  
+				case( tkn_int32 )
+					mov( &int32_ste, ecx );
+				  
+				case( tkn_int64 )
+					mov( &int64_ste, ecx );
+				  
+				case( tkn_int128 )
+					mov( &int128_ste, ecx );
+							
+				case( tkn_real32 )
+					mov( &real32_ste, ecx );
+				 
+				case( tkn_real64 )
+					mov( &real64_ste, ecx );
+				 
+				case( tkn_real80 )
+					mov( &real80_ste, ecx );
+				 
+				case( tkn_boolean )
+					mov( &boolean_ste, ecx );
+
+				case( tkn_char )
+					mov( &char_ste, ecx );
+				   
+				case( tkn_xchar )
+					mov( &xchar_ste, ecx );
+				  
+				case( tkn_wchar )
+					mov( &unicode_ste, ecx );
+
+				case( tkn_string )
+					mov( &string_ste, ecx );
+				 
+				case( tkn_wstring )
+					mov( &ustring_ste, ecx );
+
+				case( tkn_cset )
+					mov( &cset_ste, ecx );
+				   
+				case( tkn_xcset )
+					mov( &xcset_ste, ecx );
+
+				default
+
+					// Defensive code: can't really get this.
+					mov(&byte_ste, ecx );
+					HLAerror( "Unexpected type identifier" );
+
+			endswitch;
+
+
+		else // must be ID_tkn
+
+			assert( tokenECX.isID );
+
+			// If the "alloc" flag is true, then we need to
+			// deallocate the storage assocated with the
+			// identifier:
+
+			if( tokenECX.alloc ) then
+
+				strfree( tokenECX.trueName );
+				strfree( tokenECX.lcName );
+
+			endif;
+			mov( tokenECX.symNode, ecx );
+
+		endif;
+		mov( ecx, tknPtr );
+			
+		// Get the next token
+
+		lex( esi );
+		if( eax <> ',' && eax <> ')' ) then
+
+			// If we didn't end with a comma or parenthesis,
+			// then treat this as an expression. Begin
+			// by backing up in the token queue and resetting
+			// the text pointers to their original position:
+
+			mov( 0, tknReuse );
+			mov( tknTailSave, tknTail );
+			mov( tknCntSave, tknCnt );
+			mov( esiSave, esi );
+			mov( ediSave, edi );
+
+			// Process the item as an expression:
+
+			try
+				constExpr( attr );
+
+			  exception( ex.hlaerr );
+
+				defaultAttr( attr );
+
+			endtry;
+			mov( const_tc, eax );
+
+		else
+
+			// Okay, it was an identifier, return the
+			// symptr in ECX:
+
+			reuseLastTkn(); // Back up from ',' or ')'
+			mov( tknPtr, ecx );
+			mov( ID_tc, eax ); 
+
+		endif;
+
+	endif;
+
+end getIDorExpr;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getTypeID-
+//
+//	The parser calls this procedure when it needs a type identifier.
+// This procedure reads the next token and checks to see if it's an
+// identifier; if so, it verifies that the identifier is a type ID
+// and returns true (c=0) if so, false (c=1) if not.
+//
+//	If the next token is not an identifier, then this procedure
+// checks to see if it's one of the type reserved words.  If so,
+// this procedure "converts" that reserved word to a type ID.
+//
+// Input:
+//
+//	Reads next token from the source file.
+//
+// Outputs:
+//
+//	eax, ebx, ecx, esi, edi-
+//		Usual lex return values.
+//
+//	carry-
+//		clear if we processed a type ID.
+//		set if the token was not a type ID.
+
+//proc( "getTypeID" )
+procedure getTypeID; @noframe;
+begin getTypeID;
+
+	push( esi );
+	push( edi );
+	lex( esi );
+	if( ebx = ID_tc ) then
+	
+		if( eax = tkn_localID || eax = tkn_globalID ) then
+
+	
+			// Verify that we have a type ID:
+			
+			mov( tokenECX.symNode, eax );
+			canAccess( [eax] );
+			if( symEAX.symClass = Type_ct ) then
+				
+				getBaseIsoType( eax );
+				add( 8, esp );			// Remove esi, edi
+				clc();
+				ret();
+
+			endif;
+
+			// If it's a namespace identifier, then we have
+			// to process the identifier following the ".".
+
+			if( symEAX.pType = Namespace_pt ) then
+
+				// Set up curOwner, curHashTable and lexLevel so that
+				// the lexer will search through the namespace's
+				// symbols:
+
+				push( curOwner );
+				push( curHashTable );
+				push( curLexLevel );
+				mov( eax, curOwner );
+				mov( symEAX.localHash, curHashTable );
+				mov( 1, curLexLevel );	// Namespaces are always lex level 1 
+
+				lex( esi );			// Get "."
+				if( eax = '.' ) then
+
+					lex( esi );				// Process ID after the "."
+					if( ebx = ID_tc ) then
+
+						if( eax = tkn_localID|| eax = tkn_globalID ) then
+					
+							// Verify that we have a type ID:
+							
+							mov( tokenECX.symNode, eax );
+							canAccess( [eax] );
+							if( symEAX.symClass = Type_ct ) then
+								
+								getBaseIsoType( eax );
+								pop( curLexLevel );
+								pop( curHashTable );
+								pop( curOwner );
+								add( 8, esp );			// Remove esi, edi
+								clc();
+								ret();
+
+							endif;
+
+						endif;
+					endif;
+
+				endif;
+				pop( curLexLevel );
+				pop( curHashTable );
+				pop( curOwner );
+
+				// The following is done so that we can print
+				// an appropriate error message using the first
+				// token scanned, should the caller desire to do this:
+
+				pop( edi );
+				pop( esi );
+				lex( esi );
+				reuseLastTkn();
+				stc();
+				ret();
+
+			endif;
+			
+		endif;
+
+	elseif( ebx = type_tc ) then
+	
+		if( eax in tkn_boolean..tkn_thunk && eax <> tkn_enum ) then
+		
+			// We need to build an attribute for this "identifier".
+			
+			mov( false, tokenECX.alloc );
+			mov( true, tokenECX.isID );
+			mov( false, tokenECX.hasAttr );
+			
+			mov( builtinPtrs[ eax*4 - tkn_boolean*4 ], ebx );
+			mov( ebx, tokenECX.symNode ); 
+
+			mov( symEBX.trueName, eax );
+			mov( eax, tokenECX.trueName );
+			mov( symEBX.lcName, eax );
+			mov( eax, tokenECX.lcName );
+			
+			// Convert this reserved word to an identifier.
+			// Note that reserved word type IDs exist at
+			// lex level zero, so they are always global.
+			// Since they are reserved words, they cannot be
+			// redefined locally.
+			
+			mov( tkn_globalID, eax );
+			mov( ID_tc, ebx );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+
+			// Return the type in EAX:
+
+			mov( tokenECX.symNode, eax );
+
+			add( 8, esp );			// Remove esi, edi
+			clc();
+			ret();
+			
+		endif;
+	
+	endif;
+	add( 8, esp );			// Remove esi, edi
+ 	reuseLastTkn();
+	stc();
+	ret();
+
+end getTypeID;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getUndefTypeID-
+//
+//	The parser calls this procedure when it needs a type identifier
+// but it's already determined that there isn't a defined type
+// identifier present. This routine checks to see if we've got an
+// undefined symbol. This routine is called after processing a
+// "pointer to" sequence or other code sequence that allows forward
+// declared type objects.
+//
+//
+// Input:
+//
+//	Reads next token from the source file (or multiple tokens if
+// we have a namespace identifier).
+//
+// Outputs:
+//
+//	eax, ebx, ecx, esi, edi-
+//		Usual lex return values.
+//
+//	carry-
+//		clear	if we processed an undefined identifer that could
+//				be a type identifier (forward declared).
+//
+//		set	if the token was not an undefined ID.
+
+//proc( "getUndefTypeID" );
+procedure getUndefTypeID( typeSym:symNodePtr_t ); 
+begin getUndefTypeID;
+
+	push( esi );
+	push( edi );
+	lex( esi );
+	if( eax = tkn_undefID ) then
+
+		// If the ID is undefined, we'll assume that
+		// it's a forward declaration.  Add it to the
+		// list of pointer/forward declarations we
+		// need to check later:
+		
+		mov( typeSym, ebx );
+		canAccess( [ebx] );
+		mov( &pointer_ste, symEBX.baseType );
+		mov( Pointer_pt, symEBX.pType );
+		mov( 4, symEBX.objectSize );
+		addFwdPtr( ebx, tokenECX, Type_ct );
+		add( 8, esp );	// Remove esi, edi
+		clc();
+		exit getUndefTypeID;
+
+	endif;
+
+	if( eax = tkn_localID || eax = tkn_globalID ) then
+
+		mov( tokenECX.symNode, ecx );
+		canAccess( [ecx] );
+
+		if( symECX.pType = Namespace_pt ) then 
+
+			// If the symbol is defined, then it had better
+			// be a namespace identifier (note that we've already
+			// checked for type identifiers before calling this
+			// procedure). If the current identifier is a namespace
+			// ID, then process the "." and following identifier.
+			// The ID following the "." must be undefined (we would
+			// have already processed it if it was a defined type
+			// ID).
+			//
+			// Set up curOwner, curHashTable and lexLevel so that
+			// the lexer will search through the namespace's
+			// symbols:
+
+			push( curOwner );
+			push( curHashTable );
+			push( curLexLevel );
+			mov( ecx, curOwner );
+			mov( symECX.localHash, curHashTable );
+			mov( 1, curLexLevel );	// Namespaces are always lex level 1 
+
+			lex( esi );			// Get "."
+			if( eax = '.' ) then
+
+				lex( esi );				// Process ID after the "."
+
+				// If it's undefined (or a global ID, which we can
+				// treat as undefined), then add a forward reference
+				// list entry. Note that we can ignore global IDs
+				// (and treat them as undefined IDs) because anything
+				// global to the namespace is not a member of the
+				// namespace.
+
+				if( eax = tkn_undefID || eax = tkn_globalID ) then
+				
+					mov( typeSym, ebx );
+					canAccess( [ebx] );
+					mov( &pointer_ste, symEBX.baseType );
+					mov( Pointer_pt, symEBX.pType );
+					mov( 4, symEBX.objectSize );
+					addFwdPtr
+					( 
+						ebx, 
+						tokenECX, 
+						Type_ct 
+					);
+					pop( curLexLevel );
+					pop( curHashTable );
+					pop( curOwner );
+					add( 8, esp );	// Remove esi, edi
+					clc();
+					exit getUndefTypeID;
+				endif;
+
+			endif;
+			pop( curLexLevel );
+			pop( curHashTable );
+			pop( curOwner );
+
+		endif;
+
+		// Rescan first token so caller can print it as
+		// part of an error message:
+
+		mov( [esp], edi );
+		mov( [esp+4], esi );
+		lex( esi );
+
+	endif;
+
+	// Set the return type to something safe, to prevent
+	// cascading errors.
+
+	mov( typeSym, ebx );
+	mov( &pointer_ste, symEBX.baseType );
+	mov( Pointer_pt, symEBX.pType );
+	mov( 4, symEBX.objectSize );
+
+
+	// It's not an undefined identifier and it's not an
+	// undefined namespace.identifier sequence, so return
+	// an error (carry set).
+
+	reuseLastTkn();
+	add( 8, esp );	// Remove esi, edi
+	stc();
+
+end getUndefTypeID;
+		
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getTypeOfID-
+//	
+//	This function fetches an identifier from the token stream and
+// returns a pointer to the symbol table record of that identifier's type.
+//
+//	If the next token is not an identifier, is an undefined identifier,
+// or otherwise does not have a type associated with it, then this procedure
+// return carry set indicating failure.
+//
+//	This function does not print an error message if the token is not
+// an identifier or doesn't have a type associated with it. It is the
+// caller's responsibility to deal with this.  Note that this routine
+// pushes the token back if it's not an identifier that has a type associated
+// with it.
+//
+// Input:
+//
+//	Reads next token from the source file.
+//
+// Outputs:
+//
+//	EAX-
+//		symbol table entry for the identifier.
+//
+//	EBX-
+//		symbol table entry for object's type (NULL if N/A).
+//
+//	ECX-
+//		token value for the symbol read from the token stream.
+//
+//	carry-
+//		clear if we processed a type ID.
+//		set if the token was not a type ID.
+
+//proc( "getTypeOfID" )
+procedure getTypeOfID;  @noframe; 
+begin getTypeOfID;
+
+	lex( esi );
+	if( ebx = type_tc ) then
+	
+		if( eax in tkn_boolean..tkn_thunk && eax <> tkn_enum ) then
+		
+			// We need to build an attribute for this "identifier".
+			
+			mov( false, tokenECX.alloc );
+			mov( true, tokenECX.isID );
+			mov( false, tokenECX.hasAttr );
+			
+			mov( builtinPtrs[ eax*4 - tkn_boolean*4 ], ebx );
+			mov( ebx, tokenECX.symNode ); 
+
+			mov( symEBX.trueName, eax );
+			mov( eax, tokenECX.trueName );
+			mov( symEBX.lcName, eax );
+			mov( eax, tokenECX.lcName );
+			
+			// Convert this reserved word to an identifier.
+			// Note that reserved word type IDs exist at
+			// lex level zero, so they are always global.
+			// Since they are reserved words, they cannot be
+			// redefined locally.
+			
+			mov( tkn_globalID, eax );
+			mov( ID_tc, ebx );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+
+			// Return the type in EBX:
+
+			mov( tokenECX.symNode, ebx );
+			mov( ebx, eax );
+
+			clc();
+			ret();
+			
+		endif;
+	
+	elseif( eax = tkn_localID || eax = tkn_globalID ) then
+	
+		// If we have a type ID, then return a pointer to
+		// its (base) symbol table entry in EAX:
+		
+		assert( tokenECX.symNode <> NULL );
+		mov( tokenECX.symNode, eax );
+		mov( symEAX.symClass, dl );
+		if
+		( 
+				dl = Constant_ct
+			||	dl = Value_ct
+			||	dl = Var_ct
+			||	dl = Parm_ct
+			||	dl = Static_ct			 
+		) then
+
+			mov( symEAX.symType, eax );
+
+		endif;
+		if( eax <> NULL ) then
+
+			getBaseIsoType( eax );
+			mov( eax, ebx );
+			mov( tokenECX.symNode, eax );
+			clc();
+			ret();
+
+		endif;
+	
+	endif;
+	reuseLastTkn();
+	stc();
+	ret();
+
+end getTypeOfID;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// parseDotName-
+//
+//	This procedure parses a name that contains fields of a union, record,
+// namespace, or class.  On input, we've seen the base symbol(s) and the 
+// following ".", so we're about to process the following field name.
+//
+// Inputs:
+//
+//	baseSym-
+//		Pointer to the symbol table for the base symbol we've just processed.
+//
+//	fullSym-
+//		On entry, this is a pointer to a string variable that points at
+//		an allocated string containing the sequence of dotted names leading
+//		up to the base symbol (without a period at the end).
+//
+// Outputs:
+//
+//	EAX-
+//		Points at the symbol table of the new field.
+//	
+//	fullSym-
+//		Newly allocated string that includes the full filename, including
+//		new new symbol. It is the caller's responsibility to free this.
+//		Note that this string is allocated, even if an exception occurs.
+//		The caller must handle an ex.hlaerr exception (if it occurs) and
+//		free this string if it's not needed because of the error.
+//
+// Raises ex.hlaerr if there was an error processing the filename.
+
+procedure parseDotName
+(
+	var	baseSym	:symNode_t;
+	var	fullSym	:string
+);
+var
+	fieldSym	:symNodePtr_t;
+
+begin parseDotName;
+
+	// We've just seen a "." token, this means that the
+	// previous symbol had better be a namespace, class, 
+	// record or union object.
+
+	mov( baseSym, eax );
+	canAccess( [eax] );
+	mov( symEAX.pType, dl );
+	if
+	(
+			dl <> Record_pt
+		&&	dl <> Union_pt
+		&&	dl <> Class_pt
+			&&	dl <> Namespace_pt
+	) then
+
+		//mov( baseSym, eax );
+		mov( fullSym, ebx );
+		canAccess( [ebx] );
+		assert( symEAX.trueName <> NULL );
+		HLAerror
+		( 
+			"Unexpected '.' after ID ",
+			(type string [ebx]),
+			'.',
+			symEAX.trueName,
+			nl 
+		);
+		raise( ex.hlaerr );
+	endif;
+
+	// Okay, we've got a class, namespace, record, or union symbol.
+	// Okay, grab the next token following the "." and 
+	// continue processing:
+
+	lex( esi );
+	if( ebx <> ID_tc ) then
+
+		mov( baseSym, eax );
+		canAccess( [eax] );
+		HLAerror
+		( 
+			"Expected a field name after ",
+			symEAX.trueName,
+			"." nl
+		);
+		reuseLastTkn();
+		raise( ex.hlaerr );
+
+	endif;
+
+	// Look up the symbol in the record's symbol table:
+
+	mov( baseSym, ebx );
+	canAccess( [ebx] );
+	mov( symEBX.symClass, al );
+	if( al in Constant_ct..Static_ct && al <> Type_ct ) then
+		mov( symEBX.symType, ebx );
+
+	endif;
+	lookupLocalIn
+	( 
+		tokenECX.trueName, 
+		tokenECX.lcName,
+		tokenECX.hashValue, 
+		symEBX.localHash 
+	);
+
+	// Okay, an identifier follows the ".", but is it a field
+	// of the record or union?
+
+	if( eax = NULL ) then
+
+		mov( baseSym, ebx );
+		canAccess( [ebx] );
+		HLAerror
+		( 
+			tokenECX.trueName, 
+			" is not a field of ",
+			symEBX.trueName,
+			nl
+		);
+		raise( ex.hlaerr );
+	endif;
+	mov( eax, fieldSym );	// Save pointer to sym tbl entry for field name
+
+	// Okay, the fieldname was valid, so generate a new
+	// fullSym string to return:
+
+	mov( fullSym, ebx );
+	canAccess( [ebx] );
+	str.length( [ebx] );
+	mov( eax, edx );
+	str.length( tokenECX.trueName );
+	add( edx, eax );
+	inc( eax );			// Extra room for period.
+	str.alloc( eax );	// Room for new string
+	str.cpy( [ebx], eax );
+
+	// Add the period between the previous name and the new field:
+
+	mov( '.', (type char [eax+edx]));
+	inc( (type str.strRec [eax]).length );
+	mov( 0, (type char [eax+edx+1]));
+
+	// Append the new field name to the end of the string:
+
+	str.cat( tokenECX.trueName, eax );
+	
+	// Free storage associated with the original string:
+
+	str.free( [ebx] );
+
+	// Set the string to the new string:
+
+	mov( eax, [ebx] ); 
+
+	// Return a pointer to the new field entry in EAX:
+
+	mov( fieldSym, eax );
+
+end parseDotName;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// strDup2-
+//	Duplicates a string on the heaps and extends the size of the
+// new string by the amount specified by the second parameter.
+//
+// Returns
+//	EAX:
+//		Pointer to new string.
+
+procedure strDup2( s:string; extend:dword );
+begin strDup2;
+
+	push( ebx );
+	mov( s, ebx );
+	canAccess( [ebx] );
+	mov( (type str.strRec [ebx]).length, eax );
+	add( extend, eax );
+	str.alloc( eax );
+	str.cpy( ebx, eax );
+	pop( ebx );
+
+end strDup2;
+
+
+end hlaUtils;

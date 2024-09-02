@@ -1,0 +1,3404 @@
+/****************************************************/
+/*                                                  */
+/* Symbol table unit.                               */
+/* Please see the accompanying documentation that   */
+/* describes the structure of the HLA symbol table. */
+/*                                                  */
+/****************************************************/
+									  
+unit symbolTableUnit;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;	
+
+
+
+	 
+////////////////////////////////////////////////////////////////////////////
+//
+// computeHash-
+//		Computes the symbol table hash function for a string.
+//		Returns the result in EAX.
+
+//proc( "computeHash" )
+procedure computeHash( id:string in eax );
+begin computeHash;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	mov( (type str.strRec [eax]).length, ecx );
+	mov( eax, ebx );
+	xor( eax, eax );			// Compute hash value here
+	xor( edx, edx );			// So we can use DL as an index
+	if( ecx <> 0 ) then
+
+		repeat
+
+			mov( [ebx], dl );
+			rol( 3, ax );
+			xor( SpreadTable[edx], al );
+			add( 1, ebx );
+			sub( 1, ecx );
+
+		until( @z );
+
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+
+end computeHash;
+
+	
+
+////////////////////////////////////////////////////////////////////////////
+//
+//			S Y M B O L    T A B L E    L O O K U P    R O U T I N E S
+//
+////////////////////////////////////////////////////////////////////////////
+//
+// 
+//
+// undefLookup -
+// 
+// Does a quick lookup for a symbol in the undefined symbols hash table
+// using a linear linked list (for collision handling) rather than a binary
+// search. As this particular function is used to look up undefined symbols
+// in the undefined symbol table, this function only does a case sensitive
+// search.
+// 
+//
+//	hashValue-	Hash value for the symbol to look up.
+//	symbol-		Symbol to search for.
+//
+// Returns:
+//
+//	EAX-	Holds a pointer to the symbol table entry, if one was found.
+//			Returns NULL in EAX if no such entry exists.
+//
+//	EBX-	Points at a "link pointer". This is the address of a pointer
+//			variable where the caller can store the address of a symNode_t
+//			object that the caller wishes to link into the chain.
+
+
+//proc( "undefLookup" )
+procedure undefLookup
+( 
+	hashValue	:dword;
+	symbol		:string
+);
+begin undefLookup;
+
+	// Note: the undefSymTable array only has 256 entries! So only use
+	// the L.O. eight bits of our hash value:
+
+	movzx( (type byte hashValue), ebx );
+
+	lea( ebx, undefSymTable[ebx*4] );	// Ptr to initial link entry.
+	mov( [ebx], eax );					// Get the hash table entry
+	if( eax <> NULL ) then
+
+		push( esi );
+		push( edi );
+		push( ecx );
+		pushfd();
+		cld();
+
+		// Do a linear search through the hash link
+		// to see if we can find the symbol:
+
+		repeat
+
+			mov( symbol, esi );
+			mov( (type symNode_t [eax]).trueName, edi );
+			mov( (type str.strRec [edi]).length, ecx );
+			repe.cmpsb();
+			breakif( @z );
+			lea( ebx, symEAX.next );	// New link address.
+			mov( symEAX.next, eax );
+
+		until( eax = NULL );
+
+		popfd();
+		pop( ecx );
+		pop( edi );
+		pop( esi );
+
+	endif;
+
+end undefLookup;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//	macroLookup-
+//
+//	Looks up a symbol in an invoked macros that have entries sitting on
+// the include/macro stack. This is a (slow) linear search, but there
+// shouldn't be too many entries sitting there, so it shouldn't be too bad.
+//
+// Note that this routine does an *exact* match only. It doesn't report an
+// error if there is a case neutrality mismatch.  Instead, it returns NULL
+// so that the calling code can search its own symbol table.
+//
+// Returns:
+//
+//	EAX - NULL if the symbol was not found.
+//		  Pointer to symbol table entry if found.
+
+	
+//proc( "macroLookup" );	
+procedure macroLookup( symbol:string );
+begin macroLookup;
+
+	push( ebx );
+	push( ecx );
+	mov( NULL, eax );	// Assume not present
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	begin gotSym;
+	
+		while( (type int32 ebx) > 0 ) do	// There is something on the stack
+
+			// Is the current stack item a macro record?
+
+			if( includeStk.incRecType[ebx] >= irt_macro ) then
+
+				if( includeStk.active[ebx] ) then
+				
+					// If we're currently processing macro text
+					// (includeStk.active is true), then we need
+					// to search through the entire local symbol list
+					// for this macro:
+					
+					mov( includeStk.macroSyms[ebx], ecx );
+					
+				else
+				
+					// If the macro on the top of the stack is inactive,
+					// then we should only search through the keyword
+					// and terminator entries in the local symbol list.
+					
+					mov( includeStk.keyTerms[ebx], ecx );
+					
+				endif;
+
+				// For each symbol in this list, see if it matches
+				// the symbol we're looking for
+
+				while( ecx <> NULL ) do
+
+					if( str.eq( symbol, symECX.trueName )) then
+
+						mov( ecx, eax );	// Pointer to symtbl entry
+						exit gotSym;
+					
+					endif;
+					mov( symECX.next, ecx );
+					 
+				endwhile;
+
+			endif;
+
+			// Move down the include/macro stack:
+
+			sub( @size( includeInfo_t ), ebx );	
+
+		endwhile;
+		mov( NULL, eax );	// Didn't find the symbol
+
+	end gotSym;
+	pop( ecx );
+	pop( ebx );
+
+end macroLookup;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//	iMacroLookup-
+//
+//	Just like macroLookup, but it does a case insensitive search. Assumes
+//	that the symbol parameter is all lower case.
+
+// Returns:
+//
+//	EAX - NULL if the symbol was not found.
+//		  Pointer to symbol table entry if found.
+
+//proc( "iMacroLookup" );	
+procedure iMacroLookup( symbol:string );
+var
+	nextIsActive	:boolean;
+	
+begin iMacroLookup;
+
+	push( ebx );
+	push( ecx );
+	mov( NULL, eax );	// Assume not present
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	begin gotSym;
+
+		mov( false, nextIsActive );
+		while( (type int32 ebx) > 0 ) do	// There is something on the stack
+
+			if( includeStk.incRecType[ebx] >= irt_macro ) then
+
+				if( includeStk.active[ebx] || nextIsActive  ) then
+				
+					// If we're currently processing macro text
+					// (includeStk.active is true), then we need
+					// to search through the entire local symbol list
+					// for this macro:
+					
+					mov( includeStk.macroSyms[ebx], ecx );
+					
+					
+				else
+				
+					// If the macro on the top of the stack is inactive,
+					// then we should only search through the keyword
+					// and terminator entries in the local symbol list.
+					
+					mov( includeStk.keyTerms[ebx], ecx );
+					
+				endif;
+				
+				// If the current include stack item is a keyword or
+				// a terminator entry, then we need to treat the next
+				// item on the include stack as though it were an
+				// active macro so we can search its entire local
+				// symbols list. This is only done for the *first*
+				// inactive macro symbol we find when going down the
+				// include stack.
+				
+				if( includeStk.incRecType[ebx] >= irt_keyword ) then
+				
+					mov( true, nextIsActive );
+					
+				elseif
+				( 
+						includeStk.incRecType[ebx] = irt_macro 
+					&&	!includeStk.active[ebx]
+				) then
+				
+					mov( false, nextIsActive );
+					
+				endif;
+
+				// For each symbol in this list, see if it matches
+				// the symbol we're looking for
+
+				while( ecx <> NULL ) do
+
+					if( str.eq( symbol, symECX.lcName )) then
+
+						mov( ecx, eax );	// Pointer to symtbl entry
+						exit gotSym;
+					
+					endif;
+					mov( symECX.next, ecx );
+					 
+				endwhile;
+
+			endif;
+
+			// Move down the include/macro stack:
+
+			sub( @size( includeInfo_t ), ebx );	
+
+		endwhile;
+		mov( NULL, eax );	// Didn't find the symbol
+
+	end gotSym;
+	pop( ecx );
+	pop( ebx );
+
+end iMacroLookup;
+
+	
+/////////////////////////////////////////////////////////////////////////////
+//
+// lookupLocal-
+// lookupLocalIn-
+//
+//	This function looks up it's parameter in the local symbol table (only).
+// It returns a pointer to the parameter's symbol table entry if it finds
+// the symbol, it returns NULL otherwise.
+//
+// Inputs:
+//
+//	symbol-			Symbol to search for.
+//	lcName-			Lowercase version of symbol.
+//	curSymTable-	Symbol table to search in (lookupLocalIn only).
+//
+//
+// Note that lookupLocal searches the symbol table referenced by the
+// global variable curSymTable whereas lookupLocalIn searches in the
+// symbol table whose address is passed as a parameter.
+//
+// If these functions return NULL in EAX, they also returns a pointer to the
+// last LEFT or RIGHT pointer field so the caller can easily insert the
+// current symbol into the binary search tree.
+//
+// Returns:
+//
+//	EAX-		Pointer to symbol table entry for "symbol" (NULL if symbol
+//				 was not found).
+//
+//	EBX-		Pointer to the LEFT or RIGHT field to which the caller should
+//				 link a new symbol table entry in the binary search tree.
+//				 (meaningful only if EAX also contains NULL).
+
+
+//proc( "lookupLocal" )
+procedure lookupLocal
+( 
+	symbol		:string;
+	lcName		:string;
+	hashValue	:dword 
+); 
+var
+	symLen		:uns32;
+	tstLen		:uns32;
+		
+begin lookupLocal;
+
+	// First, see if this symbol is a local symbol in a macro
+	// that is currently invoked:
+
+	macroLookup( symbol );
+	exitif( eax <> NULL ) lookupLocal;
+
+	// Okay, it wasn't found on the macro/include stack. So search
+	// the symbol table for it:
+	push( ecx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+
+		
+
+	// Get the symbol's length:
+	
+	mov( lcName, eax );
+	canAccess( [eax] );
+	mov( (type str.strRec [eax]).length, eax );
+	mov( eax, symLen );
+	
+	// Get the appropriate entry from the hash table:
+	
+	mov( curHashTable, eax );
+	mov( hashEAX.mask, ecx );
+	and( hashValue, ecx );
+	lea( ebx, hashEAX.hashTable[ecx*4] );	// Initialize LEAF pointer
+	mov( hashEAX.hashTable[ecx*4], eax );	// Root for this search tree.
+	
+	// Search through this hash chain (really a hash tree) for
+	// the symbol.
+	
+	while( eax <> NULL ) do
+
+		mov( (type symNode_t [eax]).lcName, edi );
+		mov( (type str.strRec [edi]).length, ecx );
+		mov( ecx, tstLen );
+		mov( lcName, esi );
+		if( ecx > symLen ) then
+		
+			mov( symLen, ecx );
+			
+		endif;
+		repe.cmpsb();
+		if( @e ) then
+		
+			// If the strings are equal to the length of the shorter string,
+			// then compare the lengths of the strings and use that comparison
+			// to determine less than, equal, or greater than.
+			
+			mov( symLen, ecx );
+			cmp( ecx, tstLen );
+			breakif( @e );
+			
+		endif;
+		
+		// If the strings were not equal, use the less than/greater than
+		// comparison to determine whether to use the LEFT or RIGHT branch
+		// in the binary tree comparison.
+		
+		if( @b ) then
+		
+			lea( ebx, (type symNode_t [eax]).left );
+			mov( (type symNode_t [eax]).left, eax );
+			
+		else
+		
+			lea( ebx, (type symNode_t [eax]).right );
+			mov( (type symNode_t [eax]).right, eax );
+			
+		endif;
+		
+	endwhile;
+		
+	// At this point, EAX contains NULL if lookupLocal could not find
+	// the symbol in the local symbol table;  EBX will contain a pointer
+	// to the last node we checked if EAX is NULL.  If EAX is not NULL,
+	// then it contains a pointer to the symbol table entry for the
+	// identifier passed as a parameter.
+	//
+	// The comparison above was case insensitive.  Now we have to do
+	// a case-sensitive comparison to enforce case neutrality.
+	// Note that we still return a non-null value in EAX if there
+	// was a case neutrality violation.
+	
+	if( eax <> NULL ) then
+	
+		mov( symbol, edi );
+		mov( (type symNode_t [eax]).trueName, esi );
+		mov( symLen, ecx );
+		repne.cmpsb();
+		if( @ne ) then
+		
+			HLAerror
+			( 
+				"Mispelled identifier, perhaps you meant <<", 
+				(type symNode_t [eax]).trueName,
+				">>"
+				nl
+			);
+
+		endif;
+		
+	endif;
+		
+	
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( ecx );		
+		
+end lookupLocal;
+			
+	
+	
+
+
+
+//proc( "lookupLocalIn" )
+procedure lookupLocalIn
+( 
+	symbol			:string;
+	lcName			:string;
+	hashValue		:dword; 
+	hashTableToUse	:hashTablePtr_t 
+); 
+begin lookupLocalIn;
+
+	// Preserve global hash table pointer value, set it to
+	// "hashTableToUse", call lookupLocal to do the dirty work,
+	// and then restore the global upon return:
+
+	push( curHashTable );
+	mov( hashTableToUse, curHashTable );
+	lookupLocal( symbol, lcName, hashValue );
+	pop( curHashTable );
+		
+end lookupLocalIn;
+
+			
+	
+////////////////////////////////////////////////////////////////////////////
+//
+// lookupGlobal-
+//
+//	This function looks up it's parameter in the local symbol table specified
+// as a parameter.  If it doesn't find the symbol, it tries again in the
+// immediately global symbol table.  This process repeats until lookupGlobal
+// runs out of global symbol tables or it locates the symbol.
+//
+// It returns a pointer to the parameter's symbol table entry if it finds
+// the symbol, it returns NULL otherwise.
+//
+//	Note that this function does a "case neutral" comparison and will
+// return an error if an identifier is mispelled.
+//
+// Inputs:
+//
+//	symbol-			Symbol to search for.
+//	curSymTable-	Symbol table to search in.
+//
+//
+// Returns:
+//
+//	EAX-		Pointer to symbol table entry for "symbol" (NULL if symbol
+//				 was not found).
+
+
+//proc( "lookupGlobal" )
+procedure lookupGlobal
+( 
+	symbol		:string;
+	lcName		:string;
+	hashValue	:dword 
+); 
+begin lookupGlobal;
+
+
+	// First, see if this symbol is a local symbol in a macro
+	// that is currently invoked:
+
+	macroLookup( symbol );
+	exitif( eax <> NULL ) lookupGlobal;
+
+	push( ebx );
+	push( ecx );
+
+	mov( curHashTable, ecx );
+	forever
+	
+		canAccess( [ecx] );
+		lookupLocalIn( symbol, lcName, hashValue, ecx );
+		breakif( eax <> NULL );
+		
+		// Note: ecx pointed at the hash table, originally,
+		// so we've got to find that node's owner (which is
+		// the current symbol table's owner, locate that
+		// owner's owner, and then use that owner's owner's
+		// local symbols as the new root node:
+		
+		mov( hashECX.owner, ecx );				// Owner
+		mov( symECX.owner, ecx );				// Owner's owner
+		if( ecx = NULL ) then
+		
+			mov( ecx, eax );
+			break;
+			
+		endif;
+		mov( symECX.localHash, ecx );			// New hash table pointer
+		
+	endfor;
+	pop( ecx );
+	pop( ebx );
+	
+end lookupGlobal;
+
+
+//proc( "lookupGlobalIn" )
+procedure lookupGlobalIn
+( 
+	symbol			:string;
+	lcName			:string;
+	hashValue		:dword; 
+	hashTableToUse	:hashTablePtr_t 
+); 
+begin lookupGlobalIn;
+
+	// Preserve global hash table pointer value, set it to
+	// "hashTableToUse", call lookupLocal to do the dirty work,
+	// and then restore the global upon return:
+
+	push( curHashTable );
+	mov( hashTableToUse, curHashTable );
+	lookupGlobal( symbol, lcName, hashValue );
+	pop( curHashTable );
+		
+end lookupGlobalIn;
+
+	
+			
+	
+////////////////////////////////////////////////////////////////////////////
+//
+// iLookup 
+//	This is a variant of lookupLocal.  The difference is that
+// this search does a strictly case insensitive search, it
+// doesn't bother checking for case neutrality.
+//
+// Inputs:
+//
+//	lcName-
+//		Identifier to search for.  Must be converted to all lower case
+//		before the call.
+//
+//	hashValue-
+//		Hash function value for the *original* symbol (not the one
+//		converted to lower case).
+//
+//	curHashTable-
+//		Pointer to the hash table to search through.
+//
+// Returns:
+//
+//	EAX-
+//		pointer to node if symbol appears in the table (NULL if not present).
+
+//proc( "iLookup" )
+procedure iLookup
+( 
+	lcName		:string;
+	hashValue	:dword;
+	curHashTable:hashTablePtr_t 
+); 
+var
+	symLen		:uns32;
+	tstLen		:uns32;
+		
+begin iLookup;
+
+
+	// First, see if this symbol is a local symbol in a macro
+	// that is currently invoked:
+	 
+	iMacroLookup( lcName );
+	exitif( eax <> NULL ) iLookup;
+
+	push( ecx );
+	push( edx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+	
+	// Get the symbol's length:
+	
+	mov( lcName, eax );
+	mov( (type str.strRec [eax]).length, ecx );
+	mov( ecx, symLen );
+	
+	// Get the appropriate entry from the hash table:
+	
+	mov( curHashTable, eax );
+	mov( hashEAX.mask, ecx );
+	and( hashValue, ecx );
+	lea( ebx, hashEAX.hashTable[ecx*4] );	// Initialize LEAF pointer
+	mov( hashEAX.hashTable[ecx*4], eax );	// Root for this search tree.
+
+	// Search for the symbol in the appropriate binary search tree
+	// pointed at by the hash table entry:
+	
+	while( eax <> NULL ) do
+	
+		mov( (type symNode_t [eax]).lcName, edi );
+		mov( (type str.strRec [edi]).length, ecx );
+		mov( ecx, tstLen );
+		mov( lcName, esi );
+		if( symLen < ecx ) then
+		
+			mov( symLen, ecx );
+			
+		endif;
+		repe.cmpsb();
+		if( @e ) then
+		
+			// If the strings are equal to the length of the shorter string,
+			// then compare the lengths of the strings and use that comparison
+			// to determine less than, equal, or greater than.
+			
+			mov( symLen, ecx );
+			cmp( ecx, tstLen );
+			breakif( @e );
+			
+		endif;
+		
+		// If the strings were not equal, use the less than/greater than
+		// comparison to determine whether to use the LEFT or RIGHT branch
+		// in the binary tree comparison.
+		
+		if( @b ) then
+		
+			mov( (type symNode_t [eax]).left, eax );
+			
+		else
+		
+			mov( (type symNode_t [eax]).right, eax );
+			
+		endif;
+		
+	endwhile;		
+	
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( edx );
+	pop( ecx );		
+		
+end iLookup;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//	
+// iLookupGlobal-
+//
+//	This function looks up it's parameter in the local symbol table specified
+// as a parameter.  If it doesn't find the symbol, it tries again in the
+// immediately global symbol table.  This process repeats until lookupGlobal
+// runs out of global symbol tables or it locates the symbol.
+//
+// It returns a pointer to the parameter's symbol table entry if it finds
+// the symbol, it returns NULL otherwise.
+//
+//	Note that this function does a "case insensitive" comparison and will
+// not report an error if an identifier is mispelled.
+//
+// Inputs:
+//
+//	lcName-			
+//		Symbol to search for. Must be converted to lower case before call.
+//
+//	curSymTable-	
+//		Symbol table to search in.
+//
+//
+// Returns:
+//
+//	EAX-		
+//		Pointer to symbol table entry for "symbol" (NULL if symbol
+//		was not found).
+
+
+//proc( "iLookupGlobal" )
+procedure iLookupGlobal
+( 
+	lcName		:string;
+	hashValue	:dword	 
+); 
+begin iLookupGlobal;
+
+	// First, see if this symbol is a local symbol in a macro
+	// that is currently invoked:
+	 
+	iMacroLookup( lcName );
+	exitif( eax <> NULL ) iLookupGlobal;
+
+	push( ebx );
+	push( ecx );
+	
+	mov( curHashTable, ecx );
+	forever
+	
+		canAccess( [ecx] );
+		iLookup( lcName, hashValue, ecx );
+		breakif( eax <> NULL );
+		
+		// Note: ecx pointed at the hash table, originally,
+		// so we've got to find that node's owner (which is
+		// the current symbol table's owner, locate that
+		// owner's owner, and then use that owner's owner's
+		// local symbols as the new root node:
+
+		mov( hashECX.owner, ecx );				// Owner
+		canAccess( [ecx] );
+		mov( symECX.owner, ecx );				// Owner's owner
+		if( ecx = NULL ) then
+		
+			mov( ecx, eax );
+			break;
+			
+		endif;
+		mov( symECX.localHash, ecx );			// New hash table pointer
+		
+	endfor;
+	pop( ecx );
+	pop( ebx );
+	
+end iLookupGlobal;
+	
+			
+//////////////////////////////////////////////////////////////////////////////
+//
+// copyValToSym-
+//
+//	This procedure copies the constant value data from an attr_t
+//	 object to a symbol table entry (generally for CONST and VAL
+//	 symbols).
+//
+//	EAX must contain the pType value zero-extended to 32 bits.
+//
+//	EBX must contain a pointer to the symbol table entry to whom
+//		we are assigning the value.
+//
+//	ECX must contain the address of the attr_t object holding the
+//		value to assign.
+
+//proc( "copyValToSym" )
+procedure copyValToSym
+( 
+		ptype	:dword in eax; 
+	var	symbol	:symNode_t in ebx; 
+	var	valPtr	:attr_t in ecx
+);
+	@noframe;
+begin copyValToSym;
+
+	switch( eax )
+	
+		case
+		( 
+			Boolean_pt,
+			Enum_pt,		
+		 	Uns8_pt,		
+		 	Uns16_pt,		
+		 	Uns32_pt,		
+		 	Byte_pt,		
+		 	Word_pt,		
+		 	DWord_pt,		
+		 	Int8_pt,		
+		 	Int16_pt,		
+		 	Int32_pt,		
+		 	Char_pt, 		
+		 	XChar_pt,		
+		 	Unicode_pt,		
+		 	Real32_pt,
+		 	Utf8_pt,		
+		 	String_pt,		
+		 	UString_pt,
+			Uns64_pt,		
+			QWord_pt,		
+			Int64_pt,		
+			Real64_pt,
+			Uns128_pt,		
+			Int128_pt,		
+			TByte_pt,		
+			LWord_pt,		
+			Real80_pt,
+			Real128_pt,		
+			Cset_pt 
+
+		)		
+
+			// For all these primitive types, all we've got to do is copy
+			// the data from constVal to the "v" field of our symbol table
+			// entry.  In this particular case, the data object is 16
+			// bytes or less.
+			
+			mov( attrECX.dword_vt[0], eax );
+			mov( eax, symEBX.va.dword_vt[0] );
+			mov( attrECX.dword_vt[4], eax );
+			mov( eax, symEBX.va.dword_vt[4] );
+			mov( attrECX.dword_vt[8], eax );
+			mov( eax, symEBX.va.dword_vt[8] );
+			mov( attrECX.dword_vt[12], eax );
+			mov( eax, symEBX.va.dword_vt[12] );
+			xor( eax, eax );
+			mov( eax, symEBX.va.dword_vt[16] );
+			mov( eax, symEBX.va.dword_vt[20] );
+			mov( eax, symEBX.va.dword_vt[24] );
+			mov( eax, symEBX.va.dword_vt[28] );
+			mov( attrECX.numFields, eax );
+			mov( eax, symEBX.va.numElements );
+			mov( attrECX.symType, eax );
+			mov( eax, symEBX.va.symType );
+			mov( attrECX.pType, al );
+			mov( al, symEBX.va.pType );
+			mov( attrECX.symClass, al );
+			mov( al, symEBX.va.symClass );
+			
+				
+		case( XCset_pt )
+		
+			// For the XCset primitive type, we've got to copy
+			// 32 bytes.		
+		
+			mov( attrECX.dword_vt[0], eax );
+			mov( eax, symEBX.va.dword_vt[0] );
+			mov( attrECX.dword_vt[4], eax );
+			mov( eax, symEBX.va.dword_vt[4] );
+			mov( attrECX.dword_vt[8], eax );
+			mov( eax, symEBX.va.dword_vt[8] );
+			mov( attrECX.dword_vt[12], eax );
+			mov( eax, symEBX.va.dword_vt[12] );
+			mov( attrECX.dword_vt[16], eax );
+			mov( eax, symEBX.va.dword_vt[16] );
+			mov( attrECX.dword_vt[20], eax );
+			mov( eax, symEBX.va.dword_vt[20] );
+			mov( attrECX.dword_vt[24], eax );
+			mov( eax, symEBX.va.dword_vt[24] );
+			mov( attrECX.dword_vt[28], eax );
+			mov( eax, symEBX.va.dword_vt[28] );
+
+			mov( attrECX.numFields, eax );
+			mov( eax, symEBX.va.numElements );
+			mov( attrECX.symType, eax );
+			mov( eax, symEBX.va.symType );
+			mov( attrECX.pType, al );
+			mov( al, symEBX.va.pType );
+			mov( attrECX.symClass, al );
+			mov( al, symEBX.va.symClass );			 
+		
+		case( Array_pt )
+		
+			// For an array object, all we've got to do is
+			// copy the arrayValues_vt pointer:
+			
+			mov( attrECX.arrayValues_vt, eax );
+			mov( eax, symEBX.va.arrayValues_vt );
+
+			mov( attrECX.numElements, eax );
+			mov( eax, symEBX.va.numElements );
+			mov( attrECX.symType, eax );
+			mov( eax, symEBX.va.symType );
+			mov( attrECX.pType, al );
+			mov( al, symEBX.va.pType );
+			mov( attrECX.symClass, al );
+			mov( al, symEBX.va.symClass );			 
+		
+		
+		case( Record_pt, Union_pt )
+
+			// For records and unions, we just need to copy the
+			// fieldValues_vt, curField_vt, fieldIndex_vt, and
+			// numFields values across:
+
+			mov( attrECX.fieldValues_vt, eax );
+			mov( eax, symEBX.va.fieldValues_vt );
+			mov( attrECX.curField_vt, eax );
+			mov( eax, symEBX.va.curField_vt );
+
+			mov( attrECX.numFields, eax );
+			mov( eax, symEBX.va.numFields );
+			mov( attrECX.symType, eax );
+			mov( eax, symEBX.va.symType );
+			mov( attrECX.pType, al );
+			mov( al, symEBX.va.pType );
+			mov( attrECX.symClass, al );
+			mov( al, symEBX.va.symClass );			 
+
+		case( Pointer_pt, Procptr_pt )
+
+			// For pointer constants, we need to copy the
+			// segValue, basePtrConst, minusThisAdrs, and
+			// plusThisOffset fields across:
+
+			mov( attrECX.p.dispBaseAdrs, eax );
+			mov( eax, symEBX.va.p.dispBaseAdrs );
+			mov( attrECX.p.dispMinusAdrs, eax );
+			mov( eax, symEBX.va.p.dispMinusAdrs );
+			mov( attrECX.p.constant, eax );
+			mov( eax, symEBX.va.p.constant );
+			mov( attrECX.p.constant[4], eax );
+			mov( eax, symEBX.va.p.constant[4] );
+			mov( attrECX.numFields, eax );
+			mov( eax, symEBX.va.numElements );
+			mov( attrECX.symType, eax );
+			mov( eax, symEBX.va.symType );
+			mov( attrECX.pType, al );
+			mov( al, symEBX.va.pType );
+			mov( attrECX.symClass, al );
+			mov( al, symEBX.va.symClass );			 
+
+
+		case( Deferred_pt )
+
+			// For a deferred type, we need to get the base
+			// type and use that for the copy:
+
+			push( ebx );
+			getBaseIsoType( [ebx] );
+			movzx( symEBX.pType, eax );
+			copyValToSym( eax, [ebx], [ecx] );
+			pop( ebx );
+			
+
+		default
+		
+			HLAerror( "HLA Internal Error (copyValToSym)" nl );
+
+	endswitch;
+	ret();
+	
+end copyValToSym;
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// The following inserts a LABEL symbol table entry.
+//
+//	symbol-		Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Symbol name in lower case. This must also be a unique
+//				string.
+//
+//	symNode-	Pointer to symbol table entry for this symbol. NULL if the
+//				symbol is undefined.
+//
+//	equate-		Pointer to label we're equated to (NULL if this is not
+//				an equate).
+//
+//	externName- External name if this is an external or public symbol. 
+//				NULL if no external name is required.
+//
+//	address-	Address of the intermediate code associated with this label.
+//				This field contains zero if this is an equated label and the
+//				equate has yet to be satisfied.
+//
+//	owner-		This is a pointer to the object (procedure, namespace, etc.)
+//				whose sub-symbol table will hold this label symbol.  If this
+//				field contains NULL, then enterLabel will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterLabel" )
+procedure enterLabel
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		equate		:symNodePtr_t;
+		externName	:string;
+		address		:dword;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);
+		
+begin enterLabel;
+
+	push( ebx );
+	push( ecx );
+	
+	mov( symNode, eax );
+	if( eax <> NULL) then
+	
+		mov( (type symNode_t [eax]).lexLevel, ebx );
+		if( ebx = curLexLevel ) then
+	
+			HLAerror( "Duplicate symbol <<", symbol, ">>" nl );
+			strfree( symbol );
+			strfree( lcName );
+			pop( ecx );
+			pop( ebx );
+			exit enterLabel;
+			
+		endif;
+		
+	else
+	
+		// Okay, this symbol isn't defined yet.  So enter it into
+		// the symbol table, linking off the pointer whose address
+		// LEAF holds.  Also, link this symbol to the end of the
+		// current owner's linear list.
+		
+		safe_malloc( @size( symNode_t ) );
+		mov( leaf, ebx );
+		canAccess( [ebx] );
+		mov( eax, [ebx] );
+		
+		mov( owner, ebx );
+		canAccess( [ebx] );
+		mov( symEBX.lastLinear, ecx ); 
+		if( ecx <> NULL ) then
+		
+			mov( eax, (type symNode_t [ecx]).next );
+			
+		else
+		
+			mov( eax, symEBX.linearSyms );
+			
+		endif;
+		mov( eax, symEBX.lastLinear );
+		mov( eax, ebx );
+		
+		// Construct the symbol table entry:
+		
+		mov( NULL, symEBX.left );
+		mov( NULL, symEBX.right );
+		mov( NULL, symEBX.next );
+		
+		mov( symbol, eax );
+		mov( eax, symEBX.trueName );
+		mov( lcName, eax );
+		mov( eax, symEBX.lcName );
+
+		// If this label is equated to another label,
+		// add it to the list of equates for that other label:
+		
+		mov( equate, eax );
+		mov( eax, symEBX.equateLabel );
+		mov( eax, symEBX.equateList ); 
+		if( eax <> NULL ) then
+
+			mov( (type symNode_t [eax]).equateList, ecx );
+			mov( ecx, symEBX.equateList );
+			mov( ebx, (type symNode_t [eax]).equateList );
+
+		endif;
+		xor( eax, eax );
+		mov( eax, symEBX.localHash );
+		mov( eax, symEBX.seg );
+		mov( eax, symEBX.segList );
+		mov( eax, symEBX.lastLinear );
+
+		mov( owner, eax );
+		mov( eax, symEBX.owner );
+		
+		mov( curLexLevel, eax );
+		mov( eax, symEBX.lexLevel );
+
+		mov( Label_pt, symEBX.pType );
+		mov( Label_ct, symEBX.symClass );
+		mov( false, symEBX.isExternal );
+		mov( false, symEBX.isPublic );
+		mov( false, symEBX.isReferenced );
+		mov( false, symEBX.isForward );
+		mov( false, symEBX.isPrivate );
+		mov( notp_pc, symEBX.pClass );
+		mov( _none, symEBX.inReg );
+
+		mov( 0, symEBX.offset );
+		mov( -1, symEBX.COFFSymIndex );
+		mov( 0, symEBX.sectionNum );
+
+		mov( externName, eax );
+		mov( eax, symEBX.externName );
+
+		mov( address, eax );
+		mov( eax, symEBX.address );
+		
+		mov( ebx, eax );	// Return ptr to symbol table entry here.
+	
+	endif;
+	pop( ecx );
+	pop( ebx );
+
+end enterLabel;
+ 
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+// 
+// The following inserts a CONST symbol table entry.
+//
+//	symbol-		
+//		Symbol name to insert into the symbol table.
+//		This symbol must be unique on the heap if the symbol is not yet
+//		defined.
+//
+//	lcName-
+//		Lowercase version of the name.  Must be unique on the heap if
+//		this symbol isn't already defined.
+//
+//	symNode-
+//		Pointer to symbol table entry (if defined), NULL if undefined.
+//
+//	constVal-	
+//		Value and type to associate with this symbol.
+//
+//	owner-		
+//		This is a pointer to the object (procedure, namespace, etc.)
+//		whose sub-symbol table will hold this CONST symbol.  If this
+//		field contains NULL, then enterCONST will insert the symbol
+//		in the "currently open" symbol table.
+//
+//	leaf-
+//		This is a pointer to the left or right pointer field of the
+//		symbol table entry that we're to link this new symbol from.
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterConst" )
+procedure enterConst
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);
+			
+begin enterConst;
+
+	push( ebx );
+	push( ecx );
+	
+	mov( symNode, eax );
+	if( eax <> NULL) then
+	
+		mov( symEAX.lexLevel, ebx );
+		if( ebx = curLexLevel ) then
+	
+			// Defensive code, error handled in parseConsts
+			HLAerror( "Duplicate symbol <<", symbol, ">>" nl );
+			strfree( symbol );
+			strfree( lcName );
+			pop( ecx );
+			pop( ebx );
+			exit enterConst;
+			
+		endif;
+		
+	else
+	
+		// Okay, this symbol isn't defined yet.  So enter it into
+		// the symbol table, linking off the pointer whose address
+		// LEAF holds.  Also, link this symbol to the end of the
+		// current owner's linear list.
+		
+		safe_malloc( @size( symNode_t ) );
+		mov( leaf, ebx );
+		canAccess( [ebx] );
+		mov( eax, [ebx] );
+		
+		mov( owner, ebx );
+		canAccess( [ebx] );
+		mov( symEBX.lastLinear, ecx ); 
+		if( ecx <> NULL ) then
+		
+			mov( eax, (type symNode_t [ecx]).next );
+			
+		else
+		
+			mov( eax, symEBX.linearSyms );
+			
+		endif;
+		mov( eax, symEBX.lastLinear );
+		mov( eax, ebx );
+		
+		// Construct the symbol table entry:
+		
+		mov( NULL, symEBX.left );
+		mov( NULL, symEBX.right );
+		mov( NULL, symEBX.next );
+		
+		mov( symbol, eax );
+		mov( eax, symEBX.trueName );
+		mov( lcName, eax );
+		mov( eax, symEBX.lcName );
+		
+		mov( symType, eax );
+		canAccess( [eax] );
+		mov( eax, symEBX.symType );
+		mov
+		( 
+			(type symNode_t [eax]).objectSize, 
+			symEBX.objectSize 
+		);
+		mov( (type symNode_t [eax]).pType, al );
+		mov( al, symEBX.pType );
+		
+		xor( eax, eax );
+		mov( eax, symEBX.seg );
+		mov( eax, symEBX.segList );
+		mov( eax, symEBX.localHash );
+		mov( eax, symEBX.lastLinear );
+		
+		mov( owner, eax );
+		mov( eax, symEBX.owner );
+		
+		mov( curLexLevel, eax );
+		mov( eax, symEBX.lexLevel );
+
+		mov( Constant_ct, symEBX.symClass );
+		mov( false, symEBX.isExternal );
+		mov( false, symEBX.isPublic );
+		mov( false, symEBX.isReferenced );
+		mov( false, symEBX.isForward );
+		mov( false, symEBX.isPrivate );
+		mov( notp_pc, symEBX.pClass );
+		mov( _none, symEBX.inReg );
+		mov( NULL, symEBX.externName );
+		mov( 0, symEBX.offset );
+		mov( -1, symEBX.COFFSymIndex );
+		mov( 0, symEBX.sectionNum );
+
+		
+		mov( constVal, ecx );
+		canAccess( [ecx] );
+		movzx( attrECX.pType, eax );
+		copyValToSym( eax, [ebx], attrECX );
+		mov( ebx, eax );	// Return ptr to symbol table entry here.
+	
+	endif;
+	pop( ecx );
+	pop( ebx );
+	
+end enterConst;
+
+
+#if( false )
+//proc( "enterNewConst" )
+procedure enterNewConst
+(
+		symbol		:string;
+		lcName		:string;
+		hashValue	:dword;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t
+);
+begin enterNewConst;
+
+	push( ebx );
+	lookupLocal( symbol, lcName );
+	enterConst
+	(
+		symbol,
+		lcName,
+		symNode,
+		symType,
+		constVal,
+		owner,
+		[ebx]
+	);
+	pop( ebx );
+
+end enterNewConst;
+#endif
+			
+
+ 
+
+//////////////////////////////////////////////////////////////////////////////
+// 
+// The following inserts a VAL symbol table entry.
+//
+//	symbol-		
+//		Symbol name to insert into the symbol table.
+//		This symbol must be unique on the heap if the symbol is not yet
+//		defined.
+//
+//	lcName-
+//		Lowercase version of the name.  Must be unique on the heap if
+//		this symbol isn't already defined.
+//
+//	symNode-
+//		Pointer to symbol table entry (if defined), NULL if undefined.
+//
+//	constVal-	
+//		Value and type to associate with this symbol.
+//
+//	owner-		
+//		This is a pointer to the object (procedure, namespace, etc.)
+//		whose sub-symbol table will hold this VAL symbol.  If this
+//		field contains NULL, then enterVAL will insert the symbol
+//		in the "currently open" symbol table.
+//
+//	leaf-
+//		This is a pointer to the left or right pointer field of the
+//		symbol table entry that we're to link this new symbol from.
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+
+//proc( "enterVal" )
+procedure enterVal
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+begin enterVal;
+
+	push( ebx );
+	push( ecx );
+
+	mov( symNode, eax );
+	if( eax = NULL ) then
+	
+		// Call enterConst to do the dirty work and then patch the field
+		// that is different on return:
+
+		enterConst
+		( 
+			symbol, 
+			lcName, 
+			symNode, 
+			symType, 
+			constVal, 
+			owner, 
+			#{ push( leaf ); }#
+		);
+		mov( Value_ct, symEAX.symClass );
+		
+	else
+
+		// See if the symbol is defined locally or globally. For global
+		// symbols, create a new symbol. 
+
+		mov( symEAX.lexLevel, ecx );
+		if( ecx <> curLexLevel ) then // It's a global symbol
+
+			enterConst
+			( 
+				symbol, 
+				lcName, 
+				symNode, 
+				symType, 
+				constVal, 
+				owner, 
+				#{ push( leaf ); }#
+			);
+			mov( Value_ct, symEAX.symClass );
+
+		else // It's a local symbol
+
+			if( symEAX.symClass = Value_ct ) then
+
+				// If the symbol is already defined locally, 
+				// then just set its value
+
+				freeAttr( symEAX.va );
+				mov( eax, ebx );
+				mov( constVal, ecx );
+				canAccess( [ecx] );
+				movzx( (type attr_t [ecx]).pType, eax );
+				copyValToSym( eax, [ebx], [ecx] );
+
+			else
+
+				// If it's defined, but it's not a Value_ct symbol,
+				// then we've got a duplicate symbol error.
+				//
+				// Defensive code, actual error handled in parseConsts
+
+				HLAerror( "Duplicate symbol <<", symbol, ">>" nl );
+
+			endif;
+
+			// Free the strings, because we don't use them when the
+			// symbol already exists.
+
+			strfree( symbol );
+			strfree( lcName );
+
+		endif;
+
+	endif;
+
+	pop( ecx );
+	pop( ebx );
+
+end enterVal;
+
+//proc( "enterNewVal" )
+procedure enterNewVal
+(
+		symbol		:string;
+		lcName		:string;
+		hashValue	:dword;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t
+);
+begin enterNewVal;
+
+	push( ebx );
+	lookupLocal( symbol, lcName, hashValue );
+	enterVal
+	(
+		symbol,
+		lcName,
+		NULL,
+		symType,
+		constVal,
+		owner,
+		[ebx]
+	);
+	pop( ebx );
+
+end enterNewVal;		
+
+
+ 
+
+
+// The following processes symbols associated with the "?" operator.
+// It is quite similar to enterVal except it will change the value
+// of a global symbol if it cannot find a copy of the symbol in the
+// current local symbol table.  If no copy of the symbol is visible
+// to this function, then this function behaves just like enterVal.
+
+//proc( "setVal" )
+procedure setVal
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+begin setVal;
+
+	push( ebx );
+	push( ecx );
+
+	mov( symNode, eax );
+	if( eax = NULL ) then	// The symbol is not yet defined.
+	
+		// Call enterConst to do the dirty work and then patch the field
+		// that is different on return:
+
+		enterConst
+		( 
+			symbol, 
+			lcName, 
+			symNode, 
+			symType, 
+			constVal, 
+			owner, 
+			#{ push( leaf ); }#
+		);
+		mov( Value_ct, symEAX.symClass );
+		
+	else
+
+		// The symbol is already defined. Regardless of whether it's
+		// local or global, we're going to set that symbol's value if
+		// this is a Value_ct object. 
+
+
+		if( symEAX.symClass = Value_ct ) then
+
+			// If the symbol is already defined, 
+			// then just set its value
+
+			freeAttr( symEAX.va );
+			mov( eax, ebx );
+			mov( constVal, ecx );
+			canAccess( [ecx] );
+			movzx( (type attr_t [ecx]).pType, eax );
+			copyValToSym( eax, [ebx], [ecx] );
+			mov( symNode, ebx ); 
+			mov( symType, eax );
+			mov( eax, symEBX.symType );
+			mov( symEAX.pType, al );
+			mov( al, symEBX.pType );
+			mov( ebx, eax );		// Return pointer to symbol here.
+
+		else
+
+
+			// If it's defined, but it's not a Value_ct symbol,
+			// then we've got a duplicate symbol error.
+			//
+			// Defensive code, actual error handled in parseConsts
+
+			HLAerror( "Duplicate symbol <<", symbol, ">>" nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+
+
+	endif;
+
+	pop( ecx );
+	pop( ebx );
+end setVal;
+
+
+
+ 
+//////////////////////////////////////////////////////////////////////////////
+//
+// enterType-
+//
+// The following inserts a TYPE symbol table entry.  This function assumes
+// that the caller has called lookupLocal and has passed in the address
+// returned in the symNode parameter. This will be non-NULL if there
+// is a duplicate symbol error.
+//
+//	symbol-		
+//		Symbol name to insert into the symbol table.
+//		This symbol must be unique on the heap if the symbol is not yet
+//		defined.
+//
+//	lcName-
+//		Lowercase version of the name.  Must be unique on the heap if
+//		this symbol isn't already defined.
+//
+//	symNode-
+//		Pointer to symbol table entry (if defined), NULL if undefined.
+//
+//	pType-		
+//		Primitive type value associated with this type symbol.
+//
+//	theType-	
+//		symType, baseType, or inhType value associated with this
+//		type symbol.
+//
+//	owner-		
+//		This is a pointer to the object (procedure, namespace, etc.)
+//		whose sub-symbol table will hold this TYPE symbol.  If this
+//		field contains NULL, then enterTYPE will insert the symbol
+//		in the "currently open" symbol table.
+//
+//	leaf-
+//		This is a pointer to the left or right pointer field of the
+//		symbol table entry that we're to link this new symbol from.
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.  Note that it is the caller's responsibility to fill in the
+// fields for array, record, union, class, and procedure/iterator/method
+// types.
+
+//proc( "enterType" )
+procedure enterType
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		theType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+begin enterType;
+
+
+	push( ebx );
+	push( ecx );
+	
+	if( symNode <> NULL) then
+	
+		// Defensive code, actual error handled in parseTypes
+		HLAerror( "Duplicate symbol <<", symbol, ">>" nl );
+		strfree( symbol );
+		strfree( lcName );
+		pop( ecx );
+		pop( ebx );
+		exit enterType;
+			
+	endif;
+	
+	// Okay, this symbol isn't defined yet.  So enter it into
+	// the symbol table, linking off the pointer whose address
+	// EBX holds.  Also, link this symbol to the end of the
+	// current owner's linear list.
+	
+	malloc( @size( symNode_t ) );
+	mov( leaf, ebx );
+	canAccess( [ebx] );
+	mov( eax, [ebx] );
+	
+	mov( owner, ebx );
+	canAccess( [ebx] );
+	mov( symEBX.lastLinear, ecx ); 
+	if( ecx <> NULL ) then
+	
+		mov( eax, (type symNode_t [ecx]).next );
+		
+	else
+	
+		mov( eax, symEBX.linearSyms );
+		
+	endif;
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ebx );
+	
+	
+	// Construct the symbol table entry:
+	
+	xor( eax, eax );
+	mov( eax, symEBX.left );
+	mov( eax, symEBX.right );
+	mov( eax, symEBX.next );
+	mov( eax, symEBX.seg );
+	mov( eax, symEBX.segList );
+	mov( eax, symEBX.lastLinear );
+	mov( eax, symEBX.equateList );
+	
+	mov( symbol, eax );
+	mov( eax, symEBX.trueName );
+	mov( lcName, eax );
+	mov( eax, symEBX.lcName );
+	
+	mov( theType, eax );
+	mov( eax, symEBX.symType );
+	if( eax <> NULL ) then
+	
+		mov( symEAX.localHash, ecx );
+		mov( ecx, symEBX.localHash );
+		mov( symEAX.objectSize, eax );
+		
+	else
+	
+		// If a NULL type was passed in, then set the
+		// objectSize field to zero.
+		
+		xor( eax, eax );
+		mov( eax, symEBX.localHash );
+		
+	endif;
+	mov( eax, symEBX.objectSize );
+	
+	mov( pType, al );
+	mov( al, symEBX.pType );
+		
+	mov( owner, eax );
+	mov( eax, symEBX.owner );
+	
+	mov( curLexLevel, eax );
+	mov( eax, symEBX.lexLevel );
+
+	mov( Type_ct, symEBX.symClass );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( notp_pc, symEBX.pClass );
+	mov( NULL, symEBX.externName );
+	mov( 0, symEBX.offset );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+
+	
+	mov( ebx, eax );	// Return ptr to symbol table entry here.
+	
+	pop( ecx );
+	pop( ebx );
+	
+
+end enterType;
+
+
+
+ 
+
+////////////////////////////////////////////////////////////////////////////
+//
+// enterVar-
+//
+// The following inserts a VAR symbol table entry. This routine assumes that
+// the symbol is *not* already in the local symbol table.
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	pType-		Primitive type value associated with this var symbol.
+//
+//	symType-	Type of this VAR object.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this VAR symbol.  If this
+//				field contains NULL, then enterVAR will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	offset-		Offset of the variable in the activation record to which
+//				it belongs.
+//
+//	pClass-		Parameter passing classification.  Should be "notp_pc" if
+//				this isn't a parameter object.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterVar" )
+procedure enterVar
+(
+		trueName	:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		offset		:int32;
+		pClass		:parmClass_t;
+	var	leaf		:symNodePtr_t
+);	
+		
+begin enterVar;
+
+	push( ebx );
+	push( ecx );
+	
+	if( symNode <> NULL) then
+	
+		// Defensive code, actual error handled in parseVars
+		HLAerror( "Duplicate symbol <<", trueName, ">>" nl );
+		strfree( trueName );
+		strfree( lcName );
+		pop( ecx );
+		pop( ebx );
+		exit enterVar;
+			
+	endif;
+
+	// Okay, this symbol isn't defined yet.  So enter it into
+	// the symbol table, linking off the pointer whose address
+	// leaf holds.  Also, link this symbol to the end of the
+	// current owner's linear list.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( leaf, ebx );
+	canAccess( [ebx] );
+	mov( eax, [ebx] );
+	
+	mov( owner, ebx );
+	canAccess( [ebx] );
+	mov( symEBX.lastLinear, ecx );
+	if( ecx <> NULL ) then
+	
+		mov( eax, (type symNode_t [ecx]).next );
+		
+	else
+	
+		mov( eax, symEBX.linearSyms );
+		
+	endif;
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ebx );
+	
+	// Construct the symbol table entry:
+	
+	mov( NULL, symEBX.left );
+	mov( NULL, symEBX.right );
+	mov( NULL, symEBX.next );
+	
+	mov( trueName, eax );
+	mov( eax, symEBX.trueName );
+	mov( lcName, eax );
+	mov( eax, symEBX.lcName );
+	
+	mov( symType, eax );
+	mov( eax, symEBX.symType );
+
+	canAccess( [eax] );
+	if( pType = Pointer_pt ) then
+	
+		// Pointers are always four bytes, regardless of
+		// the base type.
+		
+		mov( 4, eax );
+		
+	else
+	
+		mov( (type symNode_t [eax]).objectSize, eax );
+		
+	endif;
+	mov( eax, symEBX.objectSize );
+	
+	mov( pType, al );
+	mov( al, symEBX.pType );
+	mov( symType, eax );
+	mov( symEAX.localHash, eax );
+	mov( eax, symEBX.localHash );
+	
+	xor( eax, eax );
+	mov( eax, symEBX.seg );
+	mov( eax, symEBX.segList );
+	mov( eax, symEBX.lastLinear );
+	mov( eax, symEBX.equateList );
+	
+	mov( owner, eax );
+	mov( eax, symEBX.owner );
+	
+	mov( curLexLevel, eax );
+	mov( eax, symEBX.lexLevel );
+
+	mov( Var_ct, symEBX.symClass );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( notp_pc, symEBX.pClass );
+	mov( NULL, symEBX.externName );
+	
+	mov( offset, eax );
+	mov( eax, symEBX.offset );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+
+	
+	mov( ebx, eax );	// Return ptr to symbol table entry here.
+
+	pop( ecx );
+	pop( ebx );
+
+end enterVar;
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+// 
+// The following inserts static/readonly/storage symbol table entries.
+//
+// enterStaticObject-
+//
+//	Enters a static variable into the symbol table.
+//	This is a support routine for enterStatic, enterStorage, enterSegment,
+//	and enterReadonly
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as symbol,
+//				even if the external and internal names are the same.
+//
+//	symNode-	Pointer to the symbol table entry for this symbol (NULL
+//				if it is not currently defined).
+//
+//	pType-		Primitive type value associated with this var symbol.
+//
+//	symType-	Type of this STATIC object.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this STATIC symbol.  If this
+//				field contains NULL, then enterSTATIC will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	address-	Address of the intermediate code record associated with
+//				this variable.
+//
+//	va-			Initial value associated with this symbol (static and readonly
+//				objects only).  Static variable may pass NULL in this
+//				parameter for uninitialized variables.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterStaticObject" )
+procedure enterStaticObject
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+	var	va			:attr_t;
+		leaf		:symNodePtr_t
+);
+		
+begin enterStaticObject;
+
+	push( ebx );
+	push( ecx );
+
+	mov( symNode, eax );
+	if( eax <> NULL) then
+	
+		mov( (type symNode_t [eax]).lexLevel, ebx );
+		if( ebx = curLexLevel ) then
+	
+			// Defensive code, actual error handled in parseStatic
+			HLAerror( "Duplicate symbol <<", trueName, ">>" nl );
+			strfree( trueName );
+			strfree( lcName );
+			mov( NULL, eax );	// Note failure to enter symbol.
+			pop( ecx );
+			pop( ebx );
+			exit enterStaticObject;
+			
+		endif;
+		
+		// The "found" symbol was not a local symbol. The following
+		// call to lookupLocal will always return NULL, we call it
+		// in order to get the leaf address into EBX (replacing the
+		// leaf address passed in ).
+		
+		lookupLocal( trueName, lcName, hashValue );
+		mov( ebx, leaf );
+		
+	endif;
+
+	// Okay, this symbol isn't defined yet.  So enter it into
+	// the symbol table, linking off the pointer whose address
+	// leaf holds.  Also, link this symbol to the end of the
+	// current owner's linear list.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( leaf, ebx );
+	canAccess( [ebx] );
+	mov( eax, [ebx] );
+	
+	mov( owner, ebx );
+	if( ebx = NULL ) then
+
+		mov( curHashTable, ebx );
+		mov( hashEBX.owner, ebx );
+		canAccess( [ebx] );
+
+	endif;
+	mov( symEBX.lastLinear, ecx );
+	if( ecx <> NULL ) then
+	
+		mov( eax, (type symNode_t [ecx]).next );
+		
+	else
+	
+		mov( eax, symEBX.linearSyms );
+		
+	endif;
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ebx );
+	
+	// Construct the symbol table entry:
+	
+	mov( NULL, symEBX.left );
+	mov( NULL, symEBX.right );
+	mov( NULL, symEBX.next );
+	
+	mov( trueName, eax );
+	mov( eax, symEBX.trueName );
+	mov( lcName, eax );
+	mov( eax, symEBX.lcName );
+	mov( externName, eax );
+	mov( eax, symEBX.externName );
+	
+	mov( symType, eax );
+	canAccess( [eax] );
+	mov( eax, symEBX.symType );
+	mov( symEAX.localHash, ecx );
+	mov( ecx, symEBX.localHash );
+	
+	if( pType = Pointer_pt ) then
+	
+		// Pointers are always four bytes, regardless of
+		// the base type.
+		
+		mov( 4, eax );
+		
+	else
+	
+		mov( symEAX.objectSize, eax );
+		
+	endif;
+	mov( eax, symEBX.objectSize );
+	
+	mov( pType, al );
+	mov( al, symEBX.pType );
+		
+	mov( owner, eax );
+	mov( eax, symEBX.owner );
+	
+	mov( address, eax );
+	mov( eax, symEBX.address );
+	
+	mov( curLexLevel, eax );
+	mov( eax, symEBX.lexLevel );
+	
+	mov( NULL, symEBX.equateList );
+	
+
+	mov( Static_ct, symEBX.symClass );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( false, symEBX.isReadOnly );
+	mov( false, symEBX.isInitialized );
+	mov( false, symEBX.isVolatile );
+	mov( false, symEBX.isNoStorage );
+	mov( notp_pc, symEBX.pClass );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+	
+	mov( externName, eax );
+	mov( eax, symEBX.externName );
+
+	// If the value parameter (va) is non-null, then
+	// copy that initial data to the object:
+	
+	if( va <> NULL ) then
+		
+		mov( va, ecx );
+		canAccess( [ecx] );
+		movzx( (type attr_t [ecx]).pType, eax );
+		copyValToSym( eax, [ebx], [ecx] );
+		
+	else
+	
+		// If no supplied initialized value, clear the
+		// value field:
+		
+		push( edi );
+		mov( @size( attr_t ), ecx );
+		xor( eax, eax );
+		lea( edi, symEBX.va );
+		rep.stosb;
+		pop( edi );
+	
+		
+	endif;
+	mov( ebx, eax );	// Return ptr to symbol table entry here.
+
+	pop( ecx );
+	pop( ebx );
+
+end enterStaticObject;
+
+
+///////////////////////////////////////////////////////////////////////////////
+// 
+// The following inserts static symbol table entries.
+//
+// enterStatic-
+//
+//	Enters a static variable into the symbol table.
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as symbol,
+//				even if the external and internal names are the same.
+//
+//	symNode-	Pointer to the symbol table entry for this symbol (NULL
+//				if it is not currently defined).
+//
+//	pType-		Primitive type value associated with this var symbol.
+//
+//	symType-	Type of this STATIC object.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this STATIC symbol.  If this
+//				field contains NULL, then enterSTATIC will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	address-	Address of the intermediate code record associated with
+//				this variable.
+//
+//	theSeg-		Dummy value for compatibility with enterSegment. Value
+//				is ignored.
+//
+//	va-			Initial value associated with this symbol (static and readonly
+//				objects only).  Static variable may pass NULL in this
+//				parameter for uninitialized variables.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterStatic" )
+procedure enterStatic
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);
+		
+begin enterStatic;
+
+
+	// Let enterStaticObject do all the grunt work and
+	// then fill in the differences afterwards:
+	
+	enterStaticObject
+	( 
+		trueName, 
+		lcName, 
+		hashValue,
+		externName, 
+		symNode, 
+		pType, 
+		symType,
+		owner,
+		address, 
+		va, 
+		(type symNodePtr_t leaf)
+	);
+	if( eax <> NULL ) then
+
+		push( eax );
+		push( ebx );
+		push( ecx );
+
+		mov( dataSegment, ebx );
+		mov( ebx, symEAX.seg );
+		
+		// Create a segItem for this symbol and link it
+		// into the dataSegment list:
+
+		mov( eax, ebx );
+		safe_malloc( @size( segItem_t ));
+		mov( symbolRecord_c, segEAX.segItemType );
+		mov( NULL, segEAX.nextSegItem );	// Last entry, so NULL next ptr.
+		mov( ebx, segEAX.symPtr );			// Ptr to symbol table entry.
+		mov( lineNumber, ecx );
+		mov( ecx, segEAX.lineNumber );
+		mov( filename, ecx );
+		mov( ecx, segEAX.fileName );
+		
+		// Add the segItem record to the dataSegment list here.
+		// Note that this cannot be the first entry in the list.
+		// the first entry is always a "firstEntry_c" item, which
+		// we emit when we come across the "static" reserved word.
+		// So we don't have to worry about initializing the list here.
+
+		mov( dataSegment, ecx );			// Patch this segItem record
+		
+		canAccess( [ecx] );
+		assert( symECX.segList <> NULL );	// Sanity checks.
+		assert( symECX.endSegList <> NULL );
+
+		mov( symECX.endSegList, ebx );		// into the dataSegment list.
+		mov( eax, symECX.endSegList );		// Point dataSegment at our entry.
+		mov( ebx, segEAX.prevSegItem );		// Set current "prev link"
+		mov( eax, segEBX.nextSegItem );		// Set previous' "next link"
+
+		pop( ecx );
+		pop( ebx );
+		pop( eax );
+	
+	endif;
+
+end enterStatic;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// enterReadonly -
+//
+//	Enters a readonly variable into the symbol table.
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as symbol,
+//				even if the external and internal names are the same.
+//
+//	symNode-	Pointer to the symbol table entry for this symbol (NULL
+//				if it is not currently defined).
+//
+//	pType-		Primitive type value associated with this var symbol.
+//
+//	symType-	Type of this READONLY object.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this VAR symbol.  If this
+//				field contains NULL, then enterVAR will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	offset-		Offset of the variable in the activation record to which
+//				it belongs.
+//
+//	pClass-		Parameter passing classification.  Should be "notp_pc" if
+//				this isn't a parameter object.
+//
+//	theSeg-		Dummy value for compatibility with enterSegment. Value
+//				is ignored.
+//
+//	va-			Initial value associated with this symbol (static and readonly
+//				objects only).  Static variable may pass NULL in this
+//				parameter for uninitialized variables.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+
+
+//proc( "enterReadonly" )
+procedure enterReadonly
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);
+begin enterReadonly;
+
+	// Let enterStatic do all the grunt work and
+	// then fill in the differences afterwards:
+	
+	enterStaticObject
+	( 
+		trueName, 
+		lcName,
+		hashValue, 
+		externName, 
+		symNode, 
+		pType, 
+		symType,
+		owner,
+		address, 
+		va, 
+		(type symNodePtr_t leaf)
+	);
+	if( eax <> NULL ) then
+
+		push( eax );
+		push( ebx );
+		push( ecx );
+		
+		mov( readonlySegment, ebx );
+		mov( ebx, symEAX.seg );
+
+		// Create a segItem for this symbol and link it
+		// into the readonlySegment list:
+
+		mov( eax, ebx );
+		safe_malloc( @size( segItem_t ));
+		mov( symbolRecord_c, segEAX.segItemType );
+		mov( NULL, segEAX.nextSegItem );	// Last entry, so NULL next ptr.
+		mov( ebx, segEAX.symPtr );			// Ptr to symbol table entry.
+		mov( lineNumber, ecx );
+		mov( ecx, segEAX.lineNumber );
+		mov( filename, ecx );
+		mov( ecx, segEAX.fileName );
+		
+		// Add the segItem record to the readonlySegment list here.
+		// Note that this cannot be the first entry in the list.
+		// the first entry is always a "firstEntry_c" item, which
+		// we emit when we come across the "static" reserved word.
+		// So we don't have to worry about initializing the list here.
+
+		mov( readonlySegment, ecx );		// Patch this segItem record
+		
+		canAccess( [ecx] );
+		assert( symECX.segList <> NULL );	// Sanity checks.
+		assert( symECX.endSegList <> NULL );
+
+		mov( symECX.endSegList, ebx );		// into the dataSegment list.
+		mov( eax, symECX.endSegList );		// Point dataSegment at our entry.
+		mov( ebx, segEAX.prevSegItem );		// Set current "prev link"
+		mov( eax, segEBX.nextSegItem );		// Set previous' "next link"
+
+		pop( ecx );
+		pop( ebx );
+		pop( eax );
+		mov( true, symEAX.isReadOnly );
+	
+	endif;
+
+end enterReadonly;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+// 
+// enterStorage-
+//
+//	Enters a storage variable into the symbol table.
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as symbol,
+//				even if the external and internal names are the same.
+//
+//	symNode-	Pointer to the symbol table entry for this symbol (NULL
+//				if it is not currently defined).
+//
+//	pType-		Primitive type value associated with this STORAGE symbol.
+//
+//	symType-	Type of this STORAGE object.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this STORAGE symbol.  If this
+//				field contains NULL, then enterSTORAGE will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	address-	Address of the intermediate code record associated with
+//				this variable.
+//
+//	theSeg-		Dummy value for compatibility with enterSegment. Value
+//				is ignored.
+//
+//	va-			Dummy value for compatibility with enterStatic and
+//				enterReadonly. Must contain NULL.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+
+
+//proc( "enterStorage" )
+procedure enterStorage
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);	
+begin enterStorage;
+
+	assert( va = NULL );
+
+	// Let enterStatic do all the grunt work and
+	// then fill in the differences afterwards:
+	
+	enterStaticObject
+	( 
+		trueName, 
+		lcName,
+		hashValue, 
+		externName, 
+		symNode, 
+		pType,
+		symType, 
+		owner,
+		address, 
+		NULL, 
+		(type symNodePtr_t leaf)
+	);
+	if( eax <> NULL ) then
+
+		push( eax );
+		push( ebx );
+		push( ecx );
+		
+		mov( bssSegment, ebx );
+		mov( ebx, symEAX.seg );
+
+		// Create a segItem for this symbol and link it
+		// into the dataSegment list:
+
+		mov( eax, ebx );
+		safe_malloc( @size( segItem_t ));
+		mov( symbolRecord_c, segEAX.segItemType );
+		mov( NULL, segEAX.nextSegItem );	// Last entry, so NULL next ptr.
+		mov( ebx, segEAX.symPtr );			// Ptr to symbol table entry.
+		mov( lineNumber, ecx );
+		mov( ecx, segEAX.lineNumber );
+		mov( filename, ecx );
+		mov( ecx, segEAX.fileName );
+		
+		// Add the segItem record to the bssSegment list here.
+		// Note that this cannot be the first entry in the list.
+		// the first entry is always a "firstEntry_c" item, which
+		// we emit when we come across the "static" reserved word.
+		// So we don't have to worry about initializing the list here.
+
+		mov( bssSegment, ecx );				// Patch this segItem record
+		
+		canAccess( [ecx] );
+		assert( symECX.segList <> NULL );	// Sanity checks.
+		assert( symECX.endSegList <> NULL );
+
+		mov( symECX.endSegList, ebx );		// into the dataSegment list.
+		mov( eax, symECX.endSegList );		// Point dataSegment at our entry.
+		mov( ebx, segEAX.prevSegItem );		// Set current "prev link"
+		mov( eax, segEBX.nextSegItem );		// Set previous' "next link"
+
+		pop( ecx );
+		pop( ebx );
+		pop( eax );
+	
+	endif;
+	
+end enterStorage;
+
+//////////////////////////////////////////////////////////////////////////////
+// 
+// enterSegment-
+//
+//	Enters a SEGMENT variable into the symbol table.
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as trueName,
+//				even if the external and internal names are the same.
+//
+//	symNode-	Pointer to the symbol table entry for this symbol (NULL
+//				if it is not currently defined).
+//
+//	pType-		Primitive type value associated with this SEGMENT symbol.
+//
+//	symType-	Type of this SEGMENT object.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this SEGMENT symbol.  If this
+//				field contains NULL, then enterSEGMENT will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	address-	Address of the intermediate code record associated with
+//				this variable.
+//
+//	theSeg-		Pointer to the symbol table entry for the segment to which
+//				this variable belongs.
+//
+//	va-			Initial value associated with this symbol (static and readonly
+//				objects only).  SEGMENT variables may pass NULL in this
+//				parameter for uninitialized variables.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+
+
+//proc( "enterSegment" )
+procedure enterSegment
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);	
+begin enterSegment;
+
+	// Let enterStatic do all the grunt work and
+	// then fill in the differences afterwards:
+	
+	enterStaticObject
+	( 
+		trueName, 
+		lcName,
+		hashValue, 
+		externName, 
+		symNode, 
+		pType, 
+		symType,
+		owner,
+		address, 
+		va, 
+		(type symNodePtr_t leaf)
+	);
+	if( eax <> NULL ) then
+
+		push( ebx );
+		push( ecx );
+		push( eax );
+		
+		mov( theSeg, ebx );
+		mov( ebx, symEAX.seg );
+
+		// Create a segItem for this symbol and link it
+		// into the segment's list:
+
+		mov( eax, ebx );
+		safe_malloc( @size( segItem_t ));
+		mov( symbolRecord_c, segEAX.segItemType );
+		mov( NULL, segEAX.nextSegItem );	// Last entry, so NULL next ptr.
+		mov( ebx, segEAX.symPtr );			// Ptr to symbol table entry.
+		mov( lineNumber, ecx );
+		mov( ecx, segEAX.lineNumber );
+		mov( filename, ecx );
+		mov( ecx, segEAX.fileName );
+		
+		// Add the segItem record to the theSeg's list here.
+		// Note that this cannot be the first entry in the list.
+		// the first entry is always a "firstEntry_c" item, which
+		// we emit when we come across the "static" reserved word.
+		// So we don't have to worry about initializing the list here.
+
+		mov( theSeg, ecx );					// Patch this segItem record
+		
+		canAccess( [ecx] );
+		assert( symECX.segList <> NULL );	// Sanity checks.
+		assert( symECX.endSegList <> NULL );
+
+		mov( symECX.endSegList, ebx );		// into the dataSegment list.
+		mov( eax, symECX.endSegList );		// Point dataSegment at our entry.
+		mov( ebx, segEAX.prevSegItem );		// Set current "prev link"
+		mov( eax, segEBX.nextSegItem );		// Set previous' "next link"
+
+		pop( eax );							// Retrieve ptr to original sym.
+
+		// If the segment is a read-only segment, flag
+		// this in the variable:
+
+		mov( symECX.isReadOnly, bl );
+		mov( bl, symEAX.isReadOnly );
+
+		pop( ecx );
+		pop( ebx );
+	
+	endif;
+
+end enterSegment;
+
+
+
+
+ 
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// enterSegmentID-
+//
+// This procedure inserts segment IDs into the symbol table. Note that if
+// the segment ID already exists, even at a lower lex level, this procedure
+// quietly ignores the request to enter that symbol and only checks to see
+// if the attributes match the existing declaration. Segments are always
+// global objects (lex level 0).
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as symbol,
+//				even if the external and internal names are the same.
+//
+//	isReadOnly-	True if this is a read-only segment.
+//
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterSegmentID" )
+procedure enterSegmentID
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		isReadOnly	:boolean
+);
+		
+begin enterSegmentID;
+
+	push( ebx );
+	push( ecx );
+	
+	// Force entry at lex level zero:
+	
+	push( curOwner );
+	push( curHashTable );
+	mov( &rootNode, curOwner );
+	mov( &rootHashTable, curHashTable );
+	
+	lookupLocal( trueName, lcName, hashValue );
+	
+	if( eax == NULL ) then
+	
+		// Okay, this symbol isn't defined yet.  So enter it into
+		// the symbol table, linking off the pointer whose address
+		// leaf holds.  Also, link this symbol to the end of the
+		// current owner's linear list.
+		
+		safe_malloc( @size( symNode_t ) );
+		canAccess( [ebx] );
+		mov( eax, [ebx] );
+		
+		mov( &rootNode, ebx );
+		mov( symEBX.lastLinear, ecx );
+		if( ecx <> NULL ) then
+		
+			mov( eax, (type symNode_t [ecx]).next );
+			
+		else
+		
+			mov( eax, symEBX.linearSyms );
+			
+		endif;
+		mov( eax, symEBX.lastLinear );
+
+		mov( eax, ebx );
+		
+		// Construct the symbol table entry:
+		
+		mov( NULL, symEBX.left );
+		mov( NULL, symEBX.right );
+		mov( NULL, symEBX.next );
+		
+		mov( trueName, eax );
+		mov( eax, symEBX.trueName );
+		mov( lcName, eax );
+		mov( eax, symEBX.lcName );
+		mov( externName, eax );
+		mov( eax, symEBX.externName );
+		mov( NULL, symEBX.symType );
+		mov( 0, symEBX.objectSize );
+		mov( Segment_pt, symEBX.pType );
+		mov( NULL, symEBX.seg );
+		mov( &rootNode, symEBX.owner );
+		mov( 0, symEBX.lexLevel );
+		mov( Segment_ct, symEBX.symClass );
+		mov( false, symEBX.isExternal );
+		mov( false, symEBX.isPublic );
+		mov( false, symEBX.isReferenced );
+		mov( false, symEBX.isForward );
+		mov( isReadOnly, al );
+		mov( al, symEBX.isReadOnly );
+		mov( false, symEBX.isPrivate );
+		mov( notp_pc, symEBX.pClass );
+		mov( externName, eax );
+		mov( eax, symEBX.externName );
+		mov( 0, symEBX.offset );
+		mov( -1, symEBX.COFFSymIndex );
+		mov( 0, symEBX.sectionNum );
+		
+	else
+	
+		// Symbol already exists at lex level zero. Let's be sure
+		// that it's a segment declaration:
+		
+		mov( eax, ebx );
+		if( symEBX.symClass <> Segment_ct || symEBX.pType <> Segment_pt ) then
+		
+			// Defensive code, error handled in parseStatic
+			HLAerror
+			( 
+				"Symbol is already defined at global level, but not as segment"
+				nl
+			);
+			
+		endif;
+		
+	endif;
+	mov( ebx, eax );	// Return ptr to symbol table entry here.
+
+	pop( curHashTable );
+	pop( curOwner );
+	pop( ecx );
+	pop( ebx );
+
+end enterSegmentID;
+
+
+ 
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// enterNamespace-
+//
+// The following creates a symbol table entry for a NAMESPACE identifier.
+// Note that such entries are always forced to lex level one regardless of
+// the lex level at the point of declaration.
+//
+//	symbol-		ID for the variable.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterNamespace" )
+procedure enterNamespace
+(
+		symbol			:string;
+		lcName			:string;
+		hashValue		:dword;
+		symNode			:symNodePtr_t
+);	
+begin enterNamespace;
+
+	push( ebx );
+	push( ecx );
+	
+	// If the symbol already exists, this isn't an error if it's
+	// a namespace object;  we'll just append symbols to the end
+	// of the current namespace.  If it's not a namespace symbol,
+	// then we'll treat this as a duplicate symbol error and
+	// just return the other symbol as the symbol table entry.
+	
+	mov( symNode, eax );
+	if( eax <> NULL ) then
+	
+		if( (type symNode_t [eax]).symClass <> Namespace_ct ) then
+		
+			HLAerror( "Duplicate symbol <<", symbol, ">>" nl );
+			strfree( symbol );
+			strfree( lcName );
+
+			// We need to return something 'cause the caller
+			// is expecting a pointer to a symbol table entry.
+			// We'll return a pointer to the current symbol table.
+			
+			mov( NULL, eax );
+			pop( ecx );
+			pop( ebx );
+			exit enterNamespace;
+			
+		endif;
+		
+	endif;
+	
+	// Namespaces are only valid at lex level one, so use the
+	// root symbol table when looking up the identifier.
+	// Note that we have to look up the symbol again (even though
+	// we know it's undefined) in order to get the leaf node
+	// pointer into EBX.
+
+	lookupLocalIn( symbol, lcName, hashValue, &rootHashTable );
+	if( eax <> NULL ) then
+
+		pop( ecx );
+		pop( ebx );
+		exit enterNamespace;
+
+	endif;
+
+	// This symbol isn't defined yet.  So enter it into
+	// the symbol table, linking off the pointer whose address
+	// EBX holds.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( eax, [ebx] );
+	mov( rootNode.lastLinear, ebx ); 
+	mov( eax, symEBX.next );
+	mov( eax, rootNode.lastLinear );
+	mov( eax, ebx );
+	
+	
+	// Construct the symbol table entry:
+	
+	mov( NULL, symEBX.left );
+	mov( NULL, symEBX.right );
+	mov( NULL, symEBX.next );
+	
+	mov( symbol, eax );
+	mov( eax, symEBX.trueName );
+	mov( lcName, eax );
+	mov( eax, symEBX.lcName );
+	mov( 0, symEBX.objectSize );
+	mov( &rootNode, symEBX.owner );
+	mov( 1, symEBX.lexLevel );
+	mov( Namespace_ct, symEBX.symClass );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( notp_pc, symEBX.pClass );
+	mov( 0, symEBX.offset );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+	mov( Namespace_pt, symEBX.pType );
+	push( ebx );		// Save ptr to symbol table entry.
+
+	// Now create a hash table for this namespace. Because
+	// namespace can get rather large, we'll create a fairly
+	// good-sized hash table (see hlacompiler.hhf for the
+	// actual definition of nsHashSize; the original value was 4096).
+
+	safe_malloc( @size( symNodePtr_t) * nsHashSize + @size( hashTable_t ));
+	mov( eax, symEBX.localHash );
+	mov( ebx, hashEAX.owner );
+	push( eax );
+	push( edi );
+	push( ecx );
+	pushfd();
+	cld();
+	mov( nsHashSize, ecx );
+	lea( edi, hashEAX.hashTable );
+	xor( eax, eax );
+	rep.stosd();		// Initialize with  NULL pointers
+	popfd();
+	pop( ecx );
+	pop( edi );
+	pop( eax );
+
+	// Set the hash table mask for the Namespace hash table
+	
+	mov( nsHashMask, (type hashTable_t [eax]).mask );
+	
+	// Now create a placeholder entry so we'll have at least one
+	// node in the namespace's local symbol table (so that the
+	// linearSyms/lastLinear fields will be meaningful). Note that
+	// as the purpose of this entry is just to satisfy the linearSyms
+	// and lastLinear non-NULL requirements, we won't bother entering
+	// this symbol into the hash table we just created.
+	
+	safe_malloc( @size( symNode_t ) );
+	
+	mov( eax, symEBX.linearSyms );
+	mov( eax, symEBX.lastLinear );
+	mov( ebx, (type symNode_t [eax]).owner );
+	mov( eax, ebx );
+	
+	xor( eax, eax );
+	mov( eax, symEBX.next );
+	mov( eax, symEBX.left );
+	mov( eax, symEBX.right );
+	mov( eax, symEBX.symType );
+	mov( eax, symEBX.localHash );
+	mov( eax, symEBX.linearSyms );
+	mov( eax, symEBX.lastLinear );
+	mov( eax, symEBX.equateList );
+	mov( eax, symEBX.seg );
+	mov( eax, symEBX.segList );
+	
+	
+	str.a_cat( "@", symbol );
+	mov( eax, symEBX.trueName );
+	str.a_cat( "@", lcName );
+	mov( eax, symEBX.lcName );
+
+	mov( 0, symEBX.objectSize );
+	mov( 1, symEBX.lexLevel );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( notp_pc, symEBX.pClass );
+	mov( 0, symEBX.offset );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+	mov( Placeholder_ct, symEBX.symClass );
+	mov( Placeholder_pt, symEBX.pType );
+	
+	pop( eax ); 	// Retrieve pointer to namespace symbol table entry.
+		
+	pop( ecx );
+	pop( ebx );
+
+end enterNamespace;
+
+
+
+ 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// enterProc-
+//
+//	Enters a procedure name into the symbol table.
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	hashValue-	Hash function value for this ID.
+//
+//	externName-	NULL if this symbol is not external.  Pointer to the
+//				external name if this symbol is external.  Note that
+//				this field must not point at the same data as trueName,
+//				even if the external and internal names are the same.
+//
+//	pType-		Primitive type value associated with this var symbol.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this STATIC symbol.  If this
+//				field contains NULL, then enterSTATIC will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	baseClass-	Pointer to the base class' symbol table entry if this is
+//				a procedure belonging to some class.
+//
+//	address-	Address of the intermediate code record associated with
+//				this variable.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterProc" )
+procedure enterProc
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		pType		:pType_t;
+		owner		:symNodePtr_t;
+		baseClass	:symNodePtr_t;
+		address		:dword;
+	var	leaf		:symNodePtr_t
+);
+begin enterProc;
+
+	push( ebx );
+	push( ecx );
+
+	// Okay, this symbol isn't defined yet.  So enter it into
+	// the symbol table, linking off the pointer whose address
+	// leaf holds.  Also, link this symbol to the end of the
+	// current owner's linear list.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( leaf, ebx );
+	canAccess( [ebx] );
+	mov( eax, [ebx] );
+	
+	mov( owner, ebx );
+	if( ebx = NULL ) then
+
+		mov( curHashTable, ebx );
+		mov( hashEBX.owner, ebx );
+		canAccess( [ebx] );
+
+	endif;
+	mov( symEBX.lastLinear, ecx );
+	if( ecx <> NULL ) then
+	
+		mov( eax, (type symNode_t [ecx]).next );
+		
+	else
+	
+		mov( eax, symEBX.linearSyms );
+		
+	endif;
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ebx );
+	
+	// Construct the symbol table entry:
+	
+	mov( NULL, symEBX.left );
+	mov( NULL, symEBX.right );
+	mov( NULL, symEBX.next );
+	
+	mov( trueName, eax );
+	mov( eax, symEBX.trueName );
+	mov( lcName, eax );
+	mov( eax, symEBX.lcName );
+	mov( externName, eax );
+	mov( eax, symEBX.externName );
+	
+	mov( &procedure_ste, symEBX.symType );
+	mov( symEAX.localHash, ecx );
+	mov( ecx, symEBX.localHash );	
+	mov( 0, symEBX.objectSize );
+	
+	mov( pType, al );
+	mov( al, symEBX.pType );
+		
+	mov( owner, eax );
+	mov( eax, symEBX.owner );
+	
+	mov( address, eax );
+	mov( eax, symEBX.address );
+	
+	mov( curLexLevel, eax );
+	mov( eax, symEBX.lexLevel );
+	
+	mov( NULL, symEBX.equateList );
+	
+
+	mov( Proc_ct, symEBX.symClass );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( false, symEBX.isReadOnly );
+	mov( false, symEBX.isInitialized );
+	mov( false, symEBX.isVolatile );
+	mov( false, symEBX.isNoStorage );
+	mov( notp_pc, symEBX.pClass );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+	
+	mov( externName, eax );
+	mov( eax, symEBX.externName );
+
+	// Initialize the procedure fields with reasonable values:
+
+	mov( NULL, symEBX.cproc.returnsStr );
+	mov( baseClass, eax );
+	mov( eax, symEBX.cproc.baseClass );
+	mov( 0, symEBX.cproc.parmSize );
+	mov( 0, symEBX.cproc.localSize );
+	mov( 0, symEBX.cproc.preserves );
+	mov( pascal_cs, symEBX.cproc.callSeq );
+	
+	mov( defaultFrame, al );
+	mov( al, symEBX.cproc.hasFrame );
+	
+	mov( defaultDisplay, al );
+	mov( al, symEBX.cproc.hasDisplay );
+
+	mov( defaultStackAlign, al );
+	mov( al, symEBX.cproc.alignsStack );
+
+	mov( defaultEnter, al );
+	mov( al, symEBX.cproc.useEnter );
+
+	mov( defaultLeave, al );
+	mov( al, symEBX.cproc.useLeave );
+
+	mov( _none, symEBX.cproc.uses );
+
+
+	mov( _none, symEBX.cproc.uses );
+	mov( pascal_cs, symEBX.cproc.callSeq );
+	mov( preserveNone, symEBX.cproc.preserves );
+	mov( NULL, symEBX.cproc.returnsStr ); 
+
+
+	mov( ebx, eax );	// Return ptr to symbol table entry here.
+
+	pop( ecx );
+	pop( ebx );
+
+end enterProc;
+
+
+
+
+
+ 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// enterMacro-
+//
+//	Enters a macro name into the symbol table.
+//
+// Inputs:
+//
+//	trueName-	Symbol name to insert into the symbol table.
+//				This must be a unique string (that is, no other pointers
+//				may point at this data).
+//
+//	lcName-		Lowercase version of the name.  Must be unique on the heap if
+//				this symbol isn't already defined.
+//
+//	hashValue-	Hash function value for this ID.
+//
+//	owner-		This is a pointer to the object (procedure, class, etc.)
+//				whose sub-symbol table will hold this MACRO symbol.  If this
+//				field contains NULL, then enterMacro will insert the symbol
+//				in the "currently open" symbol table.
+//
+//	leaf-		This is a pointer to the left or right pointer field of the
+//				symbol table entry that we're to link this new symbol from.
+//
+// Returns:
+//
+//	This function returns a pointer to the symbol table entry in the EAX
+// register.
+
+//proc( "enterMacro" )
+procedure enterMacro
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		owner		:symNodePtr_t;
+		classType	:classType_t;
+	var	leaf		:symNodePtr_t
+);
+begin enterMacro;
+
+	push( ebx );
+	push( ecx );
+
+	// Okay, this symbol isn't defined yet.  So enter it into
+	// the symbol table, linking off the pointer whose address
+	// leaf holds.  Also, link this symbol to the end of the
+	// current owner's linear list.
+	
+	safe_malloc( @size( symNode_t ) );
+	mov( leaf, ebx );
+	canAccess( [ebx] );
+	mov( eax, [ebx] );
+	
+	mov( owner, ebx );
+	if( ebx = NULL ) then
+
+		mov( curHashTable, ebx );
+		mov( hashEBX.owner, ebx );
+		canAccess( [ebx] );
+
+	endif;
+	mov( symEBX.lastLinear, ecx );
+	if( ecx <> NULL ) then
+	
+		mov( eax, (type symNode_t [ecx]).next );
+		
+	else
+	
+		mov( eax, symEBX.linearSyms );
+		
+	endif;
+	mov( eax, symEBX.lastLinear );
+	mov( eax, ebx );
+	
+	// Construct the symbol table entry:
+	
+	mov( NULL, symEBX.left );
+	mov( NULL, symEBX.right );
+	mov( NULL, symEBX.next );
+	
+	mov( trueName, eax );
+	mov( eax, symEBX.trueName );
+	mov( lcName, eax );
+	mov( eax, symEBX.lcName );
+	mov( NULL, symEBX.externName );
+	
+	mov( &macro_ste, symEBX.symType );
+	mov( Macro_pt, symEBX.pType );
+	mov( symEAX.localHash, ecx );
+	mov( ecx, symEBX.localHash );	
+	mov( 0, symEBX.objectSize );
+	
+	mov( Macro_pt, symEBX.pType );
+		
+	mov( owner, eax );
+	mov( eax, symEBX.owner );
+	
+	mov( 0, symEBX.address );
+	
+	mov( curLexLevel, eax );
+	mov( eax, symEBX.lexLevel );
+	
+	mov( NULL, symEBX.equateList );
+	
+
+	mov( classType, al );
+	mov( al, symEBX.symClass );
+	mov( false, symEBX.isExternal );
+	mov( false, symEBX.isPublic );
+	mov( false, symEBX.isReferenced );
+	mov( false, symEBX.isForward );
+	mov( false, symEBX.isPrivate );
+	mov( false, symEBX.isReadOnly );
+	mov( false, symEBX.isInitialized );
+	mov( false, symEBX.isVolatile );
+	mov( false, symEBX.isNoStorage );
+	mov( notp_pc, symEBX.pClass );
+	mov( 0, symEBX.offset );
+	mov( -1, symEBX.COFFSymIndex );
+	mov( 0, symEBX.sectionNum );
+	
+	// Initialize the macro fields with reasonable values:
+	
+
+	mov( esi, symEBX.macro.textStart );	
+	mov( esi, symEBX.macro.textEnd );
+	mov( NULL, symEBX.macro.macroParms );
+	mov( NULL, symEBX.macro.locals );
+	mov( NULL, symEBX.macro.keywords );
+	mov( NULL, symEBX.macro.terminator );
+	
+
+	mov( ebx, eax );	// Return ptr to symbol table entry here.
+
+	pop( ecx );
+	pop( ebx );
+
+end enterMacro;
+
+
+end symbolTableUnit;

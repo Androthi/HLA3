@@ -1,0 +1,92 @@
+// hash.hhf-
+//
+//	Include file for the HLA compiler.
+//
+//	Note: The hash function is computed in several locations in the
+//	HLA compiler, including:
+//
+//		1. computeHash in symbol.hla
+//		2. Underscore:: in lex.hla
+//		3. CheckRW in lexrw.hla
+//		4. ComputeHashFunctionHere: in rw/rw.hla
+//
+// At the time this was written, the has function did the following
+// on each character in a reserved word or identifier:
+//
+//			mov( SpreadTable[eax], al );
+//			rol( 3, bx );
+//			xor( al, bl );
+//
+// Where EBX holds the (16-bit) hash value and AL (zero extended into EAX)
+// holds the current character from the ID/RW.
+//
+// After computing the hash value for the entire string, the program
+// produces two hash values: the 16-bit ID has value (as computed above)
+// and an eight-bit value for looking up RWs by XOR'ing BL and BH together. 
+
+
+#if( !@defined( hash_hhf ))
+?hash_hhf := true;
+
+
+	// Macro that will compute the hash table function for a string constant.
+	// Note: this must be kept in sync with the hash table function appearing
+	// in the lexRW code and other places (see the comments above).
+
+	#macro hashFunc( s ):chr,hashValue;
+
+		?hashValue :dword := 0;
+		#for( chr in s )
+
+			?hashValue := ((hashValue << 3 ) & $FFFF) | 
+							((hashValue >> 13) & $FF);
+			?chr := SpreadTable_c[ @uns32( chr ) ];
+			?hashValue := hashValue ^ @uns16( chr );
+
+		#endfor
+		hashValue
+
+	#endmacro
+
+
+static
+	SpreadTable:byte[256]; @external;
+
+const
+
+	// SpreadTable_c serves three purposes:
+	//
+	//	1. It spreads out the codes for characters
+	//		that are valid in a reserved word or identifier
+	//		(in order to help them generate better hash values)
+	//
+	//	2.	It produces case insensitivity by mapping upper
+	//		and lower case characters to the same values.
+	//
+	//	3.	It determines if a character code is legal within
+	//		an identifier or reserved word (by returning zero
+	//		entries in those positions that are not valid character
+	//		codes for IDs/RWs).	
+
+	SpreadTable_c: byte[256] :=
+		[
+			0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,		// CHR[$00..$0F]
+			0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,		// CHR[$10..$1F]
+			0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,		// CHR[$20..$2F]
+			1, 2, 4, 8, 16, 32, 64, 128, 3, 7, 		// "0".."9"
+			0,0,0,0,0,0,0,							// CHR[ $3a..$40]
+			$f,$1F,$3F,$7F,$FF,6,$c,$e,$1E,			// "A".."Z"
+			$36,$c3,$a5,$5a,$F0,$C0,$60,$70,
+			$18,$3c,$7e,$24,$66,$81,$AA,$55,77,
+			0,0,0,0,								// CHR[ $5B..$5E]
+			37,										// "_"
+			0,										// CHR[ $60 ]
+			$f,$1F,$3F,$7F,$FF,6,$c,$e,$1E,			// "a".."z"
+			$36,$c3,$a5,$5a,$F0,$C0,$60,$70,
+			$18,$3c,$7e,$24,$66,$81,$AA,$55,77,
+			0,0,0,0,0,								// CHR[ $7B..$7F ]
+
+			128 dup [0]								// CHR[ $80..$FF]
+		];
+
+#endif

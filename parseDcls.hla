@@ -1,0 +1,2097 @@
+unit parseDcls;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+	 
+
+?@nodisplay := true;
+?@noalignstack := true;									   
+
+
+
+
+
+////////////////////////////////////////////////////////
+//
+// makeLabel-
+//
+//	Creates a dummy name of the form "xxxxNNN"
+// where "xxxx" is the string passed in via 'lbl'
+// and "NNN" is the string representation of the
+// anonTypeCntr variable.  "NNN" is always unique
+// because we increment anonTypeCntr on every call.
+
+//proc( "makeLabel" )
+procedure makeLabel( lbl:string );
+static(4)
+	anonType	:str.strvar(64);
+	
+begin makeLabel;
+
+	str.put( anonType, lbl, anonTypeCntr );
+	str.a_cpy( anonType );
+	inc( anonTypeCntr );
+
+end makeLabel;
+
+
+
+
+////////////////////////////////////////////////////////
+//
+// optionalBounds-
+//
+//	This procedure checks for a token stream of the form:
+//
+//		'(' constExpr ( ',' constExpr )* ')'
+//
+// If there is a dimension list present, this code allocates
+// storage for a dimension list variable, initializes it with the
+// appropriate values, and then returns a pointer to the list
+// in the EAX register.
+
+//proc( "optionalBounds" )
+procedure optionalBounds; @noframe;
+static(4)
+	boundsCount	:uns32; 
+
+	// recursiveBounds- recursively processes the list of
+	// array bounds values.  Returns a pointer to the
+	// completed array in EAX.
+	
+	//proc( "recursiveBounds" )
+	procedure recursiveBounds; @returns( "eax" );
+	var
+		exprAttr	:attr_t;
+		
+	begin recursiveBounds;
+	
+		
+		// Okay, process the current constant expression
+		// to get the actual bounds.
+		
+		lea( eax, exprAttr );
+		constExpr( (type attr_t [eax]));
+		raiseErr( @c );
+		inc( boundsCount );
+		
+		// See if there's another array bounds:
+		
+		lex( esi );
+		if( eax = ',' ) then
+		
+			recursiveBounds();
+			
+		else
+		
+			if( eax <> ']' && eax <> ')' ) then
+		
+				HLAerror
+				( 
+					"Expected ')' at end of array dimensions "
+					"but encountered " 
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+				
+			endif;
+			
+			// Construct the array bounds record
+			// (boundsCount+1)*4 bytes
+			// Four bytes for the arity field and
+			// four bytes for each dimension value.
+			
+			mov( boundsCount, ebx );
+			xor( eax, eax );
+			lea( eax, [eax+ebx*4+4] );
+			safe_malloc( eax );
+			
+			// Save away the number of dimensions:
+			
+			mov( ebx, (type dimensions_t [eax]).arity );
+			
+		endif;
+			
+		// Save away the last dimension bound that
+		// we just processed:
+		
+		if( exprAttr.pType not in Uns8_pt..Int128_pt ) then
+		
+			HLAerror
+			( 
+				"Illegal data type for array bounds #", 
+				boundsCount, 
+				nl 
+			);
+			mov( 2, (type dword exprAttr.uns128_vt[0]) );
+		
+		elseif(#{
+			cmp( exprAttr.pType, Uns8_pt );
+			jb true;
+			cmp( exprAttr.pType, Int128_pt );
+			ja true;
+			cmp( (type dword exprAttr.uns128_vt[4]), 0 );
+			jne true;
+			cmp( (type dword exprAttr.uns128_vt[8]), 0 );
+			jne true;
+			cmp( (type dword exprAttr.uns128_vt[12]), 0 );
+			je false;
+		}#) then
+		
+			HLAerror
+			( 
+				"Dimension bound (", 
+				boundsCount, 
+				") is *way* too large"
+				nl
+			);
+			mov( 2, (type dword exprAttr.uns128_vt[0]) );
+		
+		endif;
+		
+		// Okay, it's a (semi-) valid array bounds
+		// (four bytes or less).  Return the value
+		// in the appropriate dimensions_t.dims array.
+		//
+		// Sneaky: ebx is actually one greater than
+		// we need for the index into the dims array;
+		// however, we'll use this extra index to
+		// skip over the "arity" field.
+		
+		mov( boundsCount, ebx );
+		mov( (type dword exprAttr.uns128_vt[0]), ecx );
+		mov( ecx, [eax+ebx*4] );			
+		dec( boundsCount );	
+		
+	end recursiveBounds;
+		
+begin optionalBounds;
+
+	push( ebx );
+	push( ecx );
+
+	lex( esi );
+	if( eax <> '[' && eax <> '(' ) then
+	
+		// There are no array bounds, just return.
+		
+		reuseLastTkn();
+		mov( NULL, eax );	// Return NULL since we have no array bounds.
+		
+	else
+	
+		mov( 0, boundsCount );
+		recursiveBounds();		
+						
+	endif;
+	pop( ecx );
+	pop( ebx );
+	ret();
+		
+end optionalBounds;
+
+
+
+
+///////////////////////////////////////////////////////////////////////////
+//
+// buildEnumType-
+//
+//	Parses an enum list immediately following the "ENUM" keyword.
+//	syntax:  ( id, id, id, ..., id }
+//
+//	There must be at least one ID in the list.
+//	This procedure creates an anonymous type record for the "ENUM"
+// list and returns a pointer to that new type in EAX.  It also enters
+// each of the symbols in the list into the symbol table and sets their
+// type to the new enum type.
+//
+//	Note that if the caller wishes to make this a named type rather than
+// an anonymous type, it must free the strings associated with the lcname
+// and trueName fields of the anonymous entry.  The caller is also
+// responsible for entering that entry into the symbol table (anonymous
+// entries aren't normally entered into the symbol table).
+
+//proc( "buildEnumType" )
+procedure buildEnumType( var anonType:symNode_t );
+	
+var
+	enumValue	:attr_t;
+	
+begin buildEnumType;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Set the size of this enum type to whatever the
+	// current ENUM size happens to be:
+	
+	mov( anonType, ebx );
+	mov( curEnumSize, eax );	
+	mov( eax, symEBX.objectSize );	
+
+	begin enumStuff;
+	
+		lex( esi );
+		if( eax <> '{' ) then
+		
+			HLAerror
+			( 
+				"Expected '{' token "
+				"but encountered " 
+			);
+			dumpQLexeme();
+			reuseLastTkn();
+			stc();
+			exit enumStuff;
+			
+		endif;
+		
+		// Initialize the "enumValue" variable that we will use
+		// to create the enumerated constants.
+		
+		mov( Enum_pt, cl );
+		mov( cl, enumValue.pType );
+		mov( anonType, eax );
+		mov( cl, symEAX.pType );
+		mov( &enum_ste, symEAX.symType );
+		mov( eax, enumValue.symType );
+		mov( Constant_ct, enumValue.symClass );
+		xor( eax, eax );
+		mov( eax, enumValue.dword_vt );
+		mov( eax, enumValue.dword_vt[4] );
+		mov( eax, enumValue.dword_vt[8] );
+		mov( eax, enumValue.dword_vt[12] );
+		
+		
+		// Okay, we should have a list of undefined IDs here.
+		// Process each one and enter it into the symbol table.
+		
+		forever
+		
+			resetTknQ();	// There could be a lot of IDs, so reset the queue.
+			lex( esi );
+			
+			// If the identifier is a global ID, that's okay;
+			// just turn it into an undefined ID.
+			
+			if( eax = tkn_globalID ) then
+			
+				makeUndefID( [ecx] );
+				mov( tkn_undefID, eax );
+				
+			elseif( eax = tkn_localID ) then
+			
+				HLAerror
+				( 
+					"Duplicate symbol definition: ",
+					tokenECX.trueName,
+					nl
+				);
+				makeUndefID( [ecx] );
+				mov( tkn_undefID, eax );
+				
+			endif;
+			if( eax = tkn_undefID ) then
+		
+				// The symbol is undefined at the local level,
+				// so the following call always returns false.
+				// We call it here to get the leaf node (in ebx)
+				// to which we must link the new symbol from.
+				
+				lookupLocal
+				( 
+					tokenECX.trueName, 
+					tokenECX.lcName,
+					tokenECX.hashValue 
+				);
+				enterConst
+				(
+					tokenECX.trueName,
+					tokenECX.lcName,
+					NULL,
+					enumValue.symType,
+					enumValue,
+					curOwner,
+					[ebx]
+				);
+
+			else
+			
+				// If we didn't get an ID or a '}' then we've got a syntax
+				// error.
+				
+				HLAerror
+				( 
+					"Expected an identifier token "
+					"but encountered " 
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+				stc();
+				exit enumStuff;
+			
+			endif;
+			
+			// At this point, we'd better see a comma or a brace:
+			
+			lex( esi );
+			exitif( eax = '}' ) enumStuff;
+			if( eax <> ',' ) then
+			
+				HLAerror
+				( 
+					"Expected a ',' or '}' token "
+					"but encountered " 
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+				stc();
+				exit enumStuff;
+				
+			endif;
+			
+			// Bump up the enum value by one for each identifier
+			// we process in the list.
+			
+			inc( enumValue.dword_vt ); 
+		
+		endfor;
+		
+	end enumStuff;
+	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	mov( anonType, eax );	// Return pointer to symbol table node.
+	clc();
+
+end buildEnumType;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////
+//
+// parseDeclarationType-
+//
+// Process whatever follows an << <ID> ':' >> in a declaration section.
+//
+// input:
+//
+//	AllowableTypes-
+//		This is a bitmap containing optional type items that
+//		not every type declaration supports. The corresponding
+//		bit is set if the parent declaration allows the specified
+//		type.  Possible values are the union of the following:
+//
+//			AllowArrays, AllowRecords, AllowUnions, AllowEnums,
+//			AllowPointers, AllowProcedures
+//
+//		Note that *all* declarations allow type identifiers.
+//
+// outputs:
+//
+//	theType-
+//		This is the address of a symbol table pointer where this code
+//		will store the address of the symbol table entry of the type
+//		it discovers (or creates).
+//
+//	fwdData-
+//		A pointer to a tokenPtr_t variable. parseDeclarationTypes
+//		will store a NULL in this variable if the declaration
+//		is *not* a forward declaration. It will store a non-NULL
+//		pointer to a token_t object if the current declaration
+//		is a FORWARD declaration. The caller must test this
+//		value before clearing the token queue, as this pointer
+//		will point into the token queue.
+//
+// returns:
+//
+//		Carry-
+//			set if there was an error, 
+//			carry clear if declaration was legal.
+//
+
+//proc( "parseDeclarationType" )
+procedure parseDeclarationType
+(
+	result	theType		:symNodePtr_t;
+	result	fwdData		:tokenPtr_t;
+			allowableTypes	:dword 
+);
+var
+	dimensions	:dimPtr_t;
+
+begin parseDeclarationType;
+
+	mov( NULL, fwdData );	// Assume it's not a FORWARD declaration.
+	if( getTypeID() ) then
+	
+		if( eax = &text_ste ) then
+		
+			HLAerror( "TEXT type is not allowed here" nl );
+			mov( &string_ste, theType );
+			mov( NULL, dimensions );
+			exit parseDeclarationType;
+			
+		endif;
+	
+		mov( eax, theType );
+		optionalBounds();
+		mov( eax, dimensions );
+		if( eax <> NULL ) then
+		
+			test( AllowArrays, allowableTypes );
+			if( @z ) then
+			
+				HLAerror( "Array declaration is not legal here" nl );
+				
+			endif;
+				
+
+			// We have an array type.  We need to build anonymous 
+			// type records for all array dimension and link them
+			// together:
+			
+			mov( (type dimensions_t [eax]).arity, ecx );
+			repeat
+			
+				// We need to create a dummy name for
+				// the anonymous array type that we're
+				// about to create.  This is of the form:
+				//
+				//	" arrayXXX"
+				//
+				// where XXX is some unique numeric value.
+				// Note the '@' at the beginning of the
+				// string, this ensures that the program
+				// can never reference this symbol directly.
+				
+				makeLabel( "@array" );
+
+				// lookupLocal is called just to compute the leaf
+				// node value in EBX:
+
+				push( eax );
+				computeHash( eax );
+				mov( eax, ebx );
+				mov( [esp], eax );
+				lookupLocal( eax, eax, ebx );
+				pop( eax );
+
+				// Create a symbol table entry for the anonymous
+				// type:
+				
+				enterType
+				(
+					eax,
+					eax,
+					NULL,
+					Array_pt,
+					theType,
+					curOwner,
+					[ebx]
+				);
+				mov( theType, edx );
+				mov( symEDX.objectSize, edx );
+				mov( eax, theType );
+				
+				// We need to fill in the array dimensions info here:
+				
+				mov( dimensions, ebx );
+				mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+				mov( ebx, symEAX.numElements );
+				intmul( ebx, edx );
+				mov( edx, symEAX.objectSize );
+				dec( ecx );
+				
+			until( @z );
+			
+
+		endif;								
+	
+	else
+
+		lex( esi );
+		if( eax = tkn_enum ) then
+
+			test( AllowEnums, allowableTypes );
+			if( @z ) then
+			
+				HLAerror( "Enum declaration is not legal here" nl );
+				
+			endif;
+		
+			// We need to create a dummy name for
+			// the anonymous enumerated type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@enumXXX"
+			//
+			// where XXX is some unique numeric value.
+			// Note the '@' at the beginning of the
+			// string, this ensures that the program
+			// can never reference this symbol directly.
+			
+			makeLabel( "@enum" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Enum_pt,
+				&enum_ste,
+				curOwner,
+				[ebx]
+			);
+			mov( eax, theType );
+			
+			// Go construct the constants for this anonymous
+			// enumerated type:
+			
+			buildEnumType( [eax] );
+			exit parseDeclarationType;
+			
+		endif;
+			
+				
+		///////////////////////////////////////////
+		//	
+		// Handle <id> : @forward( <id> ); here:					
+			
+		if( eax = tkn_at_forward ) then
+
+			// Process the remainder of the FORWARD clause:
+
+			matchLParen();
+			
+			// Grab the identifier:
+
+			lex( esi );
+			if( eax = tkn_globalID ) then
+			
+				makeUndefID( [ecx] );
+				mov( tkn_undefID, eax );
+				
+			elseif( eax = tkn_localID ) then
+			
+				mov( tokenECX.symNode, ebx );
+				if( symEBX.symClass <> Value_ct ) then
+
+					HLAerror
+					( 
+						"Duplicate symbol definition: ", 
+						tokenECX.trueName,
+						nl
+					);
+					makeUndefID( [ecx] );
+					mov( tkn_undefID, eax );
+
+				endif;
+				
+			endif;
+			if( eax = tkn_undefID || eax = tkn_localID ) then
+		
+				mov( ecx, fwdData );
+				matchRParen();
+				exit parseDeclarationType;
+				
+			endif;
+			
+			HLAerror
+			( 
+				"Expected an identifier, encountered "
+			);
+			dumpQLexeme();
+			matchRParen();
+			stc();
+			exit parseDeclarationType;
+			
+		endif;
+		
+		///////////////////////////////////////////
+		//	
+		// Handle <id> : pointer to <typeID>; here:					
+			
+		if( eax = tkn_pointer ) then
+
+			test( AllowPointers, allowableTypes );
+			if( @z ) then
+			
+				HLAerror( "Pointer declaration is not legal here" nl );
+				
+			endif;
+
+			// We'll need a type symbol for this guy:
+
+			// We need to create a dummy name for
+			// the anonymous pointer type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@pointer"
+			
+			makeLabel( "@pointer" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Pointer_pt,
+				NULL,		// No base type, yet.
+				curOwner,
+				[ebx]
+			);					
+			mov( eax, theType );
+
+		
+			lex( esi );
+			if( eax <> tkn_to ) then
+			
+				HLAerror( "Expected 'TO' after 'POINTER'" nl );
+				reuseLastTkn();
+				
+			endif;
+			if( getTypeID() ) then
+				
+				mov( theType, ebx );
+				mov( eax, symEBX.baseType );
+				mov( Pointer_pt, symEBX.pType );
+				mov( 4, symEBX.objectSize );
+				clc();
+				exit parseDeclarationType;
+									
+			endif;
+			
+			if( !getUndefTypeID( theType )) then
+							
+				HLAerror( "Expected a type ID, found " );
+				dumpQLexeme();
+				freeTkn( [ecx] );
+				resyncOnSemicolon();
+				stc();
+				exit parseDeclarationType;
+				
+			endif;
+			clc();
+			exit parseDeclarationType;
+
+			
+		endif;
+
+
+
+		//////////////////////////////////////////////////
+		//	
+		// Handle <id> :  record <fields> endrecord; here:
+		
+		if( eax = tkn_record ) then
+
+			test( AllowRecords, allowableTypes );
+			if( @z ) then
+			
+				HLAerror( "Record declaration is not legal here" nl );
+				
+			endif;
+
+			// We'll need a type symbol for this guy:
+			// We need to create a dummy name for
+			// the anonymous record type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@record"
+			
+			makeLabel( "@record" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Record_pt,
+				NULL,
+				curOwner,
+				[ebx]
+			);
+			mov( eax, theType );
+
+			// Process the actual record:
+
+			parseRecord( theType );
+			exit parseDeclarationType;
+			
+		endif;
+						
+			
+			
+		////////////////////////////////////////////////
+		//	
+		// Handle <id> :  union <fields> endunion; here:
+		
+		if( eax = tkn_union ) then
+		
+			test( AllowUnions, allowableTypes );
+			if( @z ) then
+			
+				HLAerror( "Union declaration is not legal here" nl );
+				
+			endif;
+
+			// We'll need a type symbol for this guy:
+			// We need to create a dummy name for
+			// the anonymous union type that we're
+			// about to create.  This is of the form:
+			//
+			//	"@union"
+			
+			makeLabel( "@union" );
+
+			// lookupLocal is called just to compute the leaf
+			// node value in EBX:
+
+			push( eax );
+			computeHash( eax );
+			mov( eax, ebx );
+			mov( [esp], eax );
+			lookupLocal( eax, eax, ebx );
+			pop( eax );
+
+			// Create a symbol table entry for the anonymous
+			// type:
+			
+			enterType
+			(
+				eax,
+				eax,
+				NULL,
+				Union_pt,
+				NULL,
+				curOwner,
+				[ebx]
+			);
+			mov( eax, theType );
+
+			// Process the actual union:
+
+			parseUnion( theType );
+			exit parseDeclarationType;
+			
+		endif;
+			
+		
+		///////////////////////////////////////////////////////////
+		//
+		// Deal with 
+		// <id>:procedure <optionalparms> ';' <protoOptions> 
+		// here:
+			
+		if( eax = tkn_procedure ) then
+		
+			test( AllowProcedures, allowableTypes );
+			if( @z ) then
+			
+				HLAerror( "Procedure declaration is not legal here" nl );
+				
+			endif;
+
+			// Just note that we saw a procedure and leave it up to
+			// the caller to actually process the procedure declaration.
+			
+			mov( &procedure_ste, theType );
+			clc();
+			exit parseDeclarationType;
+			
+		endif;
+		
+	
+		HLAerror
+		( 
+			"Expected a type identifier after the ':' "
+			"but encountered " 
+		);
+		dumpQLexeme();
+		stc();
+			
+		
+	endif;
+end parseDeclarationType;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// optStaticAlign - handles the STATIC/READONLY/STORAGE/SEGMENT align options.
+//
+//	STATIC(align)
+//  STATIC(max,min)
+//
+//	READONLY(align)
+//  READONLY(max,min)
+//
+//	STORAGE(align)
+//  STORAGE(max,min)
+//
+//	SEGMENT(align]
+//  SEGMENT(max,min)
+
+//proc( "optStaticAlign" )
+procedure optStaticAlign( var theSegment:symNode_t );
+var
+	minStaticAlign	:dword;
+	maxStaticAlign	:dword;
+	alignAttr		:attr_t;
+	
+begin optStaticAlign;
+
+	// Assume that there is no alignment option associated
+	// with the current STATIC section (the default is byte
+	// alignment).
+	
+	mov( 1, minStaticAlign );
+	mov( 1, maxStaticAlign );
+	
+	// check for a "(" after the STATIC/STORAGE/READONLY/SEGMENT keyword:
+
+	lex( esi );
+	if( eax = '(' ) then
+
+		// Okay, we're expecting an alignment item, which
+		// takes one of the following forms:
+		// ( align )
+		// ( maxAlign, minAlign )
+
+		getUnsigned( alignAttr );
+		if( @nc ) then
+			
+			// Use maxAlign value as minAlign value
+			// because the minimum value is optional.
+
+			mov( alignAttr.dword_vt, eax );
+			mov( eax, minStaticAlign );
+			mov( eax, maxStaticAlign );
+
+			// Verify that the maximum alignment value
+			// is a power of two:
+
+			bits.cnt( maxStaticAlign );
+			if( eax <> 1 ) then
+
+				HLAerror
+				(
+					"The maximum alignment value in this section "
+					"must be a power of two" nl
+					"(defaulting to 1)" nl
+				);
+				mov( 1, minStaticAlign );
+				mov( 1, maxStaticAlign );
+
+			endif;
+
+		endif;
+
+		lex( esi );
+		if( eax = ',' ) then
+
+			// If we see a comma, then we must have
+			// two operands.
+
+			getUnsigned( alignAttr );
+			if( @nc ) then
+
+				mov( alignAttr.dword_vt, eax );
+				mov( eax, minStaticAlign );
+
+				// Verify that the minimum alignment value
+				// is a power of two:
+
+				bits.cnt( minStaticAlign );
+				if( eax <> 1 ) then
+
+					HLAerror
+					(
+						"The minimum alignment value in this "
+						"section must be a power of two" nl
+						"(defaulting to 1)" nl
+					);
+					mov( 1, minStaticAlign );
+
+				endif;
+
+			endif;
+			lex( esi );
+		
+		endif;
+
+
+		// Verify that the min alignment is less than the max alignment:
+
+		push( eax );	// Save token
+		mov( minStaticAlign, eax );
+		if( eax > maxStaticAlign ) then
+
+			HLAerror
+			(
+				"Maximum alignment value (",
+				(type uns32 maxStaticAlign),
+				") must be greater than the "
+				"minimum value (",
+				(type uns32 minStaticAlign),
+				")" nl
+				"(swapping values)" nl
+			);
+			xchg( eax, maxStaticAlign );
+			xchg( eax, minStaticAlign );
+
+		endif;
+		pop( eax );
+
+		if( eax <> ')' ) then
+
+			HLAerror( "Expected a right parenthesis (')')" nl );
+
+		else
+
+			lex( esi );
+
+		endif;
+		
+	endif;
+
+	
+	// Create a "STATIC" segItem_t record so that the code generator
+	// knows that we're beginning a new storage section.
+	
+	safe_malloc( @size( segItem_t ) );	// Create new item
+	mov( NULL, segEAX.nextSegItem );	// This will be the last entry.
+	mov( firstEntry_c, segEAX.segItemType );
+	mov( minStaticAlign, segEAX.alignedOn.min );
+	mov( maxStaticAlign, segEAX.alignedOn.max );
+
+	// Insert this segItem_t record into the appropriate segment's setList:
+
+	mov( theSegment, ebx );
+	if( symEBX.segList = NULL ) then
+
+		// This is the first item in the list. So initialize
+		// both the head and tail pointers with the pointer
+		// to this item.
+
+		mov( eax, symEBX.segList );
+		mov( eax, symEBX.endSegList );
+		mov( NULL, segEAX.prevSegItem );	// This is the 1st item!
+
+	else
+
+		// There are already some items in the dataSegment list.
+		// So append this item to the end of the list.
+
+		mov( symEBX.endSegList, ecx );		// Current last item in list.
+		mov( eax, segECX.nextSegItem );		// Link to last item.
+		mov( eax, symEBX.endSegList );		// Make this item the last one.
+		mov( ecx, segEAX.prevSegItem );		// Link back to previous item.
+
+	endif;
+	
+	// We've grabbed one extra token, so put it back.
+	
+	reuseLastTkn();
+
+end optStaticAlign;
+
+
+
+///////////////////////////////////////////////////////////////////////////
+//
+// staticDclTypes
+//
+// Process whatever follows an << <ID> ':' >> in a static, storage,
+// or readonly section:
+
+//proc( "staticDclTypes" )
+procedure staticDclTypes
+(
+	staticID	:string;
+	staticlcID	:string;
+	staticHash	:dword;
+	externType	:symNodePtr_t;
+	theSegment	:symNodePtr_t;
+	isPrivate	:boolean;
+	enterSym	:enterProc_t	
+);
+var
+	staticVar	:symNodePtr_t;
+	staticType	:symNodePtr_t;
+	fwdData		:tokenPtr_t;
+	extString	:attr_t;
+	constResult	:attr_t;
+	fwdString	:attr_t;	 
+	staticpType	:pType_t;
+	isExternal	:boolean;
+
+begin staticDclTypes;
+
+	mov( NULL, staticType );
+	mov( NULL, staticVar );
+	mov( false, isExternal );
+
+	parseDeclarationType
+	( 
+		staticType, 
+		fwdData, 
+			AllowArrays 
+		|	AllowRecords 
+		| 	AllowUnions 
+		| 	AllowEnums 
+		|	AllowPointers
+		|	AllowProcedures
+	);
+	exitif( @c ) staticDclTypes;
+	
+	// If it was a forward declaration, then handle that case
+	// first as staticType is not set up for the FORWARD item:
+
+	if( fwdData <> NULL ) then
+	
+		// parseDeclarationType has left a pointer to
+		// the token holding the forward ID in fwdData.
+		// Get that into ECX.
+		
+		mov( fwdData, ecx );
+		
+		mov( staticID, eax );
+		mov( eax, fwdString.string_vt );
+		mov( String_pt, fwdString.pType );
+		mov( &string_ste, fwdString.symType );
+		mov( Constant_ct, fwdString.symClass );
+		mov( 0, fwdString.numElements );
+		strfree( staticlcID );
+		
+		mov( tokenECX.trueName, eax );
+		mov( eax, staticID );
+		mov( tokenECX.lcName, eax );
+		mov( eax, staticlcID );
+		mov( tokenECX.hashValue, eax );
+		mov( eax, staticHash );
+		
+		mov( &text_ste, staticType );
+	
+	
+		// There was a forward declaration. Deal with that here:
+		// Enter the CONST object into the symbol table:
+		// The symbol is undefined at the local level,
+		// so the following call always returns false.
+		// We call it here to get the leaf node (in ebx)
+		// to which we must link the new symbol from.
+
+		lookupLocal
+		( 
+			staticID, 
+			staticlcID,
+			staticHash
+		);
+		enterConst
+		(
+			staticID,
+			staticlcID,
+			NULL,
+			&text_ste,
+			fwdString,
+			curOwner,
+			[ebx]				// Ptr to leaf node pointer field.
+		);
+		mov( eax, staticVar );
+	
+
+	else // Not a forward declaration...
+	   
+		mov( staticType, ebx );
+		canAccess( [ebx] );
+		mov( symEBX.pType, al );
+		mov( al, staticpType );
+
+		if( externType <> NULL ) then
+		
+			mov( externType, eax );
+			canAccess( [eax] );
+			if( ebx <> symEAX.symType ) then
+
+				mov( symEAX.symType, eax );
+				canAccess( [eax] );
+				HLAerror
+				( 
+					"Type ('",
+					symEAX.trueName,
+					"') does not match original "
+					nl
+					"external definition ('", 
+					symEBX.trueName,
+					"')"
+					nl 
+				);
+
+			else
+
+				mov( false, symEAX.isExternal );
+				mov( true, isExternal );
+				mov( eax, staticVar );
+				setPublic( eax );
+
+			endif;
+
+		endif;
+
+		// If it was a procedure variable, handle that
+		// specially.
+		
+		if( staticType = &procedure_ste ) then
+
+			// If we come down here, then there was a declaration
+			// of the form "xxxx:procedure...." So call parseProcType
+			// to set this guy up as a procedure type.
+			//
+			// Note: passing "true" as the last parameter to
+			// parseProcType tells this procedure to grab an
+			// optional initializer if it is present. parseProcType
+			// also handles the procedure options, so we don't have
+			// to handle those here.
+
+			parseProcType
+			( 
+				staticID,
+				staticlcID,
+				staticHash,    
+				Static_ct, 			// This is a static object 
+				0,					// Offset is inapplicable 
+				notp_pc, 			// This is not a parameter 
+				startParmsOffs,		// Starting offset for parms
+				theSegment,			// Link to STATIC segment
+				enterSym,			// Call enter*** for this symbol
+				true				// For a constant initializer
+			);
+		
+
+			// Save pointer to symbol table entry that parseProcType
+			// created and set the type to Procedure Pointer.
+
+			mov( eax, staticVar );
+			mov( Procptr_pt, symEAX.pType );
+
+		else
+		
+			// Okay, we've seen and processed << <ID> ':' <type> >>
+			// Now let's check for an initializer; But only do
+			// this if we've got an appropriate variable type.
+			//
+			// Enter the static object into the symbol table:
+			// The symbol is undefined at the local level,
+			// so the following call always returns false.
+			// We call it here to get the leaf node (in ebx)
+			// to which we must link the new symbol from.
+
+			if( !isExternal ) then
+
+				lookupLocal
+				( 
+					staticID, 
+					staticlcID,
+					staticHash
+				);
+				enterSym
+				(
+					staticID,
+					staticlcID,
+					staticHash,
+					staticID,
+					NULL,
+					staticpType,
+					staticType,
+					curOwner,
+					0,			// Address irrelevant.
+					theSegment,	// Whatever segment was pass to us, pass it on.
+					NULL,		// No initial value
+					[ebx]		// Ptr to leaf node pointer field.
+				);
+				mov( isPrivate, bl );
+				mov( bl, symEAX.isPrivate );
+
+				mov( eax, staticVar );
+				if( symEAX.pType = Procptr_pt ) then
+
+					// If it's a declaration of the form "xxx:SomeProcType..."
+					// then we have to copy the procedure option fields to
+					// the current symbol table entry.
+					
+					mov( staticType, ebx );
+					mov( eax, ecx );
+					if( symEBX.pType = Procptr_pt ) then
+
+						mov( symEBX.cproc.returnsStr, eax );
+						mov( eax, symECX.cproc.returnsStr );
+
+						mov( symEBX.cproc.baseClass, eax );
+						mov( eax, symECX.cproc.baseClass );
+
+						mov( symEBX.cproc.parmSize, eax );
+						mov( eax, symECX.cproc.parmSize );
+
+						mov( symEBX.cproc.localSize, eax );
+						mov( eax, symECX.cproc.localSize );
+
+						mov( symEBX.cproc.preserves, eax );
+						mov( eax, symECX.cproc.preserves );
+
+						mov( symEBX.cproc.callSeq, al );
+						mov( al, symECX.cproc.callSeq );
+
+						mov( symEBX.cproc.hasFrame, al );
+						mov( al, symECX.cproc.hasFrame );
+
+						mov( symEBX.cproc.hasDisplay, al );
+						mov( al, symECX.cproc.hasDisplay );
+
+						mov( symEBX.cproc.alignsStack, al );
+						mov( al, symECX.cproc.alignsStack );
+
+						mov( symEBX.cproc.useEnter, al );
+						mov( al, symECX.cproc.useEnter );
+
+						mov( symEBX.cproc.useLeave, al );
+						mov( al, symECX.cproc.useLeave );
+
+						mov( symEBX.cproc.uses, al );
+						mov( al, symECX.cproc.uses );
+
+					endif;
+
+				endif;
+
+			endif;
+
+			lex( esi );
+			if( eax = tkn_assign ) then
+
+				try
+
+					constExpr( constResult );
+					
+					raiseErr( @c );
+					// See if the constant type is compatible with
+					// the variable's declared type:
+
+					if
+					( 
+						!makeCompatible
+						( 
+							staticType, 
+							constResult 
+						) 
+					) then
+
+						HLAerror
+						( 
+							"Type mismatch error in static initializer"
+							nl
+						);
+						raise( ex.hlaerr );
+
+					else
+
+						// Copy the constant initialization data
+						// from the constResult variable to the
+						// symbol table entry:
+
+						push( esi );
+						push( edi );
+						pushfd();
+						cld();
+						mov( @size( attr_t ), ecx );
+						mov( staticVar, edi );
+						lea( edi, (type symNode_t [edi]).va );
+						lea( esi, constResult );
+						rep.movsb();
+						popfd();
+						pop( edi );
+						pop( esi );
+						mov( staticVar, ebx );
+						mov( true, symEBX.isInitialized );
+
+					endif;
+
+				  exception( ex.hlaerr );
+
+					resyncOnSemicolon();
+					reuseLastTkn();
+
+				endtry;
+				if( theSegment = &bssSegment ) then
+
+					HLAerror( "Initializer not allowed in STORAGE section" nl );
+
+				endif;
+
+
+			else // No initializer present, restore token.
+
+				reuseLastTkn ();
+
+			endif;
+			matchSemicolon();
+			
+		endif;
+
+	endif;
+
+
+	// Check for the variable options here (@nostorage, @volatile).
+
+	forever
+	
+		lex( esi );
+		if( eax = tkn_at_volatile ) then
+		
+			mov( staticVar, eax );
+			canAccess( [eax] );
+			mov( true, symEAX.isVolatile );
+			matchSemicolon();
+			
+		elseif( eax = tkn_at_nostorage ) then
+		
+			mov( staticVar, eax );
+			canAccess( [eax] );
+			if( symEAX.isInitialized ) then
+				
+				HLAerror
+				( 
+					"Initializer illegal when combined with @nostorage" 
+					nl 
+				);
+
+			else
+
+				mov( true, symEAX.isNoStorage );
+
+			endif;
+			matchSemicolon();
+			
+		else
+		
+			break;
+			
+		endif;
+		
+	endfor;
+	
+	// Check for the "@external" option here.
+	
+	if( eax = tkn_at_external ) then
+
+		// If the lex level is greater than one, the symbol cannot
+		// be defined as an external object.
+
+		if( curLexLevel > 1 ) then
+
+			HLAerror
+			( 
+				"@External declarations are not allowed inside "
+				"nested procedures"
+				nl
+			);
+
+		endif;
+		mov( staticVar, eax );
+		canAccess( [eax] );
+		if( symEAX.isNoStorage ) then
+
+			HLAwarning
+			(
+				"Unusual declaration: usually you don't "
+				"specify both @Nostorage and @External" nl
+			);
+
+		endif;
+		if( symEAX.isInitialized ) then
+			
+			HLAerror
+			( 
+				"Initializer illegal when combined with @external" 
+				nl 
+			);
+
+		else
+
+			mov( true, symEAX.isExternal );
+
+		endif;
+
+		// Look for an optional string constant immediately
+		// following the @external reserved word:
+
+		lex( esi );
+		if( eax = '(' ) then
+
+			try
+				constExpr( extString );
+				if( extString.pType <> String_pt ) then
+
+					HLAerror
+					(
+						"@external argument must be a string"
+						nl
+					);
+					raise( ex.hlaerr );
+					
+				else
+
+					mov( staticVar, eax );
+					canAccess( [eax] );
+					mov( extString.string_vt, ebx );
+					mov( ebx, symEAX.externName );
+
+				endif;
+				mustMatchRParen();
+				mustMatchSemicolon();
+				lex( esi );			// to counter reuseLastTkn, below
+
+			  exception( ex.hlaerr );
+
+				// Just catch the error, no need to do anything.
+
+			endtry;
+
+		endif;
+
+		// Because this is an external declaration, add it to the
+		// extList:
+
+		addExtSym( staticVar, NULL );
+	
+	endif; 
+	reuseLastTkn();
+	
+end staticDclTypes;
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// nsDcls- 
+//	Handle the productions that handle the declarations in a NAMESPACE.
+//
+// Same as uDcls except it doesn't allow nested NAMESPACE
+// declarations and it doesn't allow SEGMENT declarations.
+//
+// Inputs:
+//
+//	EAX, EBX, ECX, ESI, EDI-
+//		Values returned from a call to LEX (in particular, EAX contains
+//		the token value and EBX contains the token class).
+//
+// Returns
+//
+//	carry-										   
+//		Set if error, clear if successful.
+//
+//	Note:	must call lex() upon return in order to fetch the next
+//			available token after the declarations (which had better
+//			be an END token).
+//
+//
+// Productions:
+//
+//	nsDcls ->	constTkn Constants 
+//			|	valTkn Values 
+//			|	typeTkn Types 
+//			|	staticTkn StaticVars 
+//			|	storageTkn StorageVars
+//			|	readonlyTkn ReadOnlyVars
+//			|	procedureTkn parseProc 
+//			|	iteratorTkn parseIterator 
+//			|	methodTkn parseMethod 
+//			|	macroTkn macroStuff
+//			|	templateTkn templateStuff
+
+//proc( "nsDcls" )
+procedure nsDcls; @noframe;
+begin nsDcls;
+
+	if( eax = tkn_namespace ) then
+	
+		HLAerror( "Nested namespace declarations are not legal" nl );
+		stc();
+		ret();
+		
+	elseif( eax = tkn_segment ) then
+	
+		HLAerror( "Segment declarations are illegal within a NAMESPACE" nl );
+		stc();
+		ret();
+				
+	elseif( eax = tkn_const ) then
+	
+		parseConst( false );
+	
+	elseif( eax = tkn_val ) then
+	
+		parseVal( false, false );
+	
+	elseif( eax = tkn_type ) then
+	
+		parseType();
+	
+	elseif( eax = tkn_static ) then
+	
+		parseStatic( false );
+	
+	elseif( eax = tkn_storage ) then
+	
+		parseStorage( false );
+	
+	elseif( eax = tkn_readonly ) then
+	
+		parseReadOnly( false );
+	
+	elseif( eax = tkn_procedure ) then
+	
+		parseProc();
+	
+	elseif( eax = tkn_iterator ) then
+	
+		parseIterator();
+	
+	elseif( eax = tkn_method ) then
+	
+		parseMethod();
+	
+	else
+	
+		reuseLastTkn();
+		stc();				// Denote that we didn't match anything.
+		ret();
+	
+	endif;
+	
+	// Return success if we get down here.
+	
+	clc();
+	ret();
+
+end nsDcls;
+
+
+
+// uDcls- 
+//	Handle the productions that handle the declarations in a UNIT.
+//
+// Note: Same as nsDcls but it allows namespace declarations as well.  
+// Unlike pDcls, uDcls does not allow variable sections.
+//
+//
+// Inputs:
+//
+//	EAX, EBX, ECX, ESI, EDI-
+//		Values returned from a call to LEX (in particular, EAX contains
+//		the token value and EBX contains the token class).
+//
+// Returns
+//
+//	carry-
+//		Set if error, clear if successful.
+//
+//	Note:	must call lex() upon return in order to fetch the next
+//			available token after the declarations (which had better
+//			be an END token).
+//
+//	uDcls ->	namespace parseNamespace
+//			|	constTkn Constants 
+//			|	valTkn Values 
+//			|	typeTkn Types 
+//			|	staticTkn StaticVars 
+//			|	storageTkn StorageVars
+//			|	readonlyTkn ReadOnlyVars
+//			|	segmentTkn SegmentVars
+//			|	procedureTkn parseProc 
+//			|	iteratorTkn parseIterator 
+//			|	methodTkn parseMethod 
+//			|	macroTkn macroStuff
+//			|	templateTkn templateStuff
+
+
+//proc( "uDcls" )
+procedure uDcls; @noframe;
+begin uDcls;
+
+	if( eax = tkn_namespace ) then
+	
+		parseNamespace();
+		clc();
+				
+	elseif( eax = tkn_segment ) then
+	
+		parseSegment( false );
+		clc();
+	
+	else
+	
+		nsDcls();  // nsDcls handles everything else (including <empty>).
+		
+	endif;
+	ret();
+
+end uDcls;
+
+
+
+// pgmDeclarations-
+//
+//	This function processes the declaration sections in a source file.
+//
+// Inputs:
+//
+//	EAX, EBX, ECX, ESI, EDI-
+//		Values returned from a call to LEX (in particular, EAX contains
+//		the token value and EBX contains the token class).
+//
+// Returns
+//
+//	carry-
+//		Set if error, clear if successful.
+//
+//	Note:	must call lex() upon return in order to fetch the next
+//			available token after the declarations (which had better
+//			be a BEGIN token).
+//
+//	Grammar:
+//
+//	pgmDcls -> ( pDcls )*
+//
+//	pDcls ->	var Variables
+//			|	namespace parseNamespace
+//			|	constTkn Constants 
+//			|	valTkn Values 
+//			|	typeTkn Types 
+//			|	staticTkn StaticVars 
+//			|	storageTkn StorageVars
+//			|	readonlyTkn ReadOnlyVars
+//			|	segmentTkn SegmentVars
+//			|	procedureTkn parseProc 
+//			|	iteratorTkn parseIterator 
+//			|	methodTkn parseMethod 
+//
+// Note: pgmDcls merges both the pgmDcls and pDcls productions together.
+//
+//	On entry, ESI points to where the next token will be scanned.
+//	On Exit, EAX will contain the (new) current token value and
+//	the carry flag indicates success (c=1 for success, c=0 for failure).
+
+//proc( "pgmDcls" )
+procedure pgmDcls; @noframe;
+begin pgmDcls;
+
+	resetTknQ();
+	mov( 1, curLexLevel );
+	forever
+	
+		// Program declarations include all the unit declarations
+		// plus VAR declarations.
+		
+		lex( esi );		// Get the next available token.
+
+		// Ignore any spurious semicolons at this point.
+		
+		if( eax <> ';' ) then
+				
+			if( eax = tkn_var ) then
+			
+				parseVar();
+				
+			else
+			
+				uDcls();
+				breakif( @c );
+			
+			endif;
+			
+		endif;
+		
+		
+	endfor;
+	ret();
+	
+end pgmDcls;
+
+
+
+// unitDcls-
+//
+// Unit declarations are the same as program declarations
+// except we don't allow a var section.
+//
+//	Grammar:
+//
+//	unitDcls -> ( uDcls )+
+//
+//
+// Inputs:
+//
+//	EAX, EBX, ECX, ESI, EDI-
+//		Values returned from a call to LEX (in particular, EAX contains
+//		the token value and EBX contains the token class).
+//
+// Returns
+//
+//	carry-
+//		Set if error, clear if successful.
+//
+//	Note:	must call lex() upon return in order to fetch the next
+//			available token after the declarations (which had better
+//			be an END token).
+
+//proc( "unitDcls" )
+procedure unitDcls;  
+var
+	attr	:attr_t;
+	
+begin unitDcls;
+
+	resetTknQ();
+	mov( 1, curLexLevel );
+	forever
+	
+		lex( esi );
+		
+		// Ignore any spurious semicolons at this point.
+		
+		if( eax <> ';' ) then
+
+			if( eax = tkn_var ) then
+			
+				HLAerror
+				( 
+					"VAR section is illegal in a UNIT.  Treated as STORAGE" 
+					nl
+				);
+				mov( tkn_storage, eax );
+				
+			endif;
+			uDcls();
+			breakif( @c );
+			
+		endif;
+
+	endfor;
+		
+end unitDcls;
+
+
+// parseNamespace-
+//
+// Namespace declarations are the same as program declarations
+// except we don't allow a var section and we don't allow nested namespaces.
+//
+//	Grammar:
+//
+//	parseNamespace -> ( nsDcls )*
+//
+//	On entry, ESI points to where the next token will be scanned (expecting
+//	 a namespace identifier here).
+
+//proc( "parseNamespace" )
+procedure parseNamespace;  
+var
+	lexSave	:dword;
+	nsID	:string;
+	nslcID	:string;
+	nsHash	:dword;
+	nsPtr	:symNodePtr_t;
+	coSave	:symNodePtr_t;
+	cstSave	:symNodePtr_t;
+
+begin parseNamespace;
+
+	// Preserve curOwner and curHashTable for later:
+	
+	mov( curOwner, eax );
+	mov( eax, coSave );
+	mov( curHashTable, eax );
+	mov( eax, cstSave );
+	mov( curLexLevel, eax );
+	mov( eax, lexSave );
+	mov( 1, curLexLevel );	// Namespaces are always at lex level 1.
+	
+	begin exitPNS;
+		
+		// Process the namespace ID:
+		
+		if( !matchTknCls( esi, ID_tc ) ) then
+		
+			HLAerror
+			( 
+				"Expected an identifier after 'NAMESPACE' "
+				"but encountered " 
+			);
+			dumpQLexeme();
+				
+			stc();
+			exit exitPNS;
+				
+		endif;	
+		mov( tokenECX.symNode, eax );
+		mov( eax, nsPtr );
+		mov( tokenECX.lcName, eax );
+		mov( eax, nslcID );
+		mov( tokenECX.trueName, eax );
+		mov( eax, nsID );
+		mov( tokenECX.hashValue, eax );
+		mov( eax, nsHash );
+		
+		getSemicolon();
+		
+		// Create (or locate) the namespace symbol table entry:
+
+		enterNamespace( nsID, nslcID, nsHash, nsPtr );
+		exitif( eax = NULL ) exitPNS;
+		
+		mov( eax, curOwner );
+		
+		// Okay, point curHashTable at the root node in the namespace
+		// binary search tree:
+		
+		mov( symEAX.localHash, ebx );
+		mov( ebx, curHashTable );
+		
+		
+		
+		// Okay, start processing the namespace declarations:
+		
+		repeat
+		
+			repeat
+			
+				lex( esi );
+			
+			until( eax <> ';' );	// Allow arbitrary semicolons.
+			
+			if( eax = tkn_var ) then
+			
+				HLAerror
+				( 
+					"VAR section is illegal in a NAMESPACE.  Treated as STORAGE" 
+					nl
+				);
+				mov( tkn_storage, eax );
+				
+			elseif( eax = tkn_namespace ) then
+			
+				HLAerror( "Nested namespaces are illegal." nl );
+				stc();
+				exit exitPNS;
+				
+			endif;
+			nsDcls();
+
+		until( @c );
+		
+		// At this point, we'd better see "END <nsID>;"
+
+		if( !matchTkn( esi, tkn_end ) ) then
+		
+
+			HLAerror
+			( 
+				"Expected an 'END ", nsID, ";' clause "
+				"but encountered " 
+			);
+			dumpQLexeme();
+				
+			stc();
+			exit exitPNS;
+			
+		endif;
+			
+		if( !matchTknCls( esi, ID_tc )) then
+		
+			HLAerror
+			( 
+				"Expected an identfier after the 'END' "
+				"but encountered " 
+			);
+			dumpQLexeme();
+			stc();
+			exit exitPNS;
+
+		endif;
+
+		if( tokenECX.alloc ) then
+			
+			strfree( tokenECX.lcName );	// Don't need this anymore.
+			
+		endif;
+				
+
+		if( str.ne( nsID, tokenECX.trueName ) ) then
+
+			HLAerror
+			( 
+				"Identifier after 'END' (", 
+				tokenECX.trueName, 
+				") must match (", 
+				nsID, 
+				")" nl 
+			);
+			strfree( tokenECX.trueName );
+			stc();
+			exit exitPNS;
+			
+		endif;
+		
+		if( tokenECX.alloc ) then
+			
+			strfree( tokenECX.trueName );	// Don't need this anymore.
+			
+		endif;
+		
+		getSemicolon();
+		clc();			// Return no error.	
+			
+	end exitPNS;
+	// Okay, restore the curHashTable and curOwner pointers that we
+	// save earlier.
+	
+	mov( coSave, eax );
+	mov( eax, curOwner );
+	mov( cstSave, eax );
+	mov( eax, curHashTable );
+	mov( lexSave, eax );
+	mov( eax, curLexLevel );
+			
+end parseNamespace;
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// procDcls-
+//
+//	This function processes the declaration sections in procedures.
+//
+// Inputs:
+//
+//	EAX, EBX, ECX, ESI, EDI-
+//		Values returned from a call to LEX (in particular, EAX contains
+//		the token value and EBX contains the token class).
+//
+// Returns
+//
+//	carry-
+//		Set if error, clear if successful.
+//
+//	Note:	must call lex() upon return in order to fetch the next
+//			available token after the declarations (which had better
+//			be a BEGIN token).
+//
+//	Grammar:
+//
+//	procDcls -> ( prDcls )*
+//
+//	prDcls ->	var Variables
+//			|	namespace parseNamespace
+//			|	constTkn Constants 
+//			|	valTkn Values 
+//			|	typeTkn Types 
+//			|	staticTkn StaticVars 
+//			|	storageTkn StorageVars
+//			|	readonlyTkn ReadOnlyVars
+//			|	segmentTkn SegmentVars
+//			|	procedureTkn parseProc 
+//			|	iteratorTkn parseIterator 
+//			|	methodTkn parseMethod 
+//
+//
+//	On entry, ESI points to where the next token will be scanned.
+//	On Exit, EAX will contain the (new) current token value and
+//	the carry flag indicates success (c=1 for success, c=0 for failure).
+
+//proc( "procDcls" )
+procedure procDcls; @noframe;
+begin procDcls;
+
+	resetTknQ();
+	forever
+	
+		// Program declarations include all the unit declarations
+		// plus VAR declarations.
+		
+		lex( esi );		// Get the next available token.
+		if( eax <> ';' ) then	// This allows arbitrary semicolons.
+		
+			if( eax = tkn_var ) then
+			
+				parseVar();
+				
+			else
+			
+				uDcls();
+				breakif( @c );
+			
+			endif;
+			
+		endif;
+		
+	endfor;
+	ret();
+	
+end procDcls;
+
+
+
+
+
+
+end parseDcls;

@@ -1,0 +1,3381 @@
+unit coerce;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )						
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getBaseIsoType-
+//
+//	This procedure returns the base type of an isomorphic
+// type (that is, a type renaming).  E.g.,
+//
+//	type
+//		x:y;
+//		y:uns32;
+//
+//	getBaseIsoType( x ) and getBaseIsoType( y ) both return uns32.
+//
+// Input:
+//
+//	EAX-
+//		Pointer to type to compute the base type of.
+//
+// Returns:
+//
+//	EAX-
+//		Pointer to computed base type.
+//
+// Note that this function does not return the base type of an array.
+// It only returns the base type of isomorphic types.
+
+//proc( "getBaseIsoType" )
+procedure getBaseIsoType( t: symNodePtr_t in eax ); 
+	@noframe;
+
+begin getBaseIsoType;
+
+	if( eax <> NULL ) then
+	
+		while( symEAX.pType = Deferred_pt ) do
+		
+			mov( symEAX.symType, eax );
+			canAccess( [eax] );
+			
+		endwhile;
+		
+	endif;
+	ret();	
+	
+end getBaseIsoType;
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getArrayBaseType-
+//
+//	This procedure returns the base type of an array.
+//
+// Input:
+//
+//	EAX-
+//		Pointer to type to compute the base type of.
+//
+// Returns:
+//
+//	EAX-
+//		Pointer to computed base type.
+
+//proc( "getArrayBaseType" )
+procedure getArrayBaseType( t: symNodePtr_t in eax ); 
+	@noframe;
+
+begin getArrayBaseType;
+
+	if( eax <> NULL ) then
+	
+		while( symEAX.pType = Deferred_pt || symEAX.pType = Array_pt ) do
+		
+			mov( symEAX.symType, eax );
+			canAccess( [eax] );
+			
+		endwhile;
+		
+	endif;
+	ret();	
+	
+end getArrayBaseType;
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// setSmallestSize-
+//
+// Input:
+//
+//	operand-
+//		Primitive value whose pType may be greater than actually required.
+//
+// Output:
+//
+//	operand-
+//		Value's pType and symType are adjusted to be as small as possible
+//		for the actual value associated with this attr_t object.
+
+//proc( "setSmallestSize" )
+procedure setSmallestSize( var operand:attr_t ); 
+const
+	attr	:text := "attrEBX";
+	
+readonly(4)
+
+	UnsPtrs	:dword[5] := 
+				[
+					&uns8_ste,
+					&uns16_ste,
+					&uns32_ste,
+					&uns64_ste,
+					&uns128_ste
+				];
+	
+
+	HexPtrs	:dword[6] := 
+				[
+					&byte_ste,
+					&word_ste,
+					&dword_ste,
+					&qword_ste,
+					&tbyte_ste,
+					&lword_ste
+				];
+	
+
+	IntPtrs	:dword[5] := 
+				[
+					&int8_ste,
+					&int16_ste,
+					&int32_ste,
+					&int64_ste,
+					&int128_ste
+				];
+	
+begin setSmallestSize;
+
+	push( eax );
+	push( ebx );
+	push( edx );
+	mov( operand, ebx );
+	canAccess( [ebx] );
+	movzx( attr.pType, eax );
+	switch( eax )
+
+		case
+		( 
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Uns64_pt,
+			Uns128_pt
+		)
+		
+			mov( Uns128_pt, al );
+			if
+			( 
+					attr.dword_vt[2*4] = 0
+				&&	attr.dword_vt[3*4] = 0
+			) then
+			
+				mov( Uns64_pt, al );
+				if( attr.dword_vt[1*4] = 0 ) then
+				
+					mov( Uns32_pt, al );
+					if( attr.word_vt[1*2] = 0 ) then
+					
+						mov( Uns16_pt, al );
+						if( attr.byte_vt[1] = 0 ) then
+						
+							mov( Uns8_pt, al );
+							
+						endif;
+						
+					endif;
+					
+				endif;
+				
+			endif;
+			mov( al, attr.pType );
+			mov( UnsPtrs[ eax*4 - byte(Uns8_pt)*4 ], eax );
+			mov( eax, attrEBX.symType );					
+			
+		case
+		( 
+			Byte_pt, 
+			Word_pt,
+			DWord_pt,
+			QWord_pt,
+			TByte_pt,
+			LWord_pt 
+		)	
+
+		
+			mov( LWord_pt, al );
+			if
+			( 
+					attrEBX.word_vt[10] = 0
+				&&	attrEBX.dword_vt[3*4] = 0
+			) then
+			
+				mov( TByte_pt, al );
+				if( attrEBX.word_vt[2*4] = 0 ) then
+				
+					mov( QWord_pt, al );
+					if( attrEBX.dword_vt[1*4] = 0 ) then
+					
+						mov( DWord_pt, al );
+						if( attrEBX.word_vt[1*2] = 0 ) then
+						
+							mov( Word_pt, al );
+							if( attrEBX.byte_vt[1] = 0 ) then
+							
+								mov( Byte_pt, al );
+								
+							endif;
+							
+						endif;
+						
+					endif;
+					
+				endif;
+				
+			endif;
+			mov( al, attr.pType );
+			mov( HexPtrs[ eax*4 - byte(Byte_pt)*4 ], eax );
+			mov( eax, attrEBX.symType );
+			
+		
+		
+		case
+		( 
+			Int8_pt,
+			Int16_pt,
+			Int32_pt,
+			Int64_pt,
+			Int128_pt 
+		)	
+		
+			// Note: IntXXX objects are always sign extended to 128 bits,
+			// So the H.O. bit (#127) contains the sign bit regardless
+			// of the number's size.
+			
+			mov( attr.int32_vt[12], eax );
+			cdq();					// Set EDX to all sign bits.
+			
+			shr( 16, eax );			// Move sign bit into bit #7 of AH.
+			and( $80, ah );			// Keep only the sign bit.
+			
+			mov( Int128_pt, al );
+			if
+			(
+						edx = attr.dword_vt[8]		// Are the upper 65 bits
+					&&	edx = attr.dword_vt[12]		//  all the same?  If so,
+					&&	ah <= attr.byte_vt[7]		//  # fits in 64 bits.
+					
+			) then
+			
+				mov( Int64_pt, al );
+				if
+				( 
+						edx = attr.dword_vt[4]		// Are the upper 33 bits 
+					&&	ah <= attr.byte_vt[3] 		//  all the same?
+				) then
+				
+					mov( Int32_pt, al );
+					if( attr.int32_vt in -32768..32767 ) then
+					
+						mov( Int16_pt, al );
+						if( attr.int16_vt in -128..127 ) then
+						
+							mov( Int8_pt, al );
+							
+						endif;
+						
+					endif;
+					
+				endif;
+				
+			endif;
+			and( $ff, eax );
+			mov( al, attr.pType );
+			mov( IntPtrs[ eax*4 - byte(Int8_pt)*4 ], eax );
+			mov( eax, attrEBX.symType );
+					
+			
+		case( XChar_pt )
+
+			if( attr.xchar_vt < #$80 ) then
+			
+				mov( Char_pt, attr.pType );
+				mov( &char_ste, attr.symType );
+				
+			endif;
+			
+							
+
+		default
+		
+			// Don't bother doing anything with other types.
+	
+	endswitch;
+	pop( edx );
+	pop( ebx );
+	pop( eax );
+
+end setSmallestSize;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// unsToReal-
+//
+//	Converts an unsigned attr_t object to a real object.
+//
+// Inputs:
+//
+//	uns-
+//		Attr_t object containing the unsigned value to convert
+//		to a real object.
+//
+//	realType-
+//		This is the pType value that specifies the destination
+//		type (real32, real64, real80).
+//
+//	Note:	the FPU only allows conversion of 63-bit unsigned values.
+//			This procedure reports an error if there is an attempt
+//			to convert a larger value to a float value.
+
+
+//proc( "unsToReal" )
+procedure unsToReal( var uns:attr_t; realType:pType_t ); 
+const
+	attr	:text := "attrEBX";
+	
+begin unsToReal;
+
+	push( eax );
+	push( ebx );
+	
+	mov( uns, ebx );
+	canAccess( [ebx] );
+	mov( attr.pType, al );
+
+	if( al in Uns64_pt..Uns128_pt || al in QWord_pt..LWord_pt ) then
+	
+		// If the H.O. 65 bits are all zero,
+		// treat this like an INT64 object; if they
+		// are not all zero, then return an error.
+		
+		mov( attr.byte_vt[7], al );
+		and( $80, eax );
+		or( attr.dword_vt[2*4], eax );
+		or(	attr.dword_vt[3*4], eax );
+		if( @nz ) then
+		
+			HLAerror
+			( 
+				"Unsigned value in expression is too large "
+				"to convert to real"
+				nl
+			);
+			
+			// Fall through and go ahead and convert the
+			// L.O. 64 bits to a real just to avoid
+			// other errors.
+			
+		endif;
+		
+	endif;
+		
+		
+		
+	// Convert the 64-bit value to a float (note that
+	// all smaller unsigned values are zero extended
+	// to 128 bits).
+	
+	fild( attr.int64_vt );
+	
+	// Now save as the appropriate real:
+	
+	if( realType = Real32_pt ) then
+	
+		fstp( attr.real32_vt );
+		mov( Real32_pt, attr.pType );
+		mov( &real32_ste, attr.symType );
+		clc();
+
+	elseif( realType = Real64_pt ) then
+	
+		fstp( attr.real64_vt );
+		mov( Real64_pt, attr.pType );
+		mov( &real64_ste, attr.symType );
+		clc();
+		
+	elseif( realType = Real80_pt ) then
+	
+		// Has to be real80 at this point.
+		
+		fstp( attr.real80_vt );
+		mov( Real80_pt, attr.pType );
+		mov( &real80_ste, attr.symType );
+		clc();
+		
+	else
+	
+		stc();
+		
+	endif;
+	
+	pop( ebx );
+	pop( eax );
+		
+end unsToReal;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// intToReal-
+//
+//	Converts a signed attr_t object to a real object.
+//
+// Inputs:
+//
+//	int-
+//		Attr_t object containing the signed value to convert
+//		to a real object.
+//
+//	realType-
+//		This is the pType value that specifies the destination
+//		type (real32, real64, real80).
+//
+//	Note:	the FPU only allows conversion of 64-bit signed values.
+//			This procedure reports an error if there is an attempt
+//			to convert a larger value to a float value.
+
+
+//proc( "intToReal" )
+procedure intToReal( var i:attr_t; realType:pType_t ); 
+const
+	attr	:text := "attrEBX";
+	
+begin intToReal;
+
+	push( eax );
+	push( ebx );
+	push( edx );
+	
+	mov( i, ebx );
+	canAccess( [ebx] );
+	mov( attr.pType, al );
+
+	// Verify that we have a valid integer object:
+		
+	if( al = Int128_pt || al in TByte_pt..LWord_pt ) then
+	
+		// Make sure the H.O. bits are a sign extension of
+		// bit 64:
+				
+		mov( attr.dword_vt[1*4], eax );
+		cdq();
+		cmp( edx, attr.dword_vt[2*4] );
+		jne badInt;
+		cmp( edx, attr.dword_vt[3*4] );
+		je goodInt;
+		
+		badInt:
+		
+			HLAerror
+			( 
+				"Signed value in expression is too large/small "
+				"to convert to real"
+				nl
+			);
+			
+			// Fall through and go ahead and convert the
+			// L.O. 64 bits to a real just to avoid
+			// other errors.
+			
+		goodInt:
+		
+	endif;
+		
+		
+		
+	// Convert the 64-bit value to a float (note that
+	// all smaller signed values are sign extended
+	// to 128 bits).
+	
+	fild( attr.int64_vt );
+	
+	// Now save as the appropriate real:
+	
+	if( realType = Real32_pt ) then
+	
+		fstp( attr.real32_vt );
+		mov( Real32_pt, attr.pType );
+		mov( &real32_ste, attr.symType );
+		clc();
+
+	elseif( realType = Real64_pt ) then
+	
+		fstp( attr.real64_vt );
+		mov( Real64_pt, attr.pType );
+		mov( &real64_ste, attr.symType );
+		clc();
+		
+	elseif( realType = Real80_pt ) then
+	
+		// Has to be real80 at this point.
+		
+		fstp( attr.real80_vt );
+		mov( Real80_pt, attr.pType );
+		mov( &real80_ste, attr.symType );
+		clc();
+		
+	else
+	
+		stc();
+		
+	endif;
+	
+	pop( edx );
+	pop( ebx );
+	pop( eax );
+		
+end intToReal;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// coerceOperands-
+//
+//	This procedure takes two attr_t objects and, if possible,
+// coerces them to a compatible type so the expression evaluator
+// can apply an operator to them (specified by op).
+//
+// Inputs:
+//
+//	left-
+//		This is a pointer to an attr_t value that corresponds to an
+//		operand to the left of the operator.
+//
+//	right-
+//		This is a pointer to an attr_t value that corresponds to an
+//		operand to the right of the operator.
+//
+//	op-
+//		This is the token value for the operator.
+
+//proc( "coerceOperands" )
+procedure coerceOperands
+( 
+	var	left:attr_t; 
+	var	right:attr_t; 
+		op:dword 
+);
+const
+	leftEBX		:text := "attrEBX";
+	rightECX	:text := "attrECX";
+	
+var
+	pTypeLeft	:pType_t;
+	pTypeRight	:pType_t;
+	
+readonly(4)
+	
+	HOoffsets	:dword[5] := [0, 1, 3, 7, 15];
+	
+	IntPtrs		:dword[5] := 
+					[
+						&int8_ste, 
+						&int16_ste, 
+						&int32_ste, 
+						&int64_ste, 
+						&int128_ste 
+					];
+					
+	UnsPtrs		:dword[5] := 
+					[
+						&uns8_ste, 
+						&uns16_ste, 
+						&uns32_ste, 
+						&uns64_ste, 
+						&uns128_ste 
+					];
+					
+	HexPtrs		:dword[6] := 
+					[
+						&byte_ste, 
+						&word_ste, 
+						&dword_ste, 
+						&qword_ste,
+						&tbyte_ste, 
+						&lword_ste 
+					];
+	
+	
+	
+	// printOperator - converts the token value for op into the
+	// corresponding operator string and prints it.
+	
+	//proc( "printOperator" )
+	procedure printOperator( op:dword );  
+	begin printOperator;
+	
+		mov( op, edx );
+		if( op < #$80 ) then
+		
+			HLAerror2( (type char op) );
+			
+		else
+		
+			switch( edx );
+			
+				case( tkn_andOp )
+				
+					HLAerror2( '&' );
+					
+				case( tkn_orOp )
+				
+					HLAerror2( '|' );
+					
+				case( tkn_lessEqual )
+				
+					HLAerror2( "<=" );
+					
+				case( tkn_notEqual )
+				
+					HLAerror2( "<>" );
+					
+				case( tkn_greaterEqual )
+				
+					HLAerror2( ">=" );
+					
+				case( tkn_shlOp )
+				
+					HLAerror2( "<<" );
+					
+				case( tkn_shrOp )
+				
+					HLAerror2( ">>" );
+					
+				case( tkn_divOp )
+				
+					HLAerror2( " div " );
+					
+				case( tkn_modOp )
+				
+					HLAerror2( " mod " );
+
+				case( tkn_at_min )
+
+					HLAerror2( " @min " );
+					
+				default
+				
+					HLAerror2( "??? ($", op, ") " );
+					
+			endswitch;
+			
+		endif;
+	
+	end printOperator;
+	
+begin coerceOperands;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	
+	begin exitCoerce;
+	
+		mov( left, ebx );
+		canAccess( [ebx] );
+		getBaseIsoType( leftEBX.symType );
+		mov( eax, edx );
+		mov( right, ecx );
+		canAccess( [ecx] );
+		getBaseIsoType( rightECX.symType );
+
+		if( eax = edx ) then
+		
+			// If the types are equal, we can immediately return success.
+			
+			clc();
+			exit exitCoerce;
+			
+		endif;
+		
+		// Get the pTypes of the operands so we can easily compare
+		// the types.
+		
+		mov( leftEBX.pType, al );
+		mov( rightECX.pType, ah );
+		mov( al, pTypeLeft );
+		mov( ah, pTypeRight );
+		
+		// We only need to coerce primitive types because none of the
+		// operators work on composite data types.
+		
+		if( al > XCset_pt || ah > XCset_pt ) then
+		
+			HLAerror( "Operand type(s) is(are) illegal for '" );
+			printOperator( op );
+			HLAerror2( "' operator" nl );
+			stc();
+			exit exitCoerce;
+								
+		endif;
+			
+		// Okay, both operands are primitive types, so let's see if
+		// we can coerce them to something reasonable that the operator
+		// can deal with.
+		
+		movzx( pTypeLeft, eax );
+		movzx( pTypeRight, edx );
+		switch( eax )
+		
+	
+			////////// Left Operand is HEX \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case
+			( 
+				Byte_pt,	
+				Word_pt,	
+				DWord_pt,	
+				QWord_pt,	
+				TByte_pt,	
+				LWord_pt 
+			)
+
+				// Left operand is hex (we'll assume 128 bits for now).
+				//
+				// Check for an enumerated right operand, and convert
+				// it to hex if it is an enumerated type:
+
+				if( dl = Enum_pt ) then
+
+					if( curEnumSize = 1 ) then
+
+						mov( Byte_pt, dl );
+
+					elseif(	curEnumSize = 2 ) then
+
+						mov( Word_pt, dl );
+
+					else // must be four bytes
+
+						mov( DWord_pt, dl );
+
+					endif;
+
+				endif;
+
+
+				// Check for a signed right operand next:
+				
+				if( dl in Int8_pt..Int128_pt ) then
+					
+					// Well, the left operand is HEX and
+					// the right operand is an integer.  We're
+					// going to promote the untyped HEX value 
+					// to an integer object, choosing the larger
+					// (storage) size of the two.
+				
+					// Let's convert LWord_pt to TByte_pt to make
+					// the following comparisons easy (no such
+					// thing as an int80 object anyway, shortly
+					// we will convert tbytes to int128s).
+					
+					if( al = LWord_pt ) then
+					
+						mov( TByte_pt, al );
+						
+					endif;
+					
+					// Convert byte..tbyte to int8..int128:
+					
+					lea( eax, [eax + byte(Int128_pt) - byte(Byte_pt)] );
+					
+					// Compute the greater of the two and go with that
+					// (max value is left in edx):
+					
+					if( al > dl ) then
+					
+						mov( al, dl );
+													
+					endif;
+						
+					// Set the pTypes (of both, though not necessary
+					// for one of them) to the larger of the two
+					// sizes:
+					
+					mov( dl, leftEBX.pType );
+					mov( dl, rightECX.pType );
+					
+					// Set the symType field too:
+					
+					mov( IntPtrs[edx*4 - uns32(Int8_pt)*4], eax );
+					mov( eax, leftEBX.symType );
+					mov( eax, rightECX.symType );
+					clc();
+					exit exitCoerce;					
+					
+				endif;
+				
+				
+				
+				// Check to see if the right operands are untyped hex values:
+				// If so, all we've got to do is pick the larger of the
+				// two sizes.
+
+				if( dl in Byte_pt..LWord_pt ) then
+				
+					if( al > dl ) then
+					
+						mov( al, dl );
+						
+					endif; 
+					
+						
+					// Set the pTypes (of both, though not necessary
+					// for one of them) to the larger of the two
+					// sizes:
+					
+					mov( dl, leftEBX.pType );
+					mov( dl, rightECX.pType );
+					
+					// Set the symType field too:
+
+					mov( HexPtrs[edx*4 - uns32(Byte_pt)*4], eax );
+					mov( eax, leftEBX.symType );
+					mov( eax, rightECX.symType );
+					clc();
+					exit exitCoerce;					
+					
+				endif;				
+				
+				
+				// Check to see if the left and right operands are both
+				// unsigned:
+
+				if( dl in Uns8_pt..Uns128_pt ) then
+				
+					// Translate the left operand to an UNS value,
+					// mapping tbyte_pt to uns128_pt:
+					
+					lea( eax, [eax - uns32(Byte_pt) + uns32(Uns8_pt)] );
+					if( al > Uns128_pt ) then
+					
+						mov( Uns128_pt, al );
+						
+					endif;
+					
+					// Get the larger of the two pTypes into dl:
+					
+					if( al > dl ) then
+					
+						mov( al, dl );
+						
+					endif;
+					
+					// Set the pTypes (of both, though not necessary
+					// for one of them) to the larger of the two
+					// sizes:
+					
+					mov( dl, leftEBX.pType );
+					mov( dl, rightECX.pType );
+					
+					// Set the symType field too:
+					
+					mov( UnsPtrs[edx*4 - uns32(Int8_pt)*4], eax );
+					mov( eax, leftEBX.symType );
+					mov( eax, rightECX.symType );
+					clc();
+					exit exitCoerce;					
+						
+					
+				endif;
+								
+				
+				if( dl in Real32_pt..Real80_pt ) then
+				
+				
+					// unstoReal returns clc/stc depending on 
+					// conversion status.
+					
+					unsToReal( leftEBX, dl );
+
+				else
+				
+					// If we fall through to this point, we've got some
+					// data type that we cannot convert to/from HEX.
+					// so report a type mismatch error and give up.
+					
+					HLAerror( "Type mismatch in expression (" );
+					pTypePrint( pTypeLeft );
+					HLAerror2( " " );
+					printOperator( op );
+					HLAerror2( " " );
+					pTypePrint( pTypeRight );
+					HLAerror2( ")" nl );
+					stc();
+					
+				endif;
+					
+						
+							
+			////////// Left Operand is UNS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case
+			( 
+				Uns8_pt,
+				Uns16_pt,	
+				Uns32_pt,	
+				Uns64_pt,	
+				Uns128_pt 
+			)
+			
+				// Left operand is unsigned (we'll assume 128 bits for now).
+				//
+				// Check for an enumerated right operand, and convert
+				// it to Uns if it is an enumerated type:
+
+				if( dl = Enum_pt ) then
+
+					if( curEnumSize = 1 ) then
+
+						mov( Uns8_pt, dl );
+
+					elseif(	curEnumSize = 2 ) then
+
+						mov( Uns16_pt, dl );
+
+					else // must be four bytes
+
+						mov( Uns32_pt, dl );
+
+					endif;
+
+				endif;
+
+				// Check for a signed right operand first:
+				
+				if( dl in Int8_pt..Int128_pt ) then
+				
+					// If the value is not negative, let's just
+					// convert it to an unsigned value and fall
+					// through to let the following code handle
+					// this.
+
+					if( rightECX.int8_vt[15] < 0 ) then
+					
+						// Well, the left operand is unsigned and
+						// the right operand is negative.  We need
+						// to coerce the unsigned operand to signed
+						// (but we have to check the H.O. bit of the
+						// unsigned operand to be sure we don't have
+						// too large a value).
+						//						
+						// Now set eax and edx to 0..4 to denote the size
+						// of the operands (8, 16, 32, 64, 128):
+						
+						sub( Uns8_pt, al );
+						sub( Int8_pt, dl );
+						
+						// Compute the greater of the two and go with that
+						// (max value is left in edx):
+						
+						if( al > dl ) then
+						
+							mov( al, dl );
+														
+						endif;
+						
+						// See if the H.O. bit of the unsigned operand is
+						// set.  If so, bump the size up a notch:
+						
+						mov( HOoffsets [edx*4], eax );
+						if( leftEBX.int8_vt[eax] < 0 ) then
+						
+							// H.O. bit is set, bump the size up a notch
+							// if we can.
+							
+							inc( edx );
+							if( edx > 4 ) then
+							
+								// Whoops! It's too big.
+								
+								HLAerror
+								( 
+									"Unsigned operand in expression is too "
+									"large to use with signed operand"
+									nl
+								);
+								
+								// Cheat and back down a size.
+								// (already printed an error, so who
+								// cares if the result is wrong?)
+								
+								dec( edx );
+								
+								
+							endif;
+							
+						endif;
+							
+						// Set eax to Int8_pt..Int128_pt, as appropriate
+						// (selected by the larger of the two data sizes):
+						
+						lea( eax, [edx + Int8_pt] );
+						mov( al, leftEBX.pType );
+						mov( al, rightECX.pType );
+						
+						// Set the symType field too:
+						
+						mov( IntPtrs[edx*4], eax );
+						mov( eax, leftEBX.symType );
+						mov( eax, rightECX.symType );
+						clc();
+						exit exitCoerce;					
+						
+					
+					endif;
+						
+					// Fall through to this point if the right (Int) operand
+					// was non-negative.  Convert it to an UNS type of the
+					// same size and then fall through to the code that
+					// deals with UNS objects.
+						
+					lea( edx, [edx + byte(Uns8_pt) - byte(Int8_pt)] );
+					
+					
+				endif;
+				
+				
+				
+				// Check to see if the right operands are untyped hex values:
+				// This code must execute immediately before the test for
+				// unsigned operations because it simply converts byte..lword
+				// to a corresponding unsigned type and relies upon the
+				// code that follows to do the actual coercion:
+
+				if( dl in Byte_pt..LWord_pt ) then
+				
+					add( uns32( Uns8_pt ) - uns32( Byte_pt ), dl );
+					
+					// Special case because of tbyte_pt and lword_pt both
+					// mapping to Uns128_pt:
+					
+					if( dl > Uns64_pt ) then
+					
+						mov( Uns128_pt, dl );
+						
+					endif;
+					
+				endif;				
+				
+				
+				// Check to see if the left and right operands are both
+				// unsigned:
+
+				if( dl in Uns8_pt..Uns128_pt ) then
+				
+					if( al > dl ) then
+					
+						// Left operand is larger than the right
+						// operand, so change the right operand
+						// to match the left:
+						
+						mov( al, rightECX.pType );
+						mov( leftEBX.symType, eax );
+						mov( eax, rightECX.symType );
+						clc();
+						exit exitCoerce;
+						
+					endif;
+					
+					// Okay, the right operand must be larger than
+					// the left, update the left operand:
+					
+					mov( dl, leftEBX.pType );
+					mov( rightECX.symType, edx );
+					mov( edx, leftEBX.symType );
+					clc();
+					exit exitCoerce;
+					
+				endif;
+				
+				
+				if( dl in Real32_pt..Real80_pt ) then
+				
+				
+					// unstoReal returns clc/stc depending on 
+					// conversion status.
+					
+					unsToReal( leftEBX, dl );
+
+				else
+				
+					// If we fall through to this point, we've got some
+					// data type that we cannot convert to/from UNS.
+					// so report a type mismatch error and give up.
+					
+					HLAerror( "Type mismatch in expression (" );
+					pTypePrint( pTypeLeft );
+					HLAerror2( " " );
+					printOperator( op );
+					HLAerror2( " " );
+					pTypePrint( pTypeRight );
+					HLAerror2( ")" nl );
+					stc();
+					
+				endif;
+					
+						
+							
+			////////// Left Operand is INT \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+			case
+			( 
+				Int8_pt,
+				Int16_pt,
+				Int32_pt,
+				Int64_pt,
+				Int128_pt 
+			)	
+
+				// Left operand is signed (we'll assume Int128 for now).
+				//
+				// Check for an enumerated right operand, and convert
+				// it to Int if it is an enumerated type:
+
+				if( dl = Enum_pt ) then
+
+					if( curEnumSize = 1 ) then
+
+						mov( Int8_pt, dl );
+
+					elseif(	curEnumSize = 2 ) then
+
+						mov( Int16_pt, dl );
+
+					else // must be four bytes
+
+						mov( Int32_pt, dl );
+
+					endif;
+
+				endif;
+
+
+				// Check to see if the right operands are untyped hex values:
+
+				if( dl in Byte_pt..LWord_pt ) then
+				
+					add( uns32( Int8_pt ) - uns32( Byte_pt ), dl );
+					
+					// Special case because of tbyte_pt and lword_pt both
+					// mapping to Int128_pt:
+					
+					if( dl > Int64_pt ) then
+					
+						mov( Int128_pt, dl );
+						
+					endif;
+					
+				endif;				
+
+
+				// Check for an unsigned right operand next:
+				
+						
+				if( dl in Uns8_pt..Uns64_pt ) then
+				
+					
+					// Translate uns8..uns64 to int16..int128:
+					
+					lea( edx, [edx + byte(Int16_pt) - byte(Uns8_pt)]);
+					
+				elseif( dl = Uns128_pt ) then
+				
+					// If the H.O. bit isn't set, just do a straight
+					// conversion to INT128.  If the H.O. bit is set,
+					// then we've got an overflow error:
+					
+					if( rightECX.int8_vt[7] < 0 ) then
+					
+						HLAerror
+						( 
+							"Unsigned value too large to convert to integer "
+							"in expression"
+							nl
+						);
+						
+						// We'll convert it anyway, although it goes negative.
+						
+						
+					endif;
+					
+					mov( Int128_pt, dl );
+					
+				endif;
+				
+				// Now let's check to see if the right operand is a
+				// signed integer value (this includes the conversion
+				// from unsigned to signed as accomplished above).
+				
+				if( dl in Int8_pt..Int128_pt ) then
+				
+					if( dl > al ) then
+					
+						// Set both types to that specified by dl:
+						
+						mov( dl, al );
+						
+					endif;
+					
+					// Okay, eax contains the type we want to use
+					// for both operands.  Set the type here:
+					
+					mov( IntPtrs[ eax*4 - byte(Int8_pt)*4 ], edx );
+					mov( al, leftEBX.pType );
+					mov( al, rightECX.pType );
+					mov( edx, leftEBX.symType );
+					mov( edx, rightECX.symType );
+					clc();
+					exit exitCoerce;
+				
+				endif;
+				
+				
+				if( dl in Real32_pt..Real80_pt ) then
+				
+					// intToReal returns error status in carry flag:
+					
+					intToReal( leftEBX, dl );
+					
+				else
+				
+					// If we fall through to this point, we've got some
+					// data type that we cannot convert to/from INT.
+					// so report a type mismatch error and give up.
+					
+					HLAerror( "Type mismatch in expression (" );
+					pTypePrint( pTypeLeft );
+					HLAerror2( " " );
+					printOperator( op );
+					HLAerror2( " " );
+					pTypePrint( pTypeRight );
+					HLAerror2( ")" nl );
+					stc();
+					
+				endif;
+			
+			
+			////////// Left Operand is Float \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case
+			( 
+				Real32_pt,
+				Real64_pt,
+				Real80_pt 
+			)	
+
+					// Sorry for the spaghetti assembly here,
+					// but the HLL version is really inefficient.
+					
+					jt( dl in Uns8_pt..Uns32_pt ) goodReal;
+					jt( dl in Byte_pt..DWord_pt ) goodReal;
+					jt( dl in Int8_pt..Int32_pt ) goodReal;
+					jt( dl in Real32_pt..Real80_pt ) tryReal;
+					
+					if( dl in TByte_pt..LWord_pt ) then
+					
+						// For values 64 bits and larger, test bits
+						// 63..127.  If they are all zero, then we
+						// can convert this value to a real.
+						
+						mov( rightECX.byte_vt[7], al );
+						and( $80, eax );
+						or(	(type dword rightECX.lword_vt[2*4]), eax );
+						or(	(type dword rightECX.lword_vt[3*4]), eax );
+						jz goodReal;
+						jmp badReal;
+						
+					endif;
+						
+					
+					if( dl in Int64_pt..Int128_pt ) then
+					
+						// For int64/128 values, the upper 64 bits have to
+						// be the same as bit #63.
+						
+						push( eax );
+						mov( rightECX.dword_vt[1*4], eax );
+						cdq();
+						pop( eax );
+						cmp( edx, rightECX.dword_vt[2*4] );
+						jne badReal;
+						cmp( edx, rightECX.dword_vt[3*4] );
+						jne badReal;
+						
+					endif;
+						
+						
+				goodReal:
+				
+					// At this point, we've got a decent integer value
+					// that we can convert to a real (ignoring truncation
+					// issues.  Do that conversion here:
+					
+					if( al = Real32_pt ) then
+					
+						fild( rightECX.int64_vt );
+						fstp( rightECX.real32_vt );
+						mov( Real32_pt, rightECX.pType );
+						mov( &real32_ste, rightECX.symType );
+						clc();
+						exit exitCoerce;
+						
+					elseif( al = Real64_pt ) then
+					
+						fild( rightECX.int64_vt );
+						fstp( rightECX.real64_vt );
+						mov( Real64_pt, rightECX.pType );
+						mov( &real64_ste, rightECX.symType );
+						clc();
+						exit exitCoerce;
+						
+					endif;
+					
+					// Must be real80 at this point.
+					
+					fild( rightECX.int64_vt );
+					fstp( rightECX.real80_vt );
+					mov( Real80_pt, rightECX.pType );
+					mov( &real80_ste, rightECX.symType );
+					clc();
+					exit exitCoerce;
+					
+						
+				tryReal:
+				
+					if( dl = Real32_pt ) then
+					
+						fld( rightECX.real32_vt );
+						
+					elseif( dl = Real64_pt ) then
+						
+						fld( rightECX.real64_vt );
+						
+					elseif( dl = Real80_pt ) then
+						
+						fld( rightECX.real80_vt );
+						
+					else
+
+						jmp badReal;
+						
+					endif;
+					
+					// If we fall down here, we've got a real value on
+					// the FPU stack.  Save as appropriate for the type.
+					
+					if( al = Real32_pt ) then
+					
+						fstp( rightECX.real32_vt );
+						mov( Real32_pt, rightECX.pType );
+						mov( &real32_ste, rightECX.symType );
+						clc();
+						exit exitCoerce;
+						
+					elseif( al = Real64_pt ) then
+					
+						fstp( rightECX.real64_vt );
+						mov( Real64_pt, rightECX.pType );
+						mov( &real64_ste, rightECX.symType );
+						clc();
+						exit exitCoerce;
+						
+					endif;
+					
+					// Must be real80 at this point.
+					
+					fstp( rightECX.real80_vt );
+					mov( Real80_pt, rightECX.pType );
+					mov( &real80_ste, rightECX.symType );
+					clc();
+					exit exitCoerce;
+						
+				badReal:					
+					HLAerror( "Type mismatch in expression (" );
+					pTypePrint( pTypeLeft );
+					HLAerror2( " " );
+					printOperator( op );
+					HLAerror2( " " );
+					pTypePrint( pTypeRight );
+					HLAerror2( ")" nl );
+					stc();
+					exit exitCoerce;
+						
+			
+			////////// Left Operand is ENUM \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+			case( Enum_pt )
+
+				// Left operand is an enumerated type.
+
+
+				// Check for an unsigned right operand next:
+				
+						
+				if( dl in Byte_pt..Int128_pt ) then
+					
+					// Just set the result type to the non-enum type:				
+
+					mov( rightECX.pType, al );
+					mov( al, leftEBX.pType );
+					mov( rightECX.symType, eax );
+					mov( eax, leftEBX.symType );
+					clc();				
+					
+				else
+				
+					// If we fall through to this point, we've got some
+					// data type that we cannot convert to/from INT.
+					// so report a type mismatch error and give up.
+					
+					HLAerror( "Type mismatch in expression (" );
+					pTypePrint( pTypeLeft );
+					HLAerror2( " " );
+					printOperator( op );
+					HLAerror2( " " );
+					pTypePrint( pTypeRight );
+					HLAerror2( ")" nl );
+					stc();
+					
+				endif;
+			
+			
+			
+			
+			
+			////////// Left Operand is CHAR \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case( Char_pt )
+
+				
+				if
+				( 
+						(
+								dl in Uns8_pt..Uns32_pt
+							||	dl in Byte_pt..DWord_pt
+							||	dl in Int8_pt..Int32_pt
+						)
+					&&	op = '*'
+				) then
+				
+					// char * number is okay (same as setstr( char, number )
+					
+					clc();
+					
+				elseif
+				(
+					( 
+							dl = Cset_pt 
+						||	dl = XCset_pt
+					)
+					&&	op = tkn_inOp 
+				) then
+				
+					// <<char in cset>> and <<char in xcset>> is okay.
+					
+					clc();
+					
+				elseif( dl = XChar_pt ) then
+				
+					mov( XChar_pt, leftEBX.pType );
+					mov( &xchar_ste, leftEBX.symType );
+					clc();
+				
+					
+				elseif( dl = Unicode_pt ) then
+				
+					mov( Unicode_pt, leftEBX.pType );
+					mov( &unicode_ste, leftEBX.symType );
+					clc();
+				
+				elseif( dl = Utf8_pt ) then
+				
+					mov( Utf8_pt, leftEBX.pType );
+					mov( &utf8_ste, leftEBX.symType );
+					stralloc( 1 );
+					mov( leftEBX.char_vt, dl );
+					mov( dl, [eax] );
+					mov( 0, (type byte [eax+1]));
+					mov( 1, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+
+					if( dl >= $80 ) then
+
+						HLAerror
+						( 
+							"Error converting char to UTF-8, character "
+							"value is out of range (",
+							(type uns8 dl),
+							")"
+							nl
+						);
+						stc();
+
+					else
+
+						clc();
+
+					endif;
+						
+				
+				elseif( dl = String_pt ) then
+				
+					mov( String_pt, leftEBX.pType );
+					mov( &string_ste, leftEBX.symType );
+					stralloc( 1 );
+					mov( leftEBX.char_vt, dl );
+					mov( dl, [eax] );
+					mov( 0, (type byte [eax+1]));
+					mov( 1, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+					clc();
+				
+				elseif( dl = UString_pt ) then
+				
+					mov( UString_pt, leftEBX.pType );
+					mov( &ustring_ste, leftEBX.symType );
+					stralloc( 4 );
+					movzx( leftEBX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+
+					if( dl >= $80 ) then
+
+						HLAerror
+						( 
+							"Error converting char to Unicode string, "
+							"character value is out of range (",
+							(type uns8 dl),
+							")"
+							nl
+						);
+						stc();
+
+					else
+
+						clc();
+
+					endif;
+				
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression"
+						nl
+					);
+					stc();
+					
+				endif;
+				
+			
+			////////// Left Operand is XCHAR \\\\\\\\\\\
+			
+			case( XChar_pt )
+
+				
+				if
+				( 
+						(
+								dl in Uns8_pt..Uns32_pt
+							||	dl in Byte_pt..DWord_pt
+							||	dl in Int8_pt..Int32_pt
+						)
+					&&	op = '*'
+				) then
+				
+					// char * number is okay (same as setstr( char, number )
+					
+					clc();
+					
+				elseif
+				(
+					( 
+							dl = Cset_pt 
+						||	dl = XCset_pt
+					)
+					&&	op = tkn_inOp 
+				) then
+				
+					// <<xchar in cset>> and <<xchar in xcset>> is okay.
+					
+					clc();
+					
+				elseif( dl = Char_pt ) then
+				
+					mov( XChar_pt, rightECX.pType );
+					mov( &xchar_ste, rightECX.symType );
+					clc();
+				
+					
+				elseif( dl = Unicode_pt ) then
+				
+					mov( Unicode_pt, leftEBX.pType );
+					mov( &unicode_ste, leftEBX.symType );
+					if( dl >= $80 ) then
+
+						HLAerror
+						( 
+							"Error converting xchar to Unicode, "
+							"character value is out of range (",
+							(type uns8 dl),
+							")"
+							nl
+						);
+						stc();
+
+					else
+
+						clc();
+
+					endif;
+				
+				elseif( dl = String_pt ) then
+				
+					mov( String_pt, leftEBX.pType );
+					mov( &string_ste, leftEBX.symType );
+					stralloc( 1 );
+					mov( leftEBX.char_vt, dl );
+					mov( dl, [eax] );
+					mov( 0, (type byte [eax+1]));
+					mov( 1, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+					clc();
+
+				
+				elseif( dl = UString_pt ) then
+				
+					mov( UString_pt, leftEBX.pType );
+					mov( &ustring_ste, leftEBX.symType );
+					stralloc( 4 );
+					movzx( leftEBX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+
+					if( dl >= $80 ) then
+
+						HLAerror
+						( 
+							"Error converting char to Unicode string, "
+							"character value is out of range (",
+							(type uns8 dl),
+							")"
+							nl
+						);
+						stc();
+
+					else
+
+						clc();
+
+					endif;
+				
+				
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression"
+						nl
+					);
+					stc();
+					
+				endif;
+				
+			
+			////////// Left Operand is Unicode \\\\\\\\\\\
+			
+			case( Unicode_pt )
+
+				
+				if
+				( 
+						(
+								dl in Uns8_pt..Uns32_pt
+							||	dl in Byte_pt..DWord_pt
+							||	dl in Int8_pt..Int32_pt
+						)
+					&&	op = '*'
+				) then
+				
+					// char * number is okay (same as setstr( char, number )
+					
+					clc();
+					
+				elseif( dl = Char_pt ) then
+				
+					mov( Unicode_pt, rightECX.pType );
+					mov( &unicode_ste, rightECX.symType );
+					clc();
+				
+					
+				elseif( dl = XChar_pt ) then
+				
+					mov( Unicode_pt, rightECX.pType );
+					mov( &unicode_ste, rightECX.symType );
+					if( leftEBX.char_vt >= $80 ) then
+
+						HLAerror
+						( 
+							"Error converting xchar to Unicode, "
+							"character value is out of range (",
+							(type uns8 leftEBX.char_vt),
+							")"
+							nl
+						);
+						stc();
+
+					else
+
+						clc();
+
+					endif;
+
+				elseif( dl = Utf8_pt ) then
+				
+					mov( Utf8_pt, leftEBX.pType );
+					mov( &utf8_ste, leftEBX.symType );
+					stralloc( 2 );
+					push( eax );				// Save, so we can deallocate
+					mov( leftEBX.unicode_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type byte [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					unicodeToUtf8( eax );
+					mov( eax, leftEBX.string_vt );
+					pop( eax );
+					strfree( eax );
+					clc();
+				
+				elseif( dl = String_pt ) then
+				
+					mov( UString_pt, leftEBX.pType );
+					mov( &ustring_ste, leftEBX.symType );
+					stralloc( 2 );
+					mov( leftEBX.unicode_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+
+					mov( rightECX.string_vt, eax );
+					ansiToUnicode( eax );
+					strfree( rightECX.string_vt );
+					mov( eax, rightECX.string_vt );
+					mov( UString_pt, rightECX.pType );
+					mov( &ustring_ste, rightECX.symType );
+					clc();
+				
+				elseif( dl = UString_pt ) then
+				
+					mov( UString_pt, leftEBX.pType );
+					mov( &ustring_ste, leftEBX.symType );
+					stralloc( 4 );
+					movzx( leftEBX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, leftEBX.string_vt );
+					clc();
+				
+				
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression"
+						nl
+					);
+					stc();
+					
+				endif;
+				
+			
+			////////// Left Operand is String \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case( String_pt )
+			
+
+				
+				if
+				( 
+						(
+								dl in Uns8_pt..Uns32_pt
+							||	dl in Byte_pt..DWord_pt
+							||	dl in Int8_pt..Int32_pt
+						)
+					&&	op = '*'
+				) then
+				
+					// string * number is okay
+					
+					clc();
+
+				elseif( dl = Char_pt ) then
+					mov( String_pt, rightECX.pType );
+					mov( &string_ste, rightECX.symType );
+					stralloc( 1 );
+					mov( rightECX.char_vt, dl );
+					mov( dl, [eax] );
+					mov( 0, (type byte [eax+1]));
+					mov( 1, (type str.strRec [eax]).length );
+					mov( eax, rightECX.string_vt );
+					clc();
+					
+				elseif( dl = XChar_pt ) then
+					mov( String_pt, rightECX.pType );
+					mov( &string_ste, rightECX.symType );
+					stralloc( 1 );
+					mov( rightECX.char_vt, dl );
+					mov( dl, [eax] );
+					mov( 0, (type byte [eax+1]));
+					mov( 1, (type str.strRec [eax]).length );
+					mov( eax, rightECX.string_vt );
+					clc();
+					
+				elseif( dl = Utf8_pt ) then
+				
+					// Note that ANSI strings are already valid Unicode.
+					mov( Utf8_pt, leftEBX.pType );
+					mov( &utf8_ste, leftEBX.symType );
+
+					// Make sure the string doesn't contain illegal characters:
+					checkUtf8( leftEBX.string_vt );
+					if( @c ) then
+
+						HLAerror
+						(
+							"Cannot convert string to UTF-8 because it "
+							"contains non-ANSI/ASCII characters"
+							nl
+						);
+						stc();
+
+					endif;
+					
+				elseif( dl = UString_pt ) then
+				
+					ansiToUnicode( leftEBX.string_vt );
+					strfree( leftEBX.string_vt );
+					mov( eax, leftEBX.string_vt );
+					mov( UString_pt, leftEBX.pType );
+					mov( &ustring_ste, leftEBX.symType );
+					clc();
+				
+				elseif( dl = Unicode_pt ) then
+				
+					mov( UString_pt, rightECX.pType );
+					mov( &ustring_ste, rightECX.symType );
+					stralloc( 2 );
+					mov( rightECX.unicode_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, rightECX.string_vt );
+					ansiToUnicode( leftEBX.string_vt );
+					strfree( leftEBX.string_vt );
+					mov( eax, leftEBX.string_vt );
+					mov( UString_pt, leftEBX.pType );
+					mov( &ustring_ste, leftEBX.symType );
+					clc();
+				
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression"
+						nl
+					);
+					stc();
+					
+				endif;
+				
+			
+			
+			
+			
+			
+			////////// Left Operand is UString \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case( UString_pt )
+
+			
+				if
+				( 
+						(
+								dl in Uns8_pt..Uns32_pt
+							||	dl in Byte_pt..DWord_pt
+							||	dl in Int8_pt..Int32_pt
+						)
+					&&	op = '*'
+				) then
+				
+					// wstring * number is okay
+					
+					clc();
+
+				elseif( dl = Char_pt ) then
+				
+					mov( UString_pt, rightECX.pType );
+					mov( &ustring_ste, rightECX.symType );
+					stralloc( 4 );
+					movzx( rightECX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, rightECX.string_vt );
+					clc();
+				
+					
+				elseif( dl = XChar_pt ) then
+				
+					mov( UString_pt, rightECX.pType );
+					mov( &ustring_ste, rightECX.symType );
+					stralloc( 4 );
+					movzx( rightECX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, rightECX.string_vt );
+
+					if( dl >= $80 ) then
+
+						HLAerror
+						( 
+							"Error converting xchar to Unicode, "
+							"character value is out of range (",
+							(type uns8 dl),
+							")"
+							nl
+						);
+						stc();
+
+					else
+
+						clc();
+
+					endif;
+
+				elseif( dl = Utf8_pt ) then
+				
+					mov( Utf8_pt, rightECX.pType );
+					mov( &utf8_ste, rightECX.symType );
+					unicodeToUtf8( rightECX.string_vt );
+					strfree( rightECX.string_vt );
+					mov( eax, rightECX.string_vt );
+					clc();			
+
+
+				elseif( dl = Unicode_pt ) then
+				
+					mov( UString_pt, rightECX.pType );
+					mov( &ustring_ste, rightECX.symType );
+					stralloc( 4 );
+					movzx( rightECX.char_vt, dx );
+					mov( dx, [eax] );
+					mov( 0, (type word [eax+2]));
+					mov( 2, (type str.strRec [eax]).length );
+					mov( eax, rightECX.string_vt );
+					clc();			
+
+				elseif( dl = Utf8_pt ) then
+				
+					mov( Utf8_pt, leftEBX.pType );
+					mov( &utf8_ste, leftEBX.symType );
+					mov( leftEBX.string_vt, eax );
+					unicodeToUtf8( eax );
+					strfree( leftEBX.string_vt );
+					mov( eax, leftEBX.string_vt );
+					clc();
+				
+					
+				elseif( dl = String_pt ) then
+				
+					ansiToUnicode( rightECX.string_vt );
+					strfree( rightECX.string_vt );
+					mov( eax, rightECX.string_vt );
+					mov( UString_pt, rightECX.pType );
+					mov( &ustring_ste, rightECX.symType );
+					clc();
+				
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression"
+						nl
+					);
+					stc();
+					
+				endif;
+			
+			
+			////////// Left Operand is CSET \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case( Cset_pt )	
+
+				if( dl = XCset_pt ) then
+				
+					mov( XCset_pt, leftEBX.pType );
+					mov( &xcset_ste, leftEBX.symType );
+					xor( eax, eax );
+					mov( eax, leftEBX.dword_vt[16] );
+					mov( eax, leftEBX.dword_vt[20] );
+					mov( eax, leftEBX.dword_vt[24] );
+					mov( eax, leftEBX.dword_vt[28] );
+					clc();
+					
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression, both operands "
+						"must be cset"
+						nl
+					);
+					stc();
+					
+				endif;
+			
+			
+			
+			////////// Left Operand is XCSET \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+			
+			case( XCset_pt )
+			
+				if( dl = Cset_pt ) then
+				
+					mov( XCset_pt, rightECX.pType );
+					mov( &xcset_ste, rightECX.symType );
+					xor( eax, eax );
+					mov( eax, rightECX.dword_vt[16] );
+					mov( eax, rightECX.dword_vt[20] );
+					mov( eax, rightECX.dword_vt[24] );
+					mov( eax, rightECX.dword_vt[28] );
+					clc();
+					
+				else
+				
+					HLAerror
+					( 
+						"Type mismatch error in expression, both operands "
+						"must be xcset"
+						nl
+					);
+					stc();
+					
+				endif;
+			
+			
+			
+			default
+			
+				if( eax in Byte_pt..Error_pt ) then
+
+					HLAerror
+					( 
+						"Operand type mismatch in expression, type ",
+						pTypeStrs[ eax*4 ],
+						" was unexpected" nl
+					);
+
+				else
+
+					HLAerror
+					( 
+						"Operand type mismatch in expression, unknown type=",
+						(type uns32 eax),
+						nl
+					);
+				
+				endif;
+				stc();
+				
+		endswitch;	
+				
+		
+	
+	end exitCoerce;
+	if( @c ) then
+	
+		// Set the operands to something innocuous so we don't
+		// have problems down the road:
+		
+		freeAttr( rightECX );
+		freeAttr( leftEBX );
+		
+		mov( Uns8_pt, leftEBX.pType );
+		mov( Uns8_pt, rightECX.pType );
+		mov( &uns8_ste, leftEBX.symType );
+		mov( &uns8_ste, rightECX.symType );
+		
+		// Initialize the uns8 object with the value 1
+		// (one is better than zero because we don't get
+		// divide by zero errors later).
+		
+		mov( 1, leftEBX.dword_vt );
+		mov( 1, rightECX.dword_vt );
+		xor( eax, eax );
+		mov( eax, leftEBX.dword_vt[4]);
+		mov( eax, leftEBX.dword_vt[8]);
+		mov( eax, leftEBX.dword_vt[12]);
+		mov( eax, rightECX.dword_vt[4]);
+		mov( eax, rightECX.dword_vt[8]);
+		mov( eax, rightECX.dword_vt[12]);
+		stc();
+	
+	endif;
+	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end coerceOperands;
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// countArrayElements-
+//
+//	The parameter is a pointer to an array type.
+// This procedure counts the total number of elements in that
+// array (via recursive calls if necessary) and returns
+// the count in the EAX register.
+
+
+//proc( "countArrayElements" )
+procedure countArrayElements( arrayType: symNodePtr_t );
+begin countArrayElements;
+
+	push( ebx );
+	mov( arrayType, ebx );
+	canAccess( [ebx] );
+	mov( 1, eax );
+	while( symEBX.pType = Array_pt ) do
+	
+		intmul( symEBX.numElements, eax );
+		mov( symEBX.baseType, ebx );
+		canAccess( [ebx] );
+		
+	endwhile;
+	pop( ebx );
+		
+
+end countArrayElements;
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// makeCompatible-
+//
+//	Given a type and a constant attr_t value, this procedure checks to see
+// if the constant value's type is the same as the specified type.
+// If not, this procedure attempts to coerce the constant's type to
+// match the type passed in.
+//
+// Inputs:
+//
+//	theType-
+//		Data type to coerce the value against.
+//
+//	theValue-
+//		Value to coerce.
+//
+// Returns:
+//
+//	The value within "theValue" is coerced, if possible, to the specified
+//	data type.  Returns the carry clear if the conversion was possible,
+//	returns false if theValue cannot be coerced to type theType.
+
+//proc( "makeCompatible" )
+procedure makeCompatible( theType: symNodePtr_t;  var theValue:attr_t );
+var
+	count		:uns32;			// Counts off array elements.
+	baseType	:symNodePtr_t;	// Pointer to array base type.
+	
+	
+	
+	// coerceUns-
+	//
+	//	The constant's pType is passed in EDX.
+	//	A pointer to the value is passed in ECX.
+	//	d0..d3 contain a 128-bit unsigned value that the value
+	//	  (pointed at by ECX) cannot exceed.
+	//
+	// Returns:
+	//
+	//	carry-
+	//		clear if the constant value is in the range 0..(d0,d1,d2,d3)
+	//		set otherwise (or if there is no way to coerce the type to uns).
+	
+	//proc( "coerceUns" )
+	procedure coerceUns
+	( 
+		pType:dword in edx; 
+		theValue:attrPtr_t in ecx; 
+		d0:dword; 
+		d1:dword;
+		d2:dword;
+		d3:dword
+	);
+		@returns( "@nc" );
+		
+	begin coerceUns;
+
+		canAccess( [ecx] );
+
+		tryAgain:
+		switch( edx )
+		
+			// These are the types that are trivially convertable to
+			// UNS.  All we got to do is a range check.
+			
+			case
+			(
+				Uns8_pt,
+				Uns16_pt,
+				Uns32_pt,
+				Uns64_pt,
+				Uns128_pt,
+				Byte_pt,
+				Word_pt,
+				DWord_pt,
+				QWord_pt,
+				TByte_pt,
+				LWord_pt
+			)
+			
+				mov( attrECX.dword_vt[3*4], eax );
+				cmp( eax, d3 );
+				ja FailedCoercion;
+			
+				mov( attrECX.dword_vt[2*4], eax );
+				cmp( eax, d2 );
+				ja FailedCoercion;
+			
+				mov( attrECX.dword_vt[1*4], eax );
+				cmp( eax, d1 );
+				ja FailedCoercion;
+			
+				mov( attrECX.dword_vt[0*4], eax );
+				cmp( eax, d0 );
+				ja FailedCoercion;
+				clc();
+				exit coerceUns;
+				
+				
+			// For the INT values, we have to first check to see if
+			// the number is negative (meaning we can't coerce the value).
+			// If it's positive or zero, we treat it like an unsigned
+			// value.
+			
+			case( Int8_pt )
+			
+				cmp(attrECX.byte_vt, 0 );
+				mov( Uns8_pt, edx );
+				jge tryAgain;
+				
+			case( Int16_pt )
+			
+				cmp(attrECX.byte_vt[1], 0 );
+				mov( Uns16_pt, edx );
+				jge tryAgain;
+				
+			case( Int32_pt )
+			
+				cmp(attrECX.byte_vt[3], 0 );
+				mov( Uns32_pt, edx );
+				jge tryAgain;
+				
+			case( Int64_pt )
+			
+				cmp(attrECX.byte_vt[7], 0 );
+				mov( Uns32_pt, edx );
+				jge tryAgain;
+				
+			case( Int128_pt )
+			
+				cmp(attrECX.byte_vt[15], 0 );
+				mov( Uns32_pt, edx );
+				jge tryAgain;
+				
+			// Can't convert any of the other types to UNS.
+			// So we'll just fall through and return failure.
+				
+		endswitch;
+	  FailedCoercion:
+		stc();
+	
+	end coerceUns;
+	
+	
+	
+	// coerceInt-
+	//
+	//	The constant's pType is passed in EDX.
+	//	A pointer to the value is passed in ECX.
+	//	bytes contains the number of bytes that theValue must be limited to.
+	//
+	// Returns:
+	//
+	//	carry-
+	//		clear if the constant value is within range (bytes).
+	//		set otherwise (or if there is no way to coerce the type to int).
+	//
+	//	Note that this code is virtually identical to coerceUns.  The only
+	// difference is that we check for the H.O. set bit on uns values rather
+	// and Int values.
+	
+	//proc( "coerceInt" )
+	procedure coerceInt
+	( 
+		pType		:dword in edx; 
+		theValue	:attrPtr_t in ecx; 
+		bytes		:dword
+	);
+		@returns( "@nc" );
+		
+	begin coerceInt;
+
+		canAccess( [ecx] );
+		tryAgain:
+		switch( edx )
+		
+			// These are the types that are trivially convertable to
+			// INT.  All we've got to do is a range check.
+			
+			case
+			(
+				Int8_pt,
+				Int16_pt,
+				Int32_pt,
+				Int64_pt,
+				Int128_pt,
+				Byte_pt,
+				Word_pt,
+				DWord_pt,
+				QWord_pt,
+				TByte_pt,
+				LWord_pt
+			)
+			
+				mov( bytes, eax );
+				if( eax = 1 ) then
+				
+					movsx( attrECX.byte_vt, eax );
+					cdq();
+					cmp( dl, attrECX.byte_vt[1] );
+					jne FailedCoercion;
+					cmp( dx, attrECX.word_vt[2] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[4] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[8] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[12] );
+					jne FailedCoercion;
+					
+				elseif( eax = 2 ) then
+				
+					movsx( attrECX.word_vt, eax );
+					cdq();
+					cmp( dx, attrECX.word_vt[2] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[4] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[8] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[12] );
+					jne FailedCoercion;
+					
+				elseif( eax = 4) then
+					
+					mov( attrECX.dword_vt, eax );
+					cdq();
+					cmp( edx, attrECX.dword_vt[4] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[8] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[12] );
+					jne FailedCoercion;
+					
+				elseif( eax = 8 ) then
+				
+					mov( attrECX.dword_vt[4], eax );
+					cdq();
+					cmp( edx, attrECX.dword_vt[8] );
+					jne FailedCoercion;
+					cmp( edx, attrECX.dword_vt[12] );
+					jne FailedCoercion;
+					
+				// else  must be 16 which always works.
+				
+				endif;
+				clc();
+				exit coerceInt;
+				
+				
+			// For the UNS values, we have to first check to see if
+			// the H.O. bit is set (meaning we can't coerce the value).
+			// If the H.O. bit is clear, we treat this like an INT.
+			
+			case( Uns8_pt )
+				
+				cmp(attrECX.byte_vt, 0 );
+				mov( Int8_pt, edx );
+				
+				//jge tryAgain; //> has to be unsigned
+				jae tryAgain;
+				
+				
+			case( Uns16_pt )
+
+				cmp(attrECX.byte_vt[1], 0 );
+				mov( Int16_pt, edx );
+				//jge tryAgain;
+				jae tryAgain;
+
+				
+			case( Uns32_pt )
+			
+				cmp(attrECX.byte_vt[3], 0 );
+				mov( Int32_pt, edx );
+				//jge tryAgain;
+				jae tryAgain;
+				
+			case( Uns64_pt )
+			
+				cmp(attrECX.byte_vt[7], 0 );
+				mov( Int32_pt, edx );
+				//jge tryAgain;
+				jae tryAgain;
+				
+			case( Uns128_pt )
+			
+				cmp(attrECX.byte_vt[15], 0 );
+				mov( Int32_pt, edx );
+				//jge tryAgain;
+				jae tryAgain;
+				
+			// Can't convert any of the other types to INT.
+			// So we'll just fall through and return failure.
+				
+		endswitch;
+		FailedCoercion:
+		stc();
+	
+	end coerceInt;
+	
+	
+	// coerceHex-
+	//
+	//	The constant's pType is passed in EDX.
+	//	A pointer to the value is passed in ECX.
+	//  size contains the number of bytes for the object.
+	//
+	// Returns:
+	//
+	//	carry-
+	//		clear if the constant value not a floating point value and
+	//			its size is less than or equal to the type's size.
+	//
+	//		set otherwise (or if there is no way to coerce the type).
+	
+	//proc( "coerceHex" )
+	procedure coerceHex
+	( 
+		pType:dword in edx; 
+		theValue:attrPtr_t in ecx; 
+		size:dword
+	);
+		@returns( "@nc" );
+	
+	begin coerceHex;
+	
+		push( eax );
+		canAccess( [ecx] );
+
+		// Make the value as small as possible:
+
+		if( isNumber( dl )) then
+
+			setSmallestSize( attrECX );
+			mov( attrECX.pType, dl );
+
+		endif;
+		mov( attrECX.symType, eax );
+		mov( symEAX.objectSize, eax );
+		
+		// Immediately reject floating point and non-primitive types:
+		
+		if
+		( 
+				isPrimitive( dl ) 
+			&&	dl not in Real32_pt..Real80_pt
+			&&	eax <= size 
+		) then
+		
+			// If it's non-float primitive and the const size is
+			// less than or equal to the type's size, we have a winner.
+			
+			clc();
+			
+		else
+		
+			stc();
+			
+		endif;
+		pop( eax );
+				
+	end coerceHex;
+	
+	
+	
+begin makeCompatible;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	assert( theType <> NULL );
+	getBaseIsoType( theType );
+	mov( eax, ebx );
+	
+	mov( theValue, ecx );
+	canAccess( [ecx] );
+	getBaseIsoType( attrECX.symType );
+	mov( eax, ecx );
+
+	begin mcExit;
+
+		if( ebx = NULL || ecx == NULL ) then
+		
+
+			stc();
+			exit mcExit;
+			
+		elseif( ebx = ecx ) then
+		
+			clc();
+			exit mcExit;
+			
+		endif;
+		
+		xor( eax, eax );
+		xor( edx, edx );
+		mov( symEBX.pType, al );
+		mov( symECX.pType, dl );
+		mov( theValue, ecx );
+		
+		
+		// Text type and string constants are compatible:
+		
+		if( al = Text_pt && dl = String_pt ) then
+		
+			clc();
+			exit mcExit;
+			
+		endif;
+
+		// For the purposes of MakeCompatible, we'll treat enumerated
+		// types as though they were byte, word, or dword.
+
+		if( dl = Enum_pt ) then
+
+			if( curEnumSize = 1 ) then
+
+				mov( Byte_pt, dl );
+
+			elseif( curEnumSize = 2 ) then
+
+				mov( Word_pt, dl );
+
+			else
+
+				mov( DWord_pt, dl );
+
+			endif;
+
+		endif;
+		
+		// Note that we are switching off the declared type's pType:
+
+		switch( eax )
+		
+			case( Boolean_pt )
+			
+				// Bytes are the only thing that are coercable to boolean:
+				
+				if( dl = Byte_pt ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( Boolean_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+
+			case( Enum_pt )
+
+				// Can't coerce enum types:
+
+				stc;
+				exit mcExit; 
+			
+			
+			// Note: UNS, HEX, and INTs are coercable amongst one another
+			// subject to a few limitations (no negative values to UNS,
+			// No very large unsigned values to INT).  
+			
+			case( Uns8_pt )
+			
+				if( coerceUns( edx, ecx, $FF, 0, 0, 0 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Uns8_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Uns16_pt )		
+			
+				if( coerceUns( edx, ecx, $FFFF, 0, 0, 0 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Uns16_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Uns32_pt )		
+			
+				if( coerceUns( edx, ecx, $FFFF_FFFF, 0, 0, 0 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Uns32_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Uns64_pt )		
+			
+				if( coerceUns( edx, ecx, $FFFF_FFFF, $FFFF_FFFF, 0, 0 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Uns64_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+				
+			case( Uns128_pt )		
+			
+				if
+				( 
+					coerceUns
+					( 
+						edx, 
+						ecx, 
+						$FFFF_FFFF, 
+						$FFFF_FFFF, 
+						$FFFF_FFFF, 
+						$FFFF_FFFF
+					) 
+				) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Uns128_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+				
+			case( Int8_pt )		
+			
+				if( coerceInt( edx, ecx, 1 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Int8_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Int16_pt )		
+			
+				if( coerceInt( edx, ecx, 2 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Int16_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Int32_pt )		
+
+				if( coerceInt( edx, ecx, 4 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Int32_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Int64_pt )		
+			
+				if( coerceInt( edx, ecx, 8 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Int64_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Int128_pt )		
+			
+				if( coerceInt( edx, ecx, 16 ) ) then
+				
+					mov( ebx, attrECX.symType );
+					mov( Int128_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				endif;
+					
+			case( Char_pt )
+			
+				if
+				( 
+						dl = Byte_pt
+					|| 	(
+								dl = XChar_pt 
+							&&	attrECX.xchar_vt <= $7f
+						)
+					|| 	(
+								dl = Unicode_pt 
+							&&	attrECX.unicode_vt <= $7f
+						)
+				) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( Char_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+				
+			
+			case( XChar_pt )
+			
+				if
+				( 
+						dl = Byte_pt
+					||	dl = Char_pt
+					|| 	(
+								dl = Unicode_pt 
+							&&	attrECX.unicode_vt <= $7F
+						)
+				) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( XChar_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			
+			
+			// We can always convert chars to unicode.
+			// However, we'll only convert XChars to unicode if their
+			// value is in the range 0..$7F.
+				
+			case( Unicode_pt )
+			
+				if
+				( 
+						dl = Byte_pt
+					||	dl = Word_pt
+					||	dl = Char_pt
+					|| 	(
+								dl = XChar_pt 
+							&&	attrECX.xchar_vt <= $7F
+						)
+				) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( Unicode_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			
+			// The HEX types (byte, word, dword, qword, tbyte, and lword)
+			// are coercable between any primitive type of the same size.
+			
+			case( Byte_pt )		
+			
+				if( coerceHex( edx, ecx, 1 ) ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( Byte_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			case( Word_pt )		
+			
+				if( coerceHex( edx, ecx, 2 ) ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( Word_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			case( DWord_pt )		
+			
+				if( dl = Pointer_pt ) then
+
+					clc();
+					exit mcExit;
+				elseif( coerceHex( edx, ecx, 4 ) ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( DWord_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			case( QWord_pt )		
+			
+				if( coerceHex( edx, ecx, 8 ) ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( QWord_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			case( TByte_pt )		
+			
+				if( coerceHex( edx, ecx, 10 ) ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( TByte_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			case( LWord_pt )		
+			
+				if( coerceHex( edx, ecx, 16 ) ) then
+				
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( LWord_pt, attrECX.pType );
+					exit mcExit;
+					
+				endif;
+			
+			
+			// The real types are somewhat special.
+			// This is the only "coercion" where conversion can
+			// actually take place.
+			//
+			// Note that we don't have to handle the case where
+			// the types are equal (that was handled earlier in 
+			// this procedure.
+			
+			case( Real32_pt )
+			
+				if( dl in Byte_pt..Real80_pt ) then
+
+					if( makeReal80( [ecx] )) then
+				
+						mov( ebx, attrECX.symType );
+						mov( Real32_pt, attrECX.pType );
+						fstp( attrECX.real32_vt );
+						exit mcExit;
+						
+					endif;
+					
+				endif;							
+				stc();
+				exit mcExit;
+					
+
+			case( Real64_pt ) 		
+			
+				if( dl in Byte_pt..Real80_pt ) then
+
+					if( makeReal80( [ecx] )) then
+					
+						mov( ebx, attrECX.symType );
+						mov( Real64_pt, attrECX.pType );
+						fstp( attrECX.real64_vt );
+						exit mcExit;
+						
+					endif;							
+				
+				endif;
+				stc();
+				exit mcExit;
+
+			case( Real80_pt )		
+			
+				if( dl in Byte_pt..Real80_pt ) then
+
+					makeReal80( [ecx] );
+					mov( ebx, attrECX.symType );
+					mov( Real80_pt, attrECX.pType );
+					fstp( attrECX.real80_vt );
+					exit mcExit;
+
+				endif;
+				stc();
+				exit mcExit;
+				
+			case( Cset_pt )
+			
+				if( dl = XCset_pt ) then
+				
+					xor( eax, eax );
+					if
+					(
+							eax = attrECX.dword_vt[4*4]
+						&&	eax = attrECX.dword_vt[5*4]
+						&&	eax = attrECX.dword_vt[6*4]
+						&&	eax = attrECX.dword_vt[7*4]
+					) then
+					
+						clc();
+						mov( ebx, attrECX.symType );
+						mov( Cset_pt, attrECX.pType );
+						exit mcExit;
+						
+					endif;
+					
+				endif; 	
+
+				
+			case( XCset_pt )
+			
+				if( dl = Cset_pt ) then
+				
+					// Just make sure the H.O. bits are clear.
+					
+					xor( eax, eax );
+					mov( eax, attrECX.dword_vt[4*4] );
+					mov( eax, attrECX.dword_vt[5*4] );
+					mov( eax, attrECX.dword_vt[6*4] );
+					mov( eax, attrECX.dword_vt[7*4] );
+					
+					clc();
+					mov( ebx, attrECX.symType );
+					mov( Cset_pt, attrECX.pType );
+					exit mcExit;
+						
+				endif; 
+				
+				
+				
+				
+			case( Array_pt )
+
+				// If the value isn't also an array, the types are
+				// not compatible.
+				
+				if( dl = Array_pt ) then
+
+		
+					// Okay, both types are arrays.  We've got to
+					// count the number of elements in both array
+					// types and then see if the base types can
+					// be made compatible.
+					
+					countArrayElements( ebx );
+					mov( eax, edx );
+					countArrayElements( attrECX.symType );
+					if( eax = edx ) then
+					
+						// Okay, they have the same number of elements.
+						// Now let's see if the base types are compatible:
+						
+						mov( eax, count );	// Save the count.
+						getArrayBaseType( attrECX.symType );
+						mov( eax, edx );
+
+						getArrayBaseType( ebx );
+						mov( eax, baseType );
+
+						if( eax = edx ) then
+						
+							// Types are equal, so the arrays are compatible.
+							
+							clc();
+							exit mcExit;
+							
+						endif;
+						
+						// If the base types were not equal, then we
+						// need to step through each element of the
+						// array and make the elements type compatible
+						// (if possible).  Note that since the array
+						// elements all have the same type, we can stop
+						// on the first element if they are incompatible.
+						// However, if the first element is compatible,
+						// then we need to process all array elements.
+						
+						mov( attrECX.arrayValues_vt, ecx );
+						mov( count, edx );
+						assert( edx <> 0 );
+						repeat
+
+							makeCompatible( baseType, [ecx] );
+							exitif( @c ) mcExit;
+							add( @size( attr_t ), ecx );
+							dec( edx );
+							
+						until( @z );
+						
+						// Okay, the arrays are compatible. So set the
+						// type of the constant equal to the array type.
+						
+						mov( theType, ebx );
+						mov( theValue, ecx );
+						mov( ebx, attrECX.symType );
+						clc();
+						exit mcExit;						
+						
+					endif;
+			
+				endif;
+				
+
+			case( Record_pt )
+				
+				// A Record constant is compatible with a record
+				// type if and only if they have the same number
+				// of fields and all the fields' types match.
+				
+				// If the value isn't also an record, the types are
+				// not compatible.
+				
+				if( dl = Record_pt ) then
+				
+					// Okay, both types are records.  We've got to
+					// compare the number of fields in both record
+					// types.
+					
+					mov( symEBX.fieldCnt, edx );
+					if( edx <> attrECX.numFields ) then
+					
+						stc();
+						exit mcExit;
+						
+					endif;
+					
+					// Okay, they have the same number of fields.
+					// Now let's see if all the field types are compatible:
+					
+					mov( edx, count );	// Save the count.
+					mov( symEBX.linearSyms, ebx );
+					mov( attrECX.symType, ecx );
+					mov( symECX.linearSyms, ecx );
+					
+					// Okay, now compare the base types of each
+					// field in the record. If any one of them
+					// is not equivalent to the corresponding
+					// field, then the records are not compatible.
+						
+					repeat
+						
+						getBaseIsoType( symEBX.symType );
+						mov( eax, edx );
+						getBaseIsoType( symECX.symType );
+						if( eax <> edx ) then
+						
+							stc();
+							exit mcExit;
+							
+						endif;
+						mov( symEBX.next, ebx );
+						mov( symECX.next, ecx );
+						dec( count );
+						
+					until( @z );
+					
+					// Okay, the records are compatible. So set the
+					// type of the constant equal to the record type.
+					
+					mov( theType, ebx );
+					mov( theValue, ecx );
+					mov( ebx, attrECX.symType );
+					clc();
+					exit mcExit;						
+						
+				endif;
+				stc();	// Not a record if we get here.
+				
+				
+				
+			case( Union_pt )
+				
+				// Unions are a special case. In order for a union
+				// constant to be compatible with a union type, the
+				// constant *must* have the same base type as the 
+				// union. We've already checked for that earlier, so
+				// if we get to this point, we've got a type mismatch
+				// error.
+				
+				stc();
+				exit mcExit;
+
+			case( Pointer_pt, Procptr_pt )
+			
+				// All pointer types are compatible.
+
+				if( dl = Pointer_pt || dl = DWord_pt ) then
+				
+					// Set the type of the constant equal to the pointer type.
+
+					mov( theType, ebx );
+					mov( theValue, ecx );
+					mov( ebx, attrECX.symType );
+					clc();
+					exit mcExit;
+					
+				endif;
+				
+
+			case( Thunk_pt )
+			
+				// All Thunk types are compatible.
+				// (can we even have thunk constants?)
+				
+				if( dl = Thunk_pt ) then
+				
+					// Set the type of the constant equal to the thunk type.
+					
+					mov( theType, ebx );
+					mov( theValue, ecx );
+					mov( ebx, attrECX.symType );
+					clc();
+					exit mcExit;
+					
+				endif;
+				
+				
+				
+			case( String_pt )
+			
+				if( dl = UString_pt ) then
+
+					// If the value string is unicode, we can
+					// coerce it to an ANSI string if and only
+					// if all of the characters are $ff or below.
+					
+					unicodeToAnsi( attrECX.ustring_vt );
+					if( @nc ) then
+
+						// Set the type of the constant equal to the 
+						// string type.
+						
+						mov( theType, ebx );
+						mov( theValue, ecx );
+						mov( ebx, attrECX.symType );
+						mov( String_pt, attrECX.pType );
+						clc();
+						exit mcExit;
+					
+					endif;
+				
+				elseif( dl = Utf8_pt ) then
+
+					// If the value string is UTF-8 string, we can
+					// coerce it to an ANSI string if and only
+					// if all of the characters are $ff or below.
+					
+					utf8ToAnsi( attrECX.ustring_vt );
+					if( @nc ) then
+
+						// Set the type of the constant equal to the 
+						// string type.
+						
+						mov( theType, ebx );
+						mov( theValue, ecx );
+						mov( ebx, attrECX.symType );
+						mov( String_pt, attrECX.pType );
+						clc();
+						exit mcExit;
+					
+					endif;
+				
+				endif;
+				
+								
+				
+			case( Utf8_pt )
+			
+				if( dl = UString_pt ) then
+
+					// If the value string is unicode, we can
+					// coerce it to a UTF-8 string.
+					
+					unicodeToUtf8( attrECX.ustring_vt );
+
+					// Set the type of the constant equal to the 
+					// utf-8 type.
+					
+					mov( theType, ebx );
+					mov( theValue, ecx );
+					mov( ebx, attrECX.symType );
+					mov( Utf8_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+
+				
+				elseif( dl = String_pt ) then
+
+					// If the value string is string, we can
+					// coerce it to a UTF-8 string.
+					//
+					// Set the type of the constant equal to the 
+					// UTF-8 type.
+					
+					mov( theType, ebx );
+					mov( theValue, ecx );
+					mov( ebx, attrECX.symType );
+					mov( Utf8_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+					
+				
+				endif;
+				
+								
+				
+			case( UString_pt )
+			
+				if( dl = String_pt ) then
+				
+					// If the value string is ANSI, we can
+					// always coerce it to Unicode:
+					
+					ansiToUnicode( attrECX.string_vt );
+					strfree( attrECX.string_vt );
+					mov( eax, attrECX.string_vt ); 
+					
+					// Change the value's type and pType to UString:
+					
+					mov( theType, ebx );
+					mov( theValue, ecx );
+					mov( ebx, attrECX.symType );
+					mov( UString_pt, attrECX.pType );
+					clc();
+					exit mcExit;
+				
+				elseif( dl = Utf8_pt ) then
+				
+					// If the value string is UTF-8, we can
+					// usually coerce it to Unicode:
+					
+					utf8ToUnicode( attrECX.string_vt );
+					pushfd();
+					strfree( attrECX.string_vt );
+					mov( eax, attrECX.string_vt );
+					popfd(); 
+					
+					if( @nc ) then
+
+						// Set the type of the constant equal to the 
+						// Unicode type.
+						
+						mov( theType, ebx );
+						mov( theValue, ecx );
+						mov( ebx, attrECX.symType );
+						mov( Unicode_pt, attrECX.pType );
+						clc();
+						exit mcExit;
+					
+					endif;
+				
+				endif;
+				
+			
+			default					
+			
+				HLAerror
+				( 
+					"Internal HLA error in makeCompatible, al=",
+					al,
+					" dl=",
+					dl,
+					nl 
+				);
+				stc();
+				exit mcExit;
+
+		endswitch;
+		stc();
+				
+	end mcExit;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end makeCompatible;
+
+end coerce;

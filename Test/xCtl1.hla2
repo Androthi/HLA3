@@ -1,0 +1,15 @@
+// White-box test data test file for 
+// the ctl.hla source file (HLA v2.0).
+// This file checks certain error conditions.
+
+program testHLA2;
+
+// Check for unmatched CTL statements in checkCTstk procedure
+
+#if( true )
+#endwhile
+
+begin testHLA2;
+		
+end testHLA2;
+

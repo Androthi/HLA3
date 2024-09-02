@@ -1,0 +1,378 @@
+// compile.hla
+//
+//	This is the parser for the HLA v2.0 compiler.
+
+unit compilerUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+#includeonce( "codegen.hhf" )
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+// compile-
+//
+//	on entry:
+//
+//	ESI contains a pointer to the start of the current source file.
+//
+//	on exit:
+//
+//	EAX contains true/false depending on whether the compilation was
+//	successful.
+
+procedure compile;  
+var
+	pgmID	:string;
+	beginID	:string;
+	endID	:string;
+	attr	:attr_t;
+	pgmCode	:dword;
+	
+begin compile;
+
+	if( esi >= EOF ) then
+	
+		HLAerror( "Unexpected end of file encountered" nl );
+		mov( false, eax );
+		exit compile;
+		
+	endif;
+	
+	// Check for a PROGRAM or UNIT lexeme:
+	
+	if( matchTkn( esi, tkn_program ) ) then
+	
+		// We've got PROGRAM:
+		//
+		// Handle the following grammar for programs:
+		//
+		//	pgm ::= PROGRAM <id> ; 
+		//				<declarations>
+		//			BEGIN <id> ;
+		//
+		//				<stmts>
+		//
+		//			END <id> ;
+		
+		if( !matchTknCls( esi, ID_tc ) ) then
+		
+			HLAerror
+			( 
+				"Expected an identifier after 'PROGRAM' but encountered '" 
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			mov( false, eax );
+			exit compile;
+		
+		endif;
+		
+		// Process the program ID:
+		
+		if( tokenECX.alloc ) then
+		
+			strfree( tokenECX.lcName );
+			
+		endif;
+		mov( tokenECX.trueName, eax );			// Save pgm name
+		mov( eax, pgmID );						//  for later.
+
+		
+		getSemicolon();
+
+		//resetTknQ(); not needed, already done in pgmDcls()
+		pgmDcls();
+		chkFwdPtrList();
+		chkFwdProcList();
+		
+		// At this point, we'd better see "BEGIN <pgmID>;"
+		
+		if( !matchTkn( esi, tkn_begin ) ) then
+		
+			HLAerror
+			( 
+				"Expected a 'BEGIN ", pgmID, ";' clause but encountered '" 
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+
+		if( !matchTknCls( esi, ID_tc ) ) then
+		
+			HLAerror
+			( 
+				"Expected an identifier after 'BEGIN' but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+
+		if( tokenECX.alloc ) then
+		
+			strfree( tokenECX.lcName );
+			
+		endif;
+		
+		if(	str.ne( pgmID, tokenECX.trueName ) ) then
+
+			assert( tokenECX.trueName <> NULL );
+			HLAerror
+			( 
+				"Identifier after 'BEGIN' (", 
+				tokenECX.trueName, 
+				") must match '", 
+				pgmID, 
+				"'" nl 
+			);
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+		
+		getSemicolon();
+				
+		// Emit the very first code record for this PROGRAM unit.
+
+		createIntRec();
+		mov( eax, pgmCode );
+		mov( _pgm, intCodeEAX.instrTkn );
+		mov( pgmID, ebx );
+		mov( ebx, intCodeEAX.srcOperand.pgmID );
+		
+
+		// Okay, process the statements following the BEGIN <pgmID>; clause:
+		
+		resetTknQ();
+		parseStmts();
+		reuseLastTkn();
+
+		// Check for any undefined forward references here:
+
+		chkFwdStaticExpr();
+		
+		
+		// We'd better see "END <pgmID>;" here:
+		
+		if( !matchTkn( esi, tkn_end ) ) then
+		
+			HLAerror
+			( 
+				"Expected an 'END ", pgmID, ";' clause but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+		
+		if( !matchTknCls( esi, ID_tc )) then
+		
+			HLAerror
+			( 
+				"Expected an identifier after the 'END' but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			mov( false, eax );
+			exit compile;
+
+		endif;
+		
+		if( tokenECX.alloc ) then
+		
+			strfree( tokenECX.lcName );
+			
+		endif;
+					
+		if( str.ne( pgmID, tokenECX.trueName ) ) then
+		
+			HLAerror
+			( 
+				"Identifier after 'END' (", 
+				tokenECX.trueName, 
+				") must match '", 
+				pgmID, 
+				"'" nl 
+			);
+			if( tokenECX.alloc ) then
+			
+				strfree( tokenECX.trueName );
+				
+			endif;
+			strfree( pgmID );
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+		
+		getSemicolon();
+		
+		lex( esi );
+		if( eax <> tkn_EOF ) then
+		
+			HLAerror
+			( 
+				"Expected EOF after 'END' but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+	
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Process UNITs here.
+	//
+	////////////////////////////////////////////////////////////////////////
+			
+	elseif( eax = tkn_unit ) then
+	
+	
+		// Handle the following grammar for programs:
+		//
+		//	pgm ::= UNIT <id> ;
+		// 
+		//				<declarations>
+		//
+		//			END <id> ;
+
+		if( !matchTknCls( esi, ID_tc ) ) then
+		
+			HLAerror
+			( 
+				"Expected an identifier after 'UNIT' but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+
+			mov( false, eax );
+			exit compile;
+		
+		endif;
+		
+		// Process the unit ID:
+		
+		if( tokenECX.alloc ) then
+		
+			// If the lexer allocated storage for the ID, free
+			// the lcName version 'cause we don't need it.
+			
+			strfree( tokenECX.lcName );
+			
+		endif;
+		mov( tokenECX.trueName, eax );		// Save unit name
+		mov( eax, pgmID );								//  for later.
+		
+		getSemicolon();
+
+		resetTknQ();
+		unitDcls();
+		chkFwdPtrList();
+		chkFwdProcList();
+		chkFwdStaticExpr();
+
+		
+		// We'd better see "END <unitID>;" here:
+		
+		if( !matchTkn( esi, tkn_end ) ) then
+		
+			HLAerror
+			( 
+				"Expected an 'END ", pgmID, ";' clause but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+		
+		if( !matchTknCls( esi, ID_tc )) then
+		
+			HLAerror( "Expected an identifier after 'END'" nl );
+			mov( false, eax );
+			exit compile;
+
+		endif;
+		
+		if( tokenECX.alloc ) then
+			
+			// If storage was allocated for the identifier, free it.
+					
+			strfree( tokenECX.lcName );
+			
+		endif;
+					
+		if( str.ne( pgmID, tokenECX.trueName ) ) then
+		
+			HLAerror
+			( 
+				"Identifier after 'END' (", 
+				tokenECX.trueName, 
+				") must match '", 
+				pgmID, 
+				"'" nl 
+			);
+			if( tokenECX.alloc ) then
+			
+				strfree( tokenECX.trueName );
+				
+			endif;
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+		
+		getSemicolon();
+		
+		lex( esi );
+		if( eax <> tkn_EOF ) then
+		
+			HLAerror
+			( 
+				"Expected EOF after 'END' but encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+
+			mov( false, eax );
+			exit compile;
+			
+		endif;
+			
+	
+	else
+	
+		HLAerror
+		( 
+			"Expected 'PROGRAM' or 'UNIT' reserved word but encountered '"
+		);
+		dumpLexeme();
+		HLAerror2( "'" nl );
+		mov( false, eax );
+		exit compile;
+		
+	endif;
+	
+	mov( true, eax );  // Return true for successful compilation.
+			
+end compile;
+
+
+
+
+end compilerUnit;

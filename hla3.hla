@@ -1,0 +1,1209 @@
+// HLA.HLA-
+//
+//	Main program for the HLA v2.x compiler.
+
+//
+//
+//	Created 7/22/2001
+//	by Randall Hyde
+
+
+program HLAcompiler;
+
+	#includeonce( "stdlib.hhf" )
+	#includeonce( "hlacompiler.hhf" )
+	#includeonce( "codegen.hhf" )
+	#includeonce( "version.hhf" )
+
+#print
+( 
+	nl
+	nl
+	"*******************************************" nl
+	"Last token (tkn_EndTknValues) = ", 
+	tkn_EndTknValues, 
+	" ($", 
+	dword(tkn_EndTknValues), 
+	")" nl
+	"*******************************************" nl 
+)
+
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+const
+	HLAsuffix :string := ".hla3";
+
+static
+	align( 4 );
+
+	// argCnt- Holds the number of command-line arguments
+
+	argCnt		:uns32;
+
+	// Temporary, used at various points:
+
+	tempAttr		:attr_t;
+
+	#if( @defined( Win32 ) )
+
+		// Timer, used to time compiles
+
+		align(4);
+		compileTime		:real64;
+		compileTimeInt	:uns32;
+		compileTimer	:timer;
+
+		timeStamp		:dword[2];
+		timerTemp		:dword[2];
+		ClocksPerMS		:uns64;
+		CompilationTime	:uns64;
+		longLineCnt		:uns64;
+		linesPerSecond	:uns64;
+		MHz				:uns32;
+
+	#endif
+
+	// gotObjName- True if the user specifies the "-out:" command 
+	// line parameter
+
+	gotObjName	:boolean := false;
+
+
+
+	// VerboseCompile controls the output during assembly.
+
+	VerboseCompile	:boolean := true;
+	
+	// DumpSymbolTable controls whether we display the symbol table
+	// info at the end of assembly:
+
+	DumpSymbolTable	:boolean := false;
+
+	// testMode controls whether the compiler prints internal
+	// information (procedure/line number) along with error messages.
+	// It may control other functions in the compiler as well.
+	// Note: if true, then the compiler does *not* print internal
+	// information (left out to help ease comparing output files
+	// when there are error messages).
+
+	testMode		:boolean := false;
+
+	// doDumpInternalCode controls whether the compiler dumps the
+	// internal code data to the standard output after compilation.
+	// Used for testing and debugging purposes.
+
+	doDumpInternalCode	:boolean := true;
+	
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// PressEnterToContinue
+//
+// 	Prompts the user to hit the enter key to
+// display additional "usage" information:
+//
+procedure PressEnterToContinue;
+begin PressEnterToContinue;
+
+	HLAerror2( "Press Enter To Continue:" );
+	stdin.readLn();
+
+end PressEnterToContinue;
+
+// usage-
+//
+//	Displays proper command line usage if there was
+// an error on the command line.
+
+////proc( "usage" ) 
+procedure usage; @nodisplay; @noframe;
+begin usage;
+
+	HLAerror2
+	(
+		"usage: hla {options} file1 file2 ..." nl
+		"  options:" nl
+		nl
+		"    -?    Display this help message" nl
+		"    -sym  Dump symbol table after compile" nl
+		"    -v    Verbose compile (extra information printed)" nl
+		nl
+		"  Object Code Emission:" nl
+		"    -COFF Produce COFF output" 
+		#if( @defined( Win32 ))
+			" (default)"
+		#endif
+		nl
+		"    -ELF  Produce ELF output" nl
+		#if( @defined( Linux ))
+			" (default)"
+		#endif
+		nl
+		"    -MASM Produce MASM output" nl
+		"    -GAS  Produce Gas output" nl
+		"    -HLA  Produce HLA output" nl
+		"    -LST  Produce listing output" nl
+		nl
+		"    -obj:name Specify output object file name" nl
+		nl
+		"  Testing and Debugging:" nl
+		"    -test Special mode for testing compiler" nl
+		"    -dump Dumps a text representation of intermediate code" nl
+		nl
+	);
+//>	PressEnterToContinue();
+	HLAerror2
+	(
+		nl
+		"  Optimizations:" nl
+		"    -O0   Disable ALL optimizations (not recommended)" nl
+		"    -O1   Standard assembler optimizations (instruction size)" nl
+		"    -O2   Standard HLA optimization set (default)" nl
+		nl
+		"    -optStaticPlacement-  Turn static section organization" nl
+		"    -optStaticPlacement+  on(+) or off(-)  (set by -O2)" nl
+		nl
+		"    -optBranchDisp-       Turn branch displacement optimization" nl
+		"    -optBranchDisp+       on(+) or off(-) (set by -O1)" nl
+		nl
+		"    -optInstrSize-        Turn on(+) or off(-) automatic" nl
+		"    -optInstrSize+        instruction size selection (set by -O1)" nl
+		nl
+	);
+	exit HLAcompiler;
+
+end usage;
+
+
+// addFileToList-
+//
+//	Creates a fileList record for the file specified by "theFile":
+
+//proc( "addFileToList" )
+procedure addFileToList
+( 
+	theFile		:string;
+	fullPath	:string 
+); 
+	@nodisplay; 
+
+const
+	fileEAX	:text := "(type fileList_t [eax])";
+
+begin addFileToList;
+
+	push( ebx );
+
+	// First, preserve the current file information by adding
+	// it to the file info list.
+
+	safe_malloc( @size( fileList_t ) );			// Create a new fileList_t
+	mov( fileList, ebx );						//  record and link it into
+	mov( ebx, fileEAX.next );					//  the list of files.
+	mov( eax, fileList );
+
+	mov( theFile, ebx );
+	assert( ebx <> NULL );
+	mov( ebx, fileEAX.shortFileName );
+	mov( ebx, filename );
+	
+	mov( fullPath, ebx );
+	mov( ebx, fileEAX.fullFileName );
+	mov( ebx, fullFileName );
+
+	pop( ebx );
+
+end addFileToList;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// mapFile-
+//
+//	Given a filename, this procedure opens the file, maps
+// it to memory, and sets up associated variables for that
+// file.  It also pushes the previous file information onto
+// the include file info stack.
+//
+//	Note: this procedure assumes that the filename passed in
+// via "theFile" has been allocated on the heap and is unique
+// (that is, no one else uses, modifies, or frees the string).
+
+
+//proc( "mapFile" )
+procedure mapFile( theFile:string ); @nodisplay;
+const
+	fileECX	:text := "(type fileList_t [ecx])";
+
+	#if( @defined( Win32 ) )
+		dirSeparator :char := '\';
+	#else
+		dirSeparator :char := '/';
+	#endif
+	
+var
+	fileListPtr		:fileListPtr_t;
+	mmapPtr			:pointer to mmap;
+
+	///////////////////
+	//
+	// getFullPathName-
+	// Returns a pointer to a string (allocated on the heap)
+	// that holds the full pathname to the file passed as the
+	// parameter.
+
+	#if( @defined( Win32 ) )
+
+		static
+			wGetFullPathName: procedure
+			(
+				lpFileName: string;
+				nBufferLength: dword;
+				var lpBuffer: var;
+				var lpFilePart: var
+			);
+				@stdcall;
+				@returns( "eax" );
+				@external( "__imp__GetFullPathNameA@16" );
+
+
+
+		procedure getFullPathName( filename:string );
+		var
+			fullFileNameBuf	:char[ 300 ];
+			lastNamePart	:dword;
+
+		begin getFullPathName;
+
+			mov( 0, fullFileNameBuf[0] );
+			wGetFullPathName
+			( 
+				filename, 
+				300, 
+				fullFileNameBuf, 
+				lastNamePart 
+			);
+			lea( eax, fullFileNameBuf );
+			str.a_cpyz( eax );
+
+		end getFullPathName;
+
+	#elseif( @defined( Linux ) )
+
+		procedure getFullPathName( filename:string );
+		const
+			dirSeparator	:= '/';
+
+		var
+			fullFileNameBuf	:char[ 4096 ];
+			fullPathname	:string;
+
+		begin getFullPathName;
+
+			cld();
+			mov( filename, esi );
+			canAccess( [esi] );
+			if( (type char [esi]) <> dirSeparator ) then
+
+				linux.getcwd( fullFileNameBuf, 4095 );
+				if( (type int32 eax) <= 0 ) then
+
+					// linux.getcwd probably failed because
+					// the buffer is too small?
+
+					HLAerror2
+					( 
+						"Error getting current filename path "
+						"(Internal HLA error)" nl
+					);
+					usage();
+
+				endif;
+				lea( eax, fullFileNameBuf );
+				str.zlen( [eax] );
+
+				if( eax > 1 && fullFileNameBuf[eax-1] = dirSeparator ) then
+
+					sub( 1, eax );
+
+				endif;
+				mov( 0, fullFileNameBuf[eax] );
+				mov( eax, ecx );			// Save length
+				lea( edx, [eax+1] );		// Length plus "/" char we add.
+
+				// Compute the length of the final filename string:
+
+				add( (type str.strRec [esi]).length, eax );
+				add( 2, eax );	// "/" character plus zero terminator byte
+				str.alloc( eax );
+				mov( eax, fullPathname );
+				mov( eax, edi );
+				lea( esi, fullFileNameBuf );
+				rep.movsb();		// Copy chars from buffer to new string
+				mov( dirSeparator, (type char [edi]));
+				mov( #0, (type char [edi+1]));
+
+				// Set the length of the new string we've created:
+
+				mov( edx, (type str.strRec [eax]).length );
+
+				// Append the filename passed in by the user to the
+				// end of the current string:
+
+				str.cat( filename, fullPathname );
+
+			else
+
+				// If the filename contained a leading '/', then
+				// we just copy the input filename and use that
+				// (it's already an absolute path).
+
+				str.a_cpy( filename );
+				mov( eax, fullPathname );
+
+			endif;
+
+			// As long as there is a subpath of the form "xyz/../" in
+			// the filename, we need to remove this sequence from the
+			// pathname:
+
+			forever
+
+				str.index( fullPathname, dirSeparator + ".." );
+				breakif( eax = -1 );
+
+				// Compute the offset to the end of the "/.." substring:
+
+				lea( ecx, [eax+3] );
+
+				// Okay, find the preceding "/" character:
+
+				str.rchpos2( fullPathname, eax, dirSeparator );
+
+				// The following should never happen, but just in case
+				// we'll put in some defensive code:
+
+				breakif( eax = -1 );
+
+				// Delete all the characters between the preceding "/"
+				// and the end of the "/.." sequence:
+
+				sub( eax, ecx );	// Length of "xyz/.." sequence
+
+				// Okay, delete all the characters in the "xyz/.." sequence
+				// from our path:
+
+				add( 1, eax );	// Skip past "/" character
+				str.delete( fullPathname, eax, ecx );
+
+			endfor;
+
+			// Remove any "./" substrings appearing within the pathname:
+
+			forever
+
+				str.index( fullPathname, dirSeparator + "." );
+				breakif( eax = -1 );
+				str.delete( fullPathname, eax, 2 );
+
+			endfor;
+
+			mov( fullPathname, eax );
+
+		end getFullPathName;
+
+
+	#else
+
+		#error( "Unknown OS: need specific version of getFullPathName" )
+
+	#endif
+
+	
+begin mapFile;
+	
+	pushad;
+
+
+
+	// Get the full pathname so we can pass it on to addFileToList:
+
+	getFullPathName( theFile );
+
+
+
+	// Push this file onto the include stack and add it to our file list:
+
+	pushIncStk(); 
+	addFileToList( theFile, (type string eax) );
+	mov( eax, fileListPtr );
+
+	// We're just opening a file, so reset the line number to one:
+
+	mov( 1, lineNumber );
+
+	// Create the memory-mapped file object and open the memory-mapped
+	// file:
+
+	try
+
+		mmap.create();
+		mov( esi, mmapPtr );
+		mov( esi, fileMapHandle );
+
+	 anyexception
+
+		HLAerror2
+		( 
+			"Could not create a memory-mapped file object " nl
+			"(Internal HLA error)"
+		);
+		usage();
+
+	endtry;
+
+	try
+
+		mmapPtr.open( theFile, fileio.r );
+
+	  anyexception
+
+		HLAerror2( "Cannot open file '", theFile, "'" nl );
+		usage();
+
+	endtry;
+	mov( fileListPtr, ecx );
+	canAccess( [ecx] );
+	mov( eax, fileMapHandle );
+	mov( eax, fileECX.fileMapHandle );
+
+	mov( mmapPtr, esi );
+	mov( (type mmap [esi]).filePtr, eax );
+	mov( eax, BOF );
+	mov( eax, fileECX.BOF );
+
+	add( (type mmap [esi]).fileSize, eax );
+	mov( eax, EOF );
+	mov( eax, fileECX.EOF );
+	dec( eax );
+	mov( [eax], al );
+	if( al > ' ' && al <> ';' ) then
+	
+		HLAerror2
+		( 
+			"Warning: source file '", 
+			theFile, 
+			"' should end with a newline or the" nl
+			"HLA compiler may malfunction." nl
+		);
+		
+	endif;
+	popad();
+
+end mapFile;
+
+//proc( "quitHLA" )
+procedure quitHLA; @display;
+begin quitHLA;
+
+	if( objFileHandle <> -1 ) then
+
+		HLAerror2( "Errors encountered, object file was deleted" nl );
+		fileio.close( objFileHandle );
+		filesys.delete( objFileName );
+
+	endif;
+	exit HLAcompiler;
+
+end quitHLA;
+
+
+
+begin HLAcompiler;
+
+
+	//usage();
+	
+	
+	conv.setUnderscores( false );
+	mov( -1, objFileHandle );
+	mov( NULL, userSegmentsList );
+
+	#if( @defined( Win32 ) )
+
+		compileTimer.create();
+
+	#endif
+
+	// Useful (and required) initialization:
+	
+	mov( 0, curLexLevel );
+	mov( &rootHashTable, curHashTable );
+	mov( &rootNode, eax );
+	mov( eax, symbolTableRoot );
+	mov( eax, curOwner );
+	mov( eax, rootOwner );	// Initialize root hash table ptr.
+	mov( $fff, rootMask );	// 12-bit mask for main symbol hash table.
+
+	// Initialize the lex level zero symbol table:
+	// Begin with the predefined segments:
+		
+	enterSegmentID( "static", "static", hashFunc( "static" ), "data", false );
+	mov( eax, dataSegment );
+	
+	enterSegmentID
+	( 
+		"storage", 
+		"storage", 
+		hashFunc( "storage" ), 
+		"bss", 
+		false 
+	);
+	mov( eax, bssSegment );
+
+	enterSegmentID
+	( 
+		"readonly", 
+		"readonly", 
+		hashFunc( "readonly" ), 
+		"readonly", 
+		true 
+	);
+	mov( eax, readonlySegment );
+
+	
+	enterSegmentID( "code", "code", hashFunc( "code" ), "text", true );
+	mov( eax, codeSegment );
+	
+	enterSegmentID( "const", "const", hashFunc( "const" ), "const", true );
+	mov( eax, constSegment );
+
+	
+	// The call to lookupLocal puts the leaf node address into EBX:
+	
+	lookupLocal( "true", "true", hashFunc( "true" ) );
+
+	mov( Boolean_pt, tempAttr.pType );
+	mov( &boolean_ste, tempAttr.symType );
+	mov( 1, tempAttr.dword_vt );
+	
+	enterConst
+	( 
+		"true", 
+		"true", 
+		NULL, 
+		&boolean_ste, 
+		tempAttr, 
+		curOwner, 
+		[ebx] 
+	);
+	mov( eax, true_stp );
+
+	// Get the new leaf node address into EBX by calling lookupLocal:
+		
+	lookupLocal( "false", "false", hashFunc( "false" ) );
+	mov( 0, tempAttr.dword_vt );
+	enterConst
+	( 
+		"false", 
+		"false", 
+		NULL, 
+		&boolean_ste, 
+		tempAttr, 
+		curOwner, 
+		[ebx] 
+	);
+	mov( eax, false_stp );
+
+
+ 	// Grab the command-line options:
+	mov( arg.c(), argCnt );
+	for( mov( 0, ecx ); ecx < argCnt; inc( ecx )) do
+
+		arg.v( ecx );
+		mov( eax, ebx );
+		if( (type char [ebx]) = '-' ) then
+
+			if( str.ieq( ebx, "-test" )) then
+
+				mov( true, testMode );
+
+			elseif( str.ieq( ebx, "-dump" )) then
+
+				mov( true, doDumpInternalCode );
+
+			elseif( str.ieq( ebx, "-sym" )) then
+
+				mov( true, DumpSymbolTable );
+
+			elseif( str.ieq( ebx, "-v" )) then
+
+				mov( true, VerboseCompile );
+
+			elseif( str.ieq( ebx, "-?" )) then
+
+				usage();
+
+			elseif( str.ieq( ebx, "-COFF" )) then
+
+				mov( COFF_output, outputCodeType );
+
+			elseif( str.ieq( ebx, "-ELF" )) then
+
+				mov( ELF_output, outputCodeType );
+
+			elseif( str.ieq( ebx, "-MASM" )) then
+
+				mov( MASM_output, outputCodeType );
+
+			elseif( str.ieq( ebx, "-GAS" )) then
+
+				mov( GAS_output, outputCodeType );
+
+			elseif( str.ieq( ebx, "-HLA" )) then
+
+				mov( HLA_output, outputCodeType );
+
+			elseif( str.ieq( ebx, "-LST" )) then
+
+				mov( LST_output, outputCodeType );
+
+
+			elseif( str.ieq( ebx, "-o0" )) then
+
+				mov( false, optBranchDisp );
+				mov( false, optStaticPlacement );
+				mov( false, optInstrSize );
+
+			elseif( str.ieq( ebx, "-o1" )) then
+
+				mov( true, optBranchDisp );
+				mov( false, optStaticPlacement );
+				mov( true, optInstrSize );
+
+			elseif( str.ieq( ebx, "-o2" )) then
+
+				mov( true, optBranchDisp );
+				mov( true, optStaticPlacement );
+				mov( true, optInstrSize );
+
+			elseif( str.ieq( ebx, "-optStaticPlacement+" )) then
+
+				mov( true, optStaticPlacement );
+
+			elseif( str.ieq( ebx, "-optStaticPlacement-" )) then
+
+				mov( false, optStaticPlacement );
+
+			elseif( str.ieq( ebx, "-optBranchDisp+" )) then
+
+				mov( true, optBranchDisp );
+
+			elseif( str.ieq( ebx, "-optBranchDisp-" )) then
+
+				mov( false, optBranchDisp );
+
+			elseif( str.ieq( ebx, "-optInstrSize+" )) then
+
+				mov( true, optInstrSize );
+
+			elseif( str.ieq( ebx, "-optInstrSize-" )) then
+
+				mov( false, optInstrSize );
+
+			elseif( str.iprefix( ebx, "-out:" )) then
+
+				str.substr( ebx, 5, 256, objFileName );
+				mov( true, gotObjName ); 
+
+			else
+
+				HLAerror
+				( 
+					"Unexpected command-line parameter: '", 
+					(type string eax),
+					"'" nl
+				);
+				usage();
+
+			endif;
+
+			// Okay, we've processed this command line parameter,
+			// now delete it.
+
+			arg.delete( ecx );
+			dec( ecx );		// Need to reuse this same index
+			dec( argCnt );	// One less command-line parameter.
+
+		endif;
+
+	endfor;
+
+	// Process the input file(s):
+
+	if( arg.c() <> 2 ) then
+
+		//> usage();
+		exit HLAcompiler;
+
+	endif;
+
+	// Check the input filename to see if it has the HLA suffix string
+	// at the end. If not, create a new copy of the filename with the
+	// HLA suffix:
+
+	mov( arg.v(1), filename );
+	if( !str.chpos( filename, '.' ) ) then
+
+		// If the filename did not have a suffix at the
+		// end of it, append the HLA suffix here:
+
+		str.a_cat( filename, HLAsuffix );
+		str.free( filename );
+		mov( eax, filename );
+
+	endif;
+
+	// If there wasn't a "-out:XXXX" command-line parameter, then
+	// create an object file name from the input file name here:
+
+	if( !gotObjName ) then
+
+		// We know we've got some sort of suffix at this point, so
+		// strip the suffix off and append ".obj" or ".o" (as
+		// appropriate for the OS):
+
+		str.rchpos( filename, '.' );
+		if( eax <> -1 ) then
+
+			str.substr( filename, 0, eax, objFileName );
+
+		else
+
+			str.cpy( filename, objFileName );
+
+		endif;
+		#if( @defined( Win32 ))
+		
+			str.cat( ".obj", objFileName );
+			
+		#elseif( @defined( Linux ))
+		
+			str.cat( ".o", objFileName );
+
+		#else
+
+			#error( "Undefined OS type" )
+			
+		#endif
+
+	else
+
+		// If the user supplied their own object file name by using
+		// the "-out:" command-line parameter, then append a ".obj"
+		// (or ".o") suffix if the name doesn't already have a suffix.
+
+		str.rchpos( objFileName, '.' );
+		if( eax = -1 ) then
+
+			#if( @defined( Win32 )) 
+
+				str.cat( ".obj", objFileName );
+
+			#elseif( @defined( Linux ))
+			 
+				str.cat( ".o", objFileName );
+
+			#else
+
+				#error( "Undefined OS type" )
+				
+			#endif
+
+		endif;
+		
+	endif; 
+
+
+	if( VerboseCompile ) then
+	
+		HLAerror2
+		( 
+			"Compiling '", 
+			filename, 
+			"' to '",
+			objFileName,
+			"'" nl 
+		);
+		
+	endif;
+
+	// Open the (initial) source file:
+
+	xor( esi, esi );
+	mapFile( filename );
+
+	// Open the object-code output file:
+
+	try
+
+		fileio.openNew( objFileName );
+		mov( eax, objFileHandle );
+		
+	  anyexception
+	  
+	  	HLAerror2( "Error opening output file '", objFileName, "'" nl );
+	  	quitHLA();
+	  	
+	endtry;
+	
+	// Extract the base filename so we can bury it in the COFF output file.
+	
+	#if( @defined( Win32 ))
+
+		str.rchpos( filename, '\' );
+
+	#else
+
+		str.rchpos( filename, '/' );
+
+	#endif
+
+	if( eax = -1 ) then
+
+		// Use the whole filename:
+
+		str.a_cpy( filename );
+
+	else
+
+		// Use only the base filename:
+
+		inc( eax );
+		str.a_substr( filename, eax, 256 );
+
+	endif;
+	mov( eax, baseFileName );
+
+	 
+
+	// The following try/endtry block is used to catch any exceptions
+	// that HLA raises (for syntax errors, etc.), that don't get handled.
+
+	try
+
+		#if( @defined( Win32 ) )
+
+
+			if( VerboseCompile ) then
+
+				compileTimer.start();
+
+				// Wait for the timer to change:
+
+				compileTimer.checkPoint();
+				mov( eax, timerTemp );
+				while( eax = timerTemp[0] ) do
+
+					compileTimer.checkPoint();
+
+				endwhile;
+				mov( eax, timerTemp );
+				mov( edx, timerTemp[4] );
+				
+				// Okay, now compute the number of clock cycles between
+				// timer changes:
+
+				rdtsc();
+				mov( eax, timeStamp );
+				mov( edx, timeStamp[4] );
+				repeat
+
+					compileTimer.checkPoint();
+
+				until( eax <> timerTemp[0] );
+				sub( timerTemp, eax );
+				sbb( timerTemp[4], ecx );
+				mov( eax, timerTemp );
+				mov( edx, timerTemp[4] );
+
+				rdtsc();
+				sub( timeStamp, eax );
+				mov( eax, timeStamp );
+				sbb( timeStamp[4], edx );
+				mov( edx, timeStamp[4] );
+
+				// Compute the number of clock cycles per millisecond
+
+				math.divq
+				( 
+					(type qword timeStamp), 
+					(type qword timerTemp),
+					ClocksPerMS
+				);
+
+				// We're done with the timer.
+
+				compileTimer.stop();
+
+				// Use the "read timestamp counter" instruction to actually
+				// time the compilation:
+
+				rdtsc();
+				mov( eax, timeStamp[0] );
+				mov( edx, timeStamp[4] );
+
+			endif;
+
+		#endif
+		// Compile the code to the HLA intermediate form:
+//bm=compile
+		mov( BOF, esi );
+		compile();
+		if( eax ) then
+			
+			// Machine-independent (high-level) optimizations:
+
+			preOptimizer();
+
+			if( eax ) then
+
+				// Generate the native code:
+
+				nativeCodeGen();
+				if( eax ) then
+
+					// Optimize branch displacements, instruction lengths,
+					// and stuff like that:
+
+					postOptimizer();
+					if( eax ) then
+
+						// Emit the code to the object file:
+
+						movzx( outputCodeType, eax );
+						switch( eax )
+											   
+							case( COFF_output )
+
+								coffGen();
+
+							case( ELF_output )
+
+								elfGen();
+
+							case( MASM_output )
+
+								masmGen();
+
+							case( GAS_output )
+
+								gasGen();
+
+							case( HLA_output )
+
+								hlaGen();
+
+							case( LST_output )
+
+								lstGen();
+
+							default
+								HLAerror
+								( 
+									"Unknown code generation type "
+									"(internal HLA error)"
+									nl
+								);
+
+						endswitch;
+
+					endif;
+
+				endif;
+
+			endif;
+			
+		endif;
+
+		#if( @defined( Win32 ) )
+
+			if( VerboseCompile && totalLineCount <> 0 && !testMode ) then
+
+				rdtsc();
+				sub( timeStamp[0], eax );
+				sbb( timeStamp[4], edx );
+				mov( eax, timeStamp[0] );
+				mov( edx, timeStamp[4] );
+
+				fild( ClocksPerMS );
+				fld( 1000.00 );
+				fdiv();
+				fistp( MHz );
+				mov( MHz, eax );
+				xor( edx, edx );
+				idiv( 10, edx:eax );
+				imul( 10, eax );
+				mov( eax, MHz );
+				if( eax > 1000 ) then
+
+					xor( edx, edx );
+					idiv( 1000, edx:eax );
+					stdout.put
+					( 
+						nl
+						"Approximate computer speed: ", 
+						(type uns32 eax ),
+						'.'
+					);
+					mov( edx, eax );
+					xor( edx, edx );
+					idiv( 10, edx:eax );
+					stdout.putu32Size( eax, 2, '0' );
+					stdout.put( " GHz" nl );				
+
+				else
+
+					stdout.put( "Approximate computer speed: ", MHz, " MHz" nl );
+
+				endif;
+				stdout.put
+				( 
+					"Total number of lines compiled: ", 
+					totalLineCount, 
+					nl
+				);
+
+
+				// Compute the compile time in milliseconds and print
+				// the compile time:
+
+				math.divq( (type qword timeStamp), ClocksPerMS, CompilationTime );
+				stdout.put( "Compile time: " );
+				if( (type dword CompilationTime) = 0 ) then
+
+					// If the compile time was less than one millisecond,
+					// then print the number of microseconds:
+
+					math.mulq( (type qword timeStamp), 1000, CompilationTime );
+					math.divq
+					( 
+						CompilationTime, 
+						ClocksPerMS, 
+						CompilationTime 
+					);
+					stdout.put
+					(
+						(type uns32 CompilationTime),
+						" us"
+						nl
+					);
+
+				
+				elseif( (type dword CompilationTime) < 1000 ) then
+
+					// If the compilation time is between 1 and 1,000 ms,
+					// then print the time in milliseconds:
+
+					stdout.put
+					(
+						(type uns32 CompilationTime),
+						" ms"
+						nl
+					);
+
+				else
+
+					// If the compilation time is greater than 1,000 ms, then
+					// print the compilation time in seconds (fractional, to
+					// three decimal places).
+
+					mov( (type dword CompilationTime), eax );
+					mov( (type dword CompilationTime[4]), edx );
+					div( 1000, edx:eax );
+					stdout.putu32( eax );
+					stdout.putc( '.' );
+					stdout.putu32Size( edx, 3, '0' );
+					stdout.put( " ms" nl );
+
+				endif;
+
+				// Compute and print the compile rate in lines/sec:
+
+				mov( totalLineCount, eax );
+				mov( eax, (type dword longLineCnt ));
+				mov( 0, (type dword longLineCnt[4]));
+				math.mulq( ClocksPerMS, longLineCnt, longLineCnt );
+				math.mulq( 1000, longLineCnt, longLineCnt );
+				math.divq( longLineCnt, timeStamp, linesPerSecond );
+				stdout.put( "Compile rate: ", linesPerSecond, " lines/sec" nl );
+
+			endif;
+
+		#endif	
+		
+		if( doDumpInternalCode ) then
+		
+			dumpIntCode();
+			
+		endif;		
+
+		if( DumpSymbolTable ) then
+		
+			stdout.newln();
+			conv.setUnderscores( false );
+			dumpSyms( &rootNode2, 0, false );
+			stdout.newln();
+			dumpSegs();
+			
+		endif;
+
+	  exception( ex.hlaerr );
+
+		HLAerror2( nl );
+		HLAerror( "HLA syntax error, compilation terminated" nl );
+
+	  exception( ex.MemoryAllocationFailure )
+
+		HLAerror2( nl );
+		HLAerror
+		( 
+			"Memory allocation failure, probably due to excessive program size"
+			nl
+			"Try breaking the program up into smaller modules and recompile"
+			nl
+		);
+
+
+	  anyexception
+
+		HLAerror2( nl );
+		HLAerror( "HLA Internal error: Unexpected exception" nl );
+		
+		//ex.printExceptionError();  // doesn't compile.
+		ex.printExceptionError(eax, ebx, ecx, edx, edi);
+
+	endtry;
+	
+	// Close the object code file. If there were any errors, delete
+	// the object code file.
+
+	if( objFileHandle <> -1 ) then
+
+		fileio.close( objFileHandle );
+		if( errorCount <> 0 ) then
+
+			HLAerror2( "Errors encountered, object file deleted" nl );
+			filesys.delete( objFileName );
+
+		endif;
+
+	endif;
+end HLAcompiler;
+
+

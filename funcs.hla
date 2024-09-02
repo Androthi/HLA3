@@ -1,0 +1,3652 @@
+unit funcs;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )						
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// neg128- negates the 128-bit operand passed by reference
+
+//proc( "neg128" )
+procedure neg128( var dest:int128 );
+	@noframe;
+	
+begin neg128;
+
+		push( eax );
+		push( ebx );
+		mov( [esp+12], ebx ); // Fetch dest pointer.
+		canAccess( [ebx] );
+		
+		xor( eax, eax );
+		sub( [ebx], eax );
+		mov( eax, [ebx] );
+		
+		mov( 0, eax );
+		sbb( [ebx+4], eax );
+		mov( eax, [ebx+4] );
+		
+		mov( 0, eax );
+		sbb( [ebx+8], eax );
+		mov( eax, [ebx+8] );
+		
+		mov( 0, eax );
+		sbb( [ebx+12], eax );
+		mov( eax, [ebx+12] );
+		pop( ebx );
+		pop( eax );
+		ret( 4 );
+
+end neg128;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// abs128-
+//
+//	If the specified (128-bit) operand is negative,
+// this function negates it and returns the carry set.
+// If the operand was not negative, this procedure leaves the
+// value alone and returns the carry clear.
+
+//proc( "abs128" )
+procedure abs128( var dest:int128 );
+	@noframe;
+	@returns( "@c" );
+	
+begin abs128;
+
+	push( eax );
+	push( ebx );
+	
+	mov( [esp+12], ebx );
+	canAccess( [ebx] );
+	if( (type int8 [ebx+15]) < 0 ) then
+	
+		neg128( [ebx] );
+		stc();
+					
+	else
+	
+		clc();
+		
+	endif;
+	pop( ebx );
+	pop( eax );
+	ret( 4 );
+	
+end abs128;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// multiply-
+//
+//	Called by the expression evaluator to multiply two
+// operands (if this is possible).  Note that this code
+// assumes that the caller has already coerced the two
+// types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// "multiplication" is defined for the operands.
+//
+//	Multiplication is defined for:
+//
+//		All unsigned operands
+//		All signed operands
+//		All real operands
+//		All character set operands
+//		A character and an integer operand
+//		A string and an integer operand
+//
+// Multiplication is undefined for other types.
+
+
+//proc( "multiply" )
+procedure multiply( var src:attr_t; var dest:attr_t );
+const
+	srcebx	:text := "attrEBX";
+	destecx	:text := "attrECX";
+	
+var
+	result128:	dword[4];
+	
+	// mul128-
+	//	Modified version of 64-bit multiply in the "Art of Assembly"
+	//	Computes the 256-bit result of the product of two 128-bit operands.
+	// 
+	// Returns-
+	//	128-bit result in Product operand.
+	//	Carry is returned set if there was an overflow into the upper 128 bits.
+	
+	procedure mul128( var mplier:dword; var mcand:dword; var Product:dword );
+		@returns( "@c" );
+		
+	var
+		Partial		:dword[8]; // 256-bit result goes here.
+
+	begin mul128;
+
+		push( eax );
+		push( ebx );
+		push( ecx );
+		push( edx );
+		
+		mov( mplier, ebx );
+		canAccess( [ebx] );
+		mov( mcand, ecx );
+		canAccess( [ecx] );
+		
+		// Initialize so we can add partial products directly
+		// in using ADC instruction:
+		
+		xor( eax, eax );
+		mov( eax, Partial[8] );
+		mov( eax, Partial[12] );
+		mov( eax, Partial[16] );
+		mov( eax, Partial[20] );
+		mov( eax, Partial[24] );
+		mov( eax, Partial[28] );
+		
+		// mplier[0] * mcand[0]:
+		 
+		mov( [ebx+0], eax );
+		mul( (type dword [ecx+0]) );			  
+		mov( eax, Partial[0] );	  
+		mov( edx, Partial[4] );	  
+
+		// mplier[0] * mcand[4]:
+		 
+		mov( [ebx+0], eax );
+		mul( (type dword [ecx+4]) );			  
+		add( eax, Partial[4] );
+		adc( edx, Partial[8] );
+
+		// mplier[0] * mcand[8]:
+		 
+		mov( [ebx+0], eax );
+		mul( (type dword [ecx+8]) );			  
+		add( eax, Partial[8] );
+		adc( edx, Partial[12] );
+		
+		// mplier[0] * mcand[12]:
+		 
+		mov( [ebx+0], eax );
+		mul( (type dword [ecx+12]) );			  
+		add( eax, Partial[12] );
+		adc( edx, Partial[16] );
+		
+		
+		// mplier[4] * mcand[0]:
+		 
+		mov( [ebx+4], eax );
+		mul( (type dword [ecx+0]) );			  
+		add( eax, Partial[4] );	  
+		adc( edx, Partial[8] );	  
+
+		// mplier[4] * mcand[4]:
+		 
+		mov( [ebx+4], eax );
+		mul( (type dword [ecx+4]) );			  
+		add( eax, Partial[8] );
+		adc( edx, Partial[12] );
+
+		// mplier[4] * mcand[8]:
+		 
+		mov( [ebx+4], eax );
+		mul( (type dword [ecx+8]) );			  
+		add( eax, Partial[12] );
+		adc( edx, Partial[16] );
+		
+		// mplier[4] * mcand[12]:
+		 
+		mov( [ebx+4], eax );
+		mul( (type dword [ecx+8]) );			  
+		add( eax, Partial[16] );
+		adc( edx, Partial[20] );
+		
+		
+		
+		// mplier[8] * mcand[0]:
+		 
+		mov( [ebx+8], eax );
+		mul( (type dword [ecx+0]) );			  
+		add( eax, Partial[8] );	  
+		adc( edx, Partial[12] );	  
+
+		// mplier[8] * mcand[4]:
+		 
+		mov( [ebx+8], eax );
+		mul( (type dword [ecx+4]) );			  
+		add( eax, Partial[12] );
+		adc( edx, Partial[16] );
+
+		// mplier[8] * mcand[8]:
+		 
+		mov( [ebx+8], eax );
+		mul( (type dword [ecx+8]) );			  
+		add( eax, Partial[16] );
+		adc( edx, Partial[20] );
+		
+		// mplier[8] * mcand[12]:
+		 
+		mov( [ebx+8], eax );
+		mul( (type dword [ecx+12]) );			  
+		add( eax, Partial[20] );
+		adc( edx, Partial[24] );
+		
+		
+		
+		// mplier[12] * mcand[0]:
+		 
+		mov( [ebx+12], eax );
+		mul( (type dword [ecx+0]) );			  
+		add( eax, Partial[12] );	  
+		adc( edx, Partial[16] );	  
+
+		// mplier[12] * mcand[4]:
+		 
+		mov( [ebx+12], eax );
+		mul( (type dword [ecx+4]) );			  
+		add( eax, Partial[16] );
+		adc( edx, Partial[20] );
+
+		// mplier[12] * mcand[8]:
+		 
+		mov( [ebx+12], eax );
+		mul( (type dword [ecx+8]) );			  
+		add( eax, Partial[20] );
+		adc( edx, Partial[24] );
+		
+		// mplier[12] * mcand[12]:
+		 
+		mov( [ebx+12], eax );
+		mul( (type dword [ecx+12]) );			  
+		add( eax, Partial[24] );
+		adc( edx, Partial[28] );
+		
+		// Okay, copy the result to the destination operand.
+		
+		mov( Product, ebx );
+		canAccess( [ebx] );
+		mov( Partial[0], eax );
+		mov( eax, [ebx+0] );
+		mov( Partial[4], eax );
+		mov( eax, [ebx+4] );
+		mov( Partial[8], eax );
+		mov( eax, [ebx+8] );
+		mov( Partial[12], eax );
+		mov( eax, [ebx+12] );
+		
+		// Now determine if there was an overflow:
+		
+		mov( Partial[16], eax );
+		or( Partial[20], eax );
+		or( Partial[24], eax );
+		or( Partial[28], eax );
+		
+		
+		cmp( eax, 1 );	// Sets carry if eax is zero.
+		cmc();
+		
+		pop( edx );
+		pop( ecx );
+		pop( ebx );
+		pop( eax );
+		
+	end mul128;			
+		
+
+begin multiply;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( src, ebx );
+	canAccess( [ebx] );
+	mov( dest, ecx );
+	canAccess( [ecx] );
+	movzx( destecx.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Byte_pt,
+			Word_pt,
+			DWord_pt
+		)
+		
+			mov( srcebx.uns32_vt, eax );
+			mul( destecx.uns32_vt );
+			mov( eax, destecx.uns32_vt );
+			mov( edx, destecx.uns32_vt[1*4] );
+			
+			// Zero extend to 128 bits:
+			
+			xor( eax, eax );
+			mov( eax, destecx.uns32_vt[2*4] ); 
+			mov( eax, destecx.uns32_vt[3*4] );
+			 
+			clc();
+			
+		case
+		( 
+			Uns64_pt, 
+			QWord_pt, 
+			Uns128_pt, 
+			TByte_pt, 
+			LWord_pt 
+		)
+		
+			mul128
+			( 
+				srcebx.dword_vt,
+				destecx.dword_vt,
+				destecx.dword_vt
+			);
+			if( @c ) then
+			
+				HLAwarning
+				( 
+					"Unsigned integer overflow occurred on multiply" 
+					nl 
+				);
+				
+				// We'll pretend the multiply was okay since we already
+				// gave an error message.
+				
+			endif;
+			clc();
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt
+		)
+		
+			mov( srcebx.uns32_vt, eax );
+			imul( destecx.uns32_vt );
+			mov( eax, destecx.uns32_vt );
+			mov( edx, destecx.uns32_vt[1*4] );
+
+			// Sign extend to 128 bits:
+			
+			mov( edx, eax );
+			cdq();
+			mov( edx, destecx.uns32_vt[2*4] ); 
+			mov( edx, destecx.uns32_vt[3*4] ); 
+			clc();
+			
+		case
+		( 
+			Int64_pt, 
+			Int128_pt 
+		)
+		
+			mov( 0, al );
+			abs128( srcebx.int128_vt );
+			adc( 0, al );
+			abs128( destecx.int128_vt );
+			adc( 0, al );	// al = 0:both pos, 1:either neg, 2:both neg.
+			mul128
+			( 
+				srcebx.dword_vt,
+				destecx.dword_vt,
+				destecx.dword_vt
+			);
+			if( @c || destecx.byte_vt[15] >= $80) then
+			
+				HLAwarning
+				( 
+					"Signed integer overflow occurred on multiply" 
+					nl 
+				);
+				
+				// We'll pretend the multiply was okay since we already
+				// gave an error message.
+				
+			endif;
+			
+			// If either, but not both, of the operands were originally
+			// negative, we need to negate the result:
+			
+			test( 1, al );
+			if( @nz ) then
+			
+				neg128( destecx.int128_vt );
+				
+			endif;
+			clc();
+		
+		
+		
+			
+
+		case( Real32_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real32_vt );
+			fmul( destecx.real32_vt );
+			fstp( destecx.real32_vt );
+			clc();
+		
+		case( Real64_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real64_vt );
+			fmul( destecx.real64_vt );
+			fstp( destecx.real64_vt );
+			clc();
+		
+		case( Real80_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real80_vt );
+			fld( destecx.real80_vt );
+			fmul();
+			fstp( destecx.real80_vt );
+			clc();
+			
+		case( Cset_pt, XCset_pt )
+		
+			mov( srcebx.dword_vt[0*4], eax );
+			and( eax, destecx.dword_vt[0*4] );
+			mov( srcebx.dword_vt[1*4], eax );
+			and( eax, destecx.dword_vt[1*4] );
+			mov( srcebx.dword_vt[2*4], eax );
+			and( eax, destecx.dword_vt[2*4] );
+			mov( srcebx.dword_vt[3*4], eax );
+			and( eax, destecx.dword_vt[3*4] );
+			mov( srcebx.dword_vt[4*4], eax );
+			and( eax, destecx.dword_vt[4*4] );
+			mov( srcebx.dword_vt[5*4], eax );
+			and( eax, destecx.dword_vt[5*4] );
+			mov( srcebx.dword_vt[6*4], eax );
+			and( eax, destecx.dword_vt[6*4] );
+			mov( srcebx.dword_vt[7*4], eax );
+			and( eax, destecx.dword_vt[7*4] );
+			clc();
+			
+		case( Char_pt, XChar_pt )
+		
+			mov( srcebx.pType, al );
+			
+			// Strings have a maximum size of four bytes.
+			// so make sure the multiplicand is 32-bits or less:
+			// Also, make sure the value is positive and fairly
+			// small (limit strings to 64K total length).
+			
+			if
+			(
+					( 
+							al in Uns8_pt..Uns32_pt
+						||	al in Byte_pt..DWord_pt
+						||	al in Int8_pt..Int32_pt
+					)
+				&&	srcebx.word_vt[2] = 0 
+			) then
+			
+				str.a_setstr( destecx.char_vt, srcebx.uns32_vt );
+				mov( eax, destecx.string_vt );
+				mov( String_pt, destecx.pType );
+				mov( &string_ste, destecx.symType );
+				
+			else
+			
+				HLAerror
+				( 
+					"'*' operator with a left character operand requires a" nl
+					"small ordinal right operand"
+					nl
+				);
+				raise( ex.hlaerr );
+								
+			endif;
+			clc();
+				
+			
+			
+		case( Unicode_pt )
+		
+			mov( srcebx.pType, al );
+			
+			// Strings have a maximum size of four bytes.
+			// so make sure the multiplicand is 32-bits or less:
+			// Also, make sure the value is positive and fairly
+			// small (limit strings to 64K total length).
+			
+			if
+			(
+					( 
+							al in Uns8_pt..Uns32_pt
+						||	al in Byte_pt..DWord_pt
+						||	al in Int8_pt..Int32_pt
+					)
+				&&	srcebx.word_vt[2] = 0 
+			) then
+			
+				// Create a string to hold (len+1)*2 characters
+				
+				mov( srcebx.uns32_vt, edx );
+				lea( edx, [edx*2+1] );
+				stralloc( edx );
+				dec( edx );
+				mov( edx, (type str.strRec [eax]).length );
+				
+				// Construct the string as len copies of the unicode
+				// character:
+				
+				push( edi );
+				pushfd();
+				cld();
+				mov( eax, edi );
+				movzx( destecx.char_vt, ax );
+				mov( edi, destecx.string_vt );
+				push( ecx );
+				mov( edx, ecx );
+				shr( 1, ecx );
+				rep.stosw();
+				xor( eax, eax );
+				stosw();
+				pop( ecx );
+				popfd();
+				pop( edi );
+				 
+				// Set the type to ustring:
+				
+				mov( UString_pt, destecx.pType );
+				mov( &ustring_ste, destecx.symType );
+				
+			else
+			
+				HLAerror
+				( 
+					"'*' operator with a left unicode char operand requires" nl
+					"a small ordinal right operand" nl
+				);
+				raise( ex.hlaerr );
+				
+			endif;
+			clc();
+				
+			
+		case( String_pt, Utf8_pt )
+		
+			mov( srcebx.pType, al );
+			
+			// Strings have a maximum size of four bytes.
+			// so make sure the multiplicand is 32-bits or less:
+			// Also, make sure the value is positive and fairly
+			// small (limit strings to 64K total length).
+			
+			if
+			(
+					( 
+							al in Uns8_pt..Uns32_pt
+						||	al in Byte_pt..DWord_pt
+						||	al in Int8_pt..Int32_pt
+					)
+				&&	srcebx.word_vt[2] = 0 
+			) then
+			
+				// Create a new string whose length is the
+				// length of the current string times the integer
+				// operand:
+				
+				if( srcebx.uns32_vt > 0 ) then
+				 
+					mov( destecx.string_vt, edx );
+					canAccess( [edx] );
+					mov( srcebx.uns32_vt, eax );
+					mul( (type str.strRec [edx]).length );
+					stralloc( eax );
+					
+					
+					// Okay, concatenate the source string to our
+					// new string the number of times specified
+					// by the right operand:
+					
+					repeat
+					
+						str.cat( destecx.string_vt, eax );
+						dec( srcebx.uns32_vt );
+						
+					until( srcebx.uns32_vt = 0 );
+
+					// Now free the original string and replace
+					// it by the new string:
+					
+					strfree( destecx.string_vt );
+					mov( eax, destecx.string_vt );
+
+					// Leave the type alone (it's already string or utf8):
+					//
+					//mov( String_pt, destecx.pType );
+					//mov( &string_ste, destecx.symType );
+
+				else
+				
+					// Since the repeat count was zero, all we
+					// have to do is set the original string's length
+					// to zero:
+					
+					str.cpy( "", destecx.string_vt );
+					
+				endif;
+				 
+				
+			else
+				// This error might not be possible?
+			
+				HLAerror
+				( 
+					"'*' operator with a left string or utf8 operand "
+					"requires a" nl
+					"small ordinal right operand"
+					nl
+				);
+				raise( ex.hlaerr );
+								
+				
+			endif;
+			clc();
+				
+			
+				
+			
+		case( UString_pt )
+		
+			mov( srcebx.pType, al );
+			
+			// Strings have a maximum size of four bytes.
+			// so make sure the multiplicand is 32-bits or less:
+			// Also, make sure the value is positive and fairly
+			// small (limit strings to 64K total length).
+			
+			if
+			(
+					( 
+							al in Uns8_pt..Uns32_pt
+						||	al in Byte_pt..DWord_pt
+						||	al in Int8_pt..Int32_pt
+					)
+				&&	srcebx.word_vt[2] = 0 
+			) then
+			
+				// Create a new string whose length is the
+				// length of the current string times the integer
+				// operand:
+				
+				if( srcebx.uns32_vt > 0 ) then
+				 
+					mov( destecx.string_vt, edx );
+					canAccess( [edx] );
+					mov( srcebx.uns32_vt, eax );
+					mul( (type str.strRec [edx]).length );
+					inc( eax ); //make room for extra zero byte.
+					stralloc( eax );
+					
+					
+					// Okay, concatenate the source string to our
+					// new string the number of times specified
+					// by the right operand:
+					
+					repeat
+					
+						str.cat( destecx.string_vt, eax );
+						dec( srcebx.uns32_vt );
+						
+					until( srcebx.uns32_vt = 0 );
+					
+					// Double zero terminate this ustring:
+					
+					mov( (type str.strRec [eax]).length, edx );
+					mov( #0, (type word [eax+edx]) );
+
+					// Now free the original string and replace
+					// it by the new string:
+					
+					strfree( destecx.string_vt );
+					mov( eax, destecx.string_vt );
+					mov( UString_pt, destecx.pType );
+					mov( &ustring_ste, destecx.symType );
+
+				else
+				
+					// Since the repeat count was zero, all we
+					// have to do is set the original string's length
+					// to zero:
+					
+					mov( destecx.string_vt, eax );
+					canAccess( [eax] );
+					mov( 0, (type str.strRec [eax]).length );
+					mov( 0, (type word [eax]) );
+					
+				endif;
+				 
+				
+			else
+			
+				// This error might not be possible?
+				HLAerror
+				( 
+					"'*' operator with a left wstring operand requires a" nl
+					"small ordinal right operand"
+					nl
+				);
+				
+				raise( ex.hlaerr );				
+				
+			endif;
+			clc();
+				
+			
+		default
+		
+			// This error might not be possible?
+			freeAttr( srcebx );
+			freeAttr( destecx );
+			mov( 1, destecx.dword_vt );
+			xor( eax, eax );
+			mov( eax, destecx.dword_vt[4] );
+			mov( eax, destecx.dword_vt[8] );
+			mov( eax, destecx.dword_vt[12] );
+			mov( Uns8_pt, destecx.pType );
+			mov( &uns8_ste, destecx.symType );
+			HLAerror
+			( 
+				"The '*' operator does not support these operand types" 
+				nl 
+			);
+			raise( ex.hlaerr );
+			
+	endswitch;
+	if( @nc ) then
+	
+		setSmallestSize( [ecx] );
+		clc();
+		
+	endif;	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end multiply;
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// div128-
+//
+// This procedure does a general 128/128 division operation
+// using the following algorithm:
+// (all variables are assumed to be 128 bit objects)
+//
+// Quotient := Dividend;
+// Remainder := 0;
+// for i:= 1 to NumberBits do
+// 
+// 	Remainder:Quotient := Remainder:Quotient SHL 1;
+// 	if Remainder >= Divisor then
+// 
+// 		Remainder := Remainder - Divisor;
+// 		Quotient := Quotient + 1;
+// 
+// 	endif
+// endfor
+// 
+
+//proc( "div128" )
+procedure div128
+( 
+		Dividend:	uns128; 
+		Divisor:	uns128; 
+	var QuotAdrs:	uns128; 
+	var RmndrAdrs:	uns128 
+);	
+const
+	Quotient: text := "Dividend";	// Use the Dividend as the Quotient.
+
+var
+	Remainder: uns128;
+
+begin div128;
+
+	push( eax );
+	push( ecx );
+	push( edi );
+	
+	mov( 0, eax );				// Set the remainder to zero.
+	mov( eax, (type dword Remainder[0]) );
+	mov( eax, (type dword Remainder[4]) );
+	mov( eax, (type dword Remainder[8]) );
+	mov( eax, (type dword Remainder[12]));
+
+	mov( 128, ecx );			// Count off 128 bits in ECX.
+	repeat
+
+		// Compute Remainder:Quotient := Remainder:Quotient SHL 1:
+
+		shl( 1, (type dword Dividend[0]) );	// See the section on extended
+		rcl( 1, (type dword Dividend[4]) );	// precision shifts to see how
+		rcl( 1, (type dword Dividend[8]) );	// this code shifts 256 bits to
+		rcl( 1, (type dword Dividend[12]));	// the left by one bit.
+		rcl( 1, (type dword Remainder[0]) );
+		rcl( 1, (type dword Remainder[4]) );
+		rcl( 1, (type dword Remainder[8]) );
+		rcl( 1, (type dword Remainder[12]));
+
+		// Do a 128-bit comparison to see if the remainder
+		// is greater than or equal to the divisor.
+
+		if
+		( #{
+			mov( (type dword Remainder[12]), eax );
+			cmp( eax, (type dword Divisor[12]) );
+			ja true;
+			jb false;
+
+			mov( (type dword Remainder[8]), eax );
+			cmp( eax, (type dword Divisor[8]) );
+			ja true;
+			jb false;
+
+			mov( (type dword Remainder[4]), eax );
+			cmp( eax, (type dword Divisor[4]) );
+			ja true;
+			jb false;
+
+			mov( (type dword Remainder[0]), eax );
+			cmp( eax, (type dword Divisor[0]) );
+			jb false;
+		}# ) then
+
+			// Remainder := Remainder - Divisor
+
+			mov( (type dword Divisor[0]), eax );
+			sub( eax, (type dword Remainder[0]) );
+
+			mov( (type dword Divisor[4]), eax );
+			sbb( eax, (type dword Remainder[4]) );
+
+			mov( (type dword Divisor[8]), eax );
+			sbb( eax, (type dword Remainder[8]) );
+
+			mov( (type dword Divisor[12]), eax );
+			sbb( eax, (type dword Remainder[12]) );
+
+			// Quotient := Quotient + 1;
+
+			add( 1, (type dword Quotient[0]) );
+			adc( 0, (type dword Quotient[4]) );
+			adc( 0, (type dword Quotient[8]) );
+			adc( 0, (type dword Quotient[12]) );
+
+		endif;
+		dec( ecx );
+
+	until( @z );
+
+
+	// Okay, copy the quotient (left in the Dividend variable)
+	// and the remainder to their return locations.
+	
+	mov( QuotAdrs, edi );
+	canAccess( [edi] );
+	mov( (type dword Quotient[0]), eax );
+	mov( eax, [edi] );
+	mov( (type dword Quotient[4]), eax );
+	mov( eax, [edi+4] );
+	mov( (type dword Quotient[8]), eax );
+	mov( eax, [edi+8] );
+	mov( (type dword Quotient[12]), eax );
+	mov( eax, [edi+12] );
+	
+	mov( RmndrAdrs, edi );
+	canAccess( [edi] );
+	mov( (type dword Remainder[0]), eax );
+	mov( eax, [edi] );
+	mov( (type dword Remainder[4]), eax );
+	mov( eax, [edi+4] );
+	mov( (type dword Remainder[8]), eax );
+	mov( eax, [edi+8] );
+	mov( (type dword Remainder[12]), eax );
+	mov( eax, [edi+12] );
+		
+		 
+	pop( edi );
+
+	pop( ecx );
+	pop( eax );
+			
+end div128;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// divide-
+//
+//	Called by the expression evaluator to divide two
+// operands (if this is possible).  Note that this code
+// assumes that the caller has already coerced the two
+// types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// "division" is defined for the operands.
+//
+//	This form of division is defined for:
+//
+//		All unsigned operands
+//		All signed operands
+//
+// Division is undefined for other types.
+// (Note that fDivision handles real operands.)
+
+
+//proc( "divide" )
+procedure divide( var src:attr_t; var dest:attr_t );
+var
+	saveESI	:dword;
+	saveEDI	:dword;
+	dummy	:uns128;
+	
+begin divide;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( src, ebx );
+	canAccess( [ebx] );
+	mov( dest, ecx );
+	canAccess( [ecx] );
+	movzx( attrECX.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Byte_pt,
+			Word_pt,
+			DWord_pt
+		)
+		
+			mov( attrECX.uns32_vt, eax );
+			xor( edx, edx );
+			try
+			
+				mov( esi, saveESI );
+				mov( edi, saveEDI );
+				div( attrEBX.uns32_vt );
+				
+			  anyexception
+			  
+				mov( saveESI, esi );
+				mov( saveEDI, edi );
+			  	HLAerror
+				( 
+					"Division error in expression (e.g., div by zero)" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+				
+			endtry;
+			mov( eax, attrECX.uns32_vt );
+			
+			// Zero extend to 128 bits:
+			
+			xor( eax, eax );
+			mov( eax, attrECX.uns32_vt[1*4] );
+			mov( eax, attrECX.uns32_vt[2*4] );
+			mov( eax, attrECX.uns32_vt[3*4] );
+			clc();
+			
+		case( Uns64_pt, QWord_pt, Uns128_pt, TByte_pt, LWord_pt )
+		
+			mov( attrEBX.dword_vt, eax );
+			or( attrEBX.dword_vt[4], eax );
+			or( attrEBX.dword_vt[8], eax );
+			or( attrEBX.dword_vt[12], eax );
+			if( @nz ) then
+				div128
+				( 
+					(type uns128 attrECX.dword_vt), 
+					(type uns128 attrEBX.dword_vt), 
+					(type uns128 attrECX.dword_vt), 
+					dummy 
+				);
+				clc();
+
+			else
+
+			  	HLAerror
+				( 
+					"Division by zero in expression" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+			
+			endif;				
+		
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt
+		)
+		
+			mov( attrECX.int32_vt, eax );
+			cdq();
+			try
+			
+				mov( esi, saveESI );
+				mov( edi, saveEDI );
+				idiv( attrEBX.int32_vt );
+				
+			  anyexception
+			  
+				mov( saveESI, esi );
+				mov( saveEDI, edi );
+			  	HLAerror
+				( 
+					"Division error in expression (e.g., div by zero)" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+				
+			endtry;
+			mov( eax, attrECX.int32_vt );
+			
+			// Sign extend result to 128 bits:
+			
+			cdq();
+			mov( edx, attrECX.uns32_vt[1*4] );
+			mov( edx, attrECX.uns32_vt[2*4] );
+			mov( edx, attrECX.uns32_vt[3*4] );
+			clc();
+			
+		case( Int64_pt, Int128_pt )
+		
+			mov( attrEBX.dword_vt, eax );
+			or( attrEBX.dword_vt[4], eax );
+			or( attrEBX.dword_vt[8], eax );
+			or( attrEBX.dword_vt[12], eax );
+			if( @nz ) then
+
+				mov( 0, al );
+				abs128( attrEBX.int128_vt );
+				adc( 0, al );
+				abs128( attrECX.int128_vt );
+				adc( 0, al );	// al = 0:both pos, 1:either neg, 2:both neg.
+				div128
+				( 
+					(type uns128 attrECX.dword_vt), 
+					(type uns128 attrEBX.dword_vt), 
+					(type uns128 attrECX.dword_vt), 
+					dummy 
+				);
+				
+				// If either, but not both, of the operands were originally
+				// negative, we need to negate the result:
+				
+				test( 1, al );
+				if( @nz ) then
+				
+					neg128( attrECX.int128_vt );
+					
+				endif;
+
+			else
+
+			  	HLAerror
+				( 
+					"Division by zero in expression" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+			
+			endif;				
+		
+			
+		default
+		
+			// Is this even possible?
+			freeAttr( [ecx] );
+			freeAttr( [ebx] );
+			mov( 1, attrECX.dword_vt );
+			xor( eax, eax );
+			mov( eax, attrECX.dword_vt[4] );
+			mov( eax, attrECX.dword_vt[8] );
+			mov( eax, attrECX.dword_vt[12] );
+			mov( Uns8_pt, attrECX.pType );
+			mov( &uns8_ste, attrECX.symType );
+			HLAerror
+			( 
+				"The 'div' operator does not support these operand types" 
+				nl 
+			);
+			raise( ex.hlaerr );
+			
+	endswitch;
+	if( @nc ) then
+	
+		setSmallestSize( [ecx] );
+		clc();
+		
+	endif;	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end divide;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// modulo-
+//
+//	Called by the expression evaluator to divide two
+// operands (if this is possible) and compute their remainder.  
+// Note that this code assumes that the caller has already coerced the two
+// types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// "modulo" is defined for the operands.
+//
+//	This form of division is defined for:
+//
+//		All unsigned operands
+//		All signed operands
+//
+// Division is undefined for other types.
+
+
+//proc( "modulo" )
+procedure modulo( var src:attr_t; var dest:attr_t );
+var
+	saveESI	:dword;
+	saveEDI	:dword;
+	dummy	:uns128;
+	
+begin modulo;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( src, ebx );
+	canAccess( [ebx] );
+	mov( dest, ecx );
+	canAccess( [ecx] );
+	movzx( attrECX.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Byte_pt,
+			Word_pt,
+			DWord_pt
+		)
+		
+			mov( attrECX.uns32_vt, eax );
+			xor( edx, edx );
+			try
+			
+				mov( esi, saveESI );
+				mov( edi, saveEDI );
+				div( attrEBX.uns32_vt );
+				
+			  anyexception
+			  
+				mov( saveESI, esi );
+				mov( saveEDI, edi );
+			  	HLAerror
+				( 
+					"Division error in expression (e.g., div by zero)" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+				
+			endtry;
+			mov( edx, attrECX.uns32_vt );
+			
+			// Zero extend to 128 bits:
+			
+			xor( eax, eax );
+			mov( eax, attrECX.uns32_vt[1*4] );
+			mov( eax, attrECX.uns32_vt[2*4] );
+			mov( eax, attrECX.uns32_vt[3*4] );
+			clc();
+			
+		case( Uns64_pt, QWord_pt, Uns128_pt, TByte_pt, LWord_pt )
+		
+		
+			mov( attrEBX.dword_vt, eax );
+			or( attrEBX.dword_vt[4], eax );
+			or( attrEBX.dword_vt[8], eax );
+			or( attrEBX.dword_vt[12], eax );
+			if( @nz ) then
+
+				div128
+				( 
+					(type uns128 attrECX.dword_vt), 
+					(type uns128 attrEBX.dword_vt), 
+					dummy,
+					(type uns128 attrECX.dword_vt)
+				);
+				clc();
+			else
+
+			  	HLAerror
+				( 
+					"Division by zero in expression" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+			
+			endif;				
+		
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt
+		)
+		
+			mov( attrECX.int32_vt, eax );
+			cdq();
+			try
+			
+				mov( esi, saveESI );
+				mov( edi, saveEDI );
+				idiv( attrEBX.int32_vt );
+				
+			  anyexception
+			  
+				mov( saveESI, esi );
+				mov( saveEDI, edi );
+			  	HLAerror
+				( 
+					"Division error in expression (e.g., div by zero)" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+				
+			endtry;
+			mov( edx, attrECX.int32_vt );
+			mov( edx, eax );
+			
+			// Sign extend result to 128 bits:
+			
+			cdq();
+			mov( edx, attrECX.uns32_vt[1*4] );
+			mov( edx, attrECX.uns32_vt[2*4] );
+			mov( edx, attrECX.uns32_vt[3*4] );
+			clc();
+			
+		case( Int64_pt, Int128_pt )
+		
+			mov( attrEBX.dword_vt, eax );
+			or( attrEBX.dword_vt[4], eax );
+			or( attrEBX.dword_vt[8], eax );
+			or( attrEBX.dword_vt[12], eax );
+			if( @nz ) then
+
+				mov( 0, al );
+				abs128( attrEBX.int128_vt );
+				adc( 0, al );
+				abs128( attrECX.int128_vt );
+				adc( 0, al );	// al = 0:both pos, 1:either neg, 2:both neg.
+				div128
+				( 
+					(type uns128 attrECX.dword_vt), 
+					(type uns128 attrEBX.dword_vt), 
+					dummy,
+					(type uns128 attrECX.dword_vt)
+				);
+				
+				// If either, but not both, of the operands were originally
+				// negative, we need to negate the result:
+				
+				test( 1, al );
+				if( @nz ) then
+				
+					neg128( attrECX.int128_vt );
+					
+				endif;
+
+			else
+
+			  	HLAerror
+				( 
+					"Division by zero in expression" 
+					nl 
+				);
+			  	raise( ex.hlaerr );
+			
+			endif;				
+		
+			
+		default
+
+			// Can we even have this error?
+		
+			freeAttr( [ecx] );
+			freeAttr( [ebx] );
+			mov( 1, attrECX.dword_vt );
+			xor( eax, eax );
+			mov( eax, attrECX.dword_vt[4] );
+			mov( eax, attrECX.dword_vt[8] );
+			mov( eax, attrECX.dword_vt[12] );
+			mov( Uns8_pt, attrECX.pType );
+			mov( &uns8_ste, attrECX.symType );
+			HLAerror
+			( 
+				"The 'div' operator does not support these operand types" 
+				nl 
+			);
+			raise( ex.hlaerr );
+			
+	endswitch;
+	if( @nc ) then
+	
+		setSmallestSize( [ecx] );
+		clc();
+		
+	endif;	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end modulo;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// fDivision-
+//
+//	Called by the expression evaluator to divide two real
+// operands (if this is possible).  Note that this code
+// assumes that the caller has already coerced the two
+// types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// "division" is defined for the operands.
+//
+//	This form of division is defined for:
+//
+//		All unsigned operands
+//		All signed operands
+//		All real operands
+//
+// fDivision is undefined for other types.
+
+
+//proc( "fDivision" )
+procedure fDivision( var src:attr_t; var dest:attr_t );
+const
+	srcEBX	:text := "attrEBX";
+	destECX	:text := "attrECX";
+	
+begin fDivision;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same.  However, if they are
+	// an unsigned or integer type, we need to convert them to real
+	// first.
+	
+	mov( src, ebx );
+	canAccess( [ebx] );
+	mov( dest, ecx );
+	canAccess( [ecx] );
+	mov( destECX.pType, al );
+	
+	if( al in Uns8_pt..Uns128_pt ) then
+
+		unsToReal( src, Real80_pt );
+		unsToReal( dest, Real80_pt );
+		mov( Real80_pt, al );
+	
+	elseif( al in Byte_pt..Int128_pt ) then
+	
+		intToReal( src, Real80_pt );
+		intToReal( dest, Real80_pt );
+		mov( Real80_pt, al );
+	
+	endif;
+
+	
+	if( al = Real32_pt ) then
+	
+		finit();
+		fclex();
+		fld( destECX.real32_vt );
+		fld( srcEBX.real32_vt );
+		ftst();
+		fstsw( ax );
+		fdiv();
+		fstp( destECX.real32_vt );
+		sahf();
+		if( @z ) then
+
+			HLAerror( "Real division by zero" nl );
+			raise( ex.hlaerr );
+
+		endif;
+		clc();
+			 
+	
+	elseif( al = Real64_pt ) then
+	
+		finit();
+		fclex();
+		fld( destECX.real64_vt );
+		fld( srcEBX.real64_vt );
+		ftst();
+		fstsw( ax );
+		fdiv();
+		fstp( destECX.real64_vt );
+		sahf();
+		if( @z ) then
+
+			HLAerror( "Real division by zero" nl );
+			raise( ex.hlaerr );
+
+		endif;
+		clc(); 
+	
+	elseif( al = Real80_pt ) then
+	
+		finit();
+		fclex();
+		fld( destECX.real80_vt );
+		fld( srcEBX.real80_vt );
+		ftst();
+		fstsw( ax );
+		fdiv();
+		fstp( destECX.real80_vt );
+		sahf();
+		if( @z ) then
+
+			HLAerror( "Real division by zero" nl );
+			raise( ex.hlaerr );
+
+		endif;
+		clc(); 
+	
+	else
+	
+		// can this even happen?
+		freeAttr( srcEBX );
+		freeAttr( destECX );
+		mov( 1, destECX.dword_vt );
+		xor( eax, eax );
+		mov( eax, destECX.dword_vt[4] );
+		mov( eax, destECX.dword_vt[8] );
+		mov( eax, destECX.dword_vt[12] );
+		mov( Uns8_pt, destECX.pType );
+		mov( &uns8_ste, destECX.symType );
+		HLAerror
+		( 
+			"The '/' operator does not support these operand types" 
+			nl 
+		);
+		raise( ex.hlaerr );
+	
+	
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end fDivision;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// shiftLeft,
+// shiftRight,
+// aShiftRight-
+//
+//	These procedures handle the <<, >>, and -> operators
+// (logical/arithmetic shift left, logical shift right, and
+// arithmetic shift right, respectively).
+//
+// Inputs:
+//
+//	cnt-
+//		This is the right operand;  it is the number of bits
+//		to shift.  This must be a small unsigned number in the
+//		range 0..size (size=8, 16, 32, 64, or 128 depending
+//		on the type of value).
+//
+//	value-
+//		This is the value to shift.  It must be an unsigned
+//		or signed value (Uns8_pt..Int128_pt).
+//
+// Returns:
+//
+//	value-
+//		Value is shifted in the appropriate direction the
+//		specified number of bits.
+//
+//	carry-
+//		Set if there is an error (cnt is out of range).
+//		Clear if everything was okay.
+
+//proc( "shiftLeft" )
+procedure shiftLeft( var cnt:attr_t; var value:attr_t );
+const
+	cntEBX		:text := "attrEBX";
+	ebxValue	:text := "attrEBX";
+	
+begin shiftLeft;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	
+	mov( cnt, ebx );
+	canAccess( [ebx] );
+	mov( cntEBX.pType, al );
+	mov( cntEBX.uns32_vt, ecx );
+	if(#{
+	
+		// Okay, make sure the count is less than 128 and
+		// the ptype is one of Uns8, Uns16, Uns32, Byte,
+		// Word, Dword, Int8, Int16, or Int32.
+		
+		cmp( ecx, 128);
+		jae false;
+		cmp( al, Uns8_pt );
+		jb false;
+		cmp( al, Uns32_pt );
+		jbe true;
+		cmp( al, Byte_pt );
+		jb false;
+		cmp( al, DWord_pt );
+		jbe true;
+		cmp( al, Int8_pt );
+		jb false;
+		cmp( al, Int32_pt );
+		ja false;
+		
+	}#) then
+	
+		// Okay, shift the value left the number of bits
+		// specified by the count operand:
+		
+		mov( value, ebx );
+		canAccess( [ebx] );
+		if( ecx <> 0 ) then
+		
+			repeat
+			
+				shl( 1, ebxValue.dword_vt[0] );
+				rcl( 1, ebxValue.dword_vt[4] );
+				rcl( 1, ebxValue.dword_vt[8] );
+				rcl( 1, ebxValue.dword_vt[12] );
+				dec( ecx );
+				
+			until( ecx = 0 );
+			
+		endif;
+		setSmallestSize( [ebx] );
+		clc();
+	
+	else
+	
+		// Clean up so we don't get cascading errors:
+		
+		freeAttr( cntEBX );
+		freeAttr( ebxValue );
+		mov( 1, ebxValue.dword_vt );
+		xor( eax, eax );
+		mov( eax, ebxValue.dword_vt[4] );
+		mov( eax, ebxValue.dword_vt[8] );
+		mov( eax, ebxValue.dword_vt[12] );
+		mov( Uns8_pt, ebxValue.pType );
+		mov( &uns8_ste, ebxValue.symType );
+		
+		HLAerror
+		( 
+			"Shift left operator's right operand " nl
+			"must be a small, non-negative, integer value"
+			nl
+		);
+		raise( ex.hlaerr );
+		
+	endif;
+	
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+	
+end shiftLeft;
+
+
+
+//proc( "shiftRight" )
+procedure shiftRight( var cnt:attr_t; var value:attr_t );
+const
+	cntEBX		:text := "attrEBX";
+	ebxValue	:text := "attrEBX";
+	
+begin shiftRight;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	
+	mov( cnt, ebx );
+	canAccess( [ebx] );
+	mov( cntEBX.pType, al );
+	mov( cntEBX.uns32_vt, ecx );
+	if(#{
+	
+		// Okay, make sure the count is less than 128 and
+		// the ptype is one of Uns8, Uns16, Uns32, Byte,
+		// Word, Dword, Int8, Int16, or Int32.
+		
+		cmp( ecx, 128);
+		jae false;
+		cmp( al, Uns8_pt );
+		jb false;
+		cmp( al, Uns32_pt );
+		jbe true;
+		cmp( al, Byte_pt );
+		jb false;
+		cmp( al, DWord_pt );
+		jbe true;
+		cmp( al, Int8_pt );
+		jb false;
+		cmp( al, Int32_pt );
+		ja false;
+		
+	}#) then
+	
+		// Okay, shift the value right the number of bits
+		// specified by the count operand:
+		
+		mov( value, ebx );
+		canAccess( [ebx] );
+		if( ecx <> 0 ) then
+		
+			repeat
+			
+				shr( 1, ebxValue.dword_vt[12] );
+				rcr( 1, ebxValue.dword_vt[8] );
+				rcr( 1, ebxValue.dword_vt[4] );
+				rcr( 1, ebxValue.dword_vt[0] );
+				dec( ecx );
+				
+			until( ecx = 0 );
+			
+		endif;
+		setSmallestSize( [ebx] );
+		clc();
+	
+	else
+	
+		// Clean up so we don't get cascading errors:
+		
+		freeAttr( cntEBX );
+		freeAttr( ebxValue );
+		mov( 1, ebxValue.dword_vt );
+		xor( eax, eax );
+		mov( eax, ebxValue.dword_vt[4] );
+		mov( eax, ebxValue.dword_vt[8] );
+		mov( eax, ebxValue.dword_vt[12] );
+		mov( Uns8_pt, ebxValue.pType );
+		mov( &uns8_ste, ebxValue.symType );
+		
+		HLAerror
+		( 
+			"Shift right operator's right operand " nl
+			"must be a small, non-negative, integer value"
+			nl
+		);
+		raise( ex.hlaerr );
+		
+	endif;
+	
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+	
+end shiftRight;
+
+
+//proc( "aShiftRight" )
+procedure aShiftRight( var cnt:attr_t; var value:attr_t );
+const
+	cntEBX		:text := "attrEBX";
+	ebxValue	:text := "attrEBX";
+	
+begin aShiftRight;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	
+	mov( cnt, ebx );
+	canAccess( [ebx] );
+	mov( cntEBX.pType, al );
+	mov( cntEBX.uns32_vt, ecx );
+	if(#{
+	
+		// Okay, make sure the count is less than 128 and
+		// the ptype is one of Uns8, Uns16, Uns32, Byte,
+		// Word, Dword, Int8, Int16, or Int32.
+		
+		cmp( ecx, 128);
+		jae false;
+		cmp( al, Uns8_pt );
+		jb false;
+		cmp( al, Uns32_pt );
+		jbe true;
+		cmp( al, Byte_pt );
+		jb false;
+		cmp( al, DWord_pt );
+		jbe true;
+		cmp( al, Int8_pt );
+		jb false;
+		cmp( al, Int32_pt );
+		ja false;
+		
+	}#) then
+	
+		// Okay, arithmetically shift the value right the number of bits
+		// specified by the count operand:
+		
+		mov( value, ebx );
+		canAccess( [ebx] );
+		if( ecx <> 0 ) then
+		
+			repeat
+			
+				sar( 1, ebxValue.dword_vt[12] );
+				rcr( 1, ebxValue.dword_vt[8] );
+				rcr( 1, ebxValue.dword_vt[4] );
+				rcr( 1, ebxValue.dword_vt[0] );
+				dec( ecx );
+				
+			until( ecx = 0 );
+			
+		endif;
+		setSmallestSize( [ebx] );
+		clc();
+	
+	else
+	
+		// Clean up so we don't get cascading errors:
+		
+		freeAttr( cntEBX );
+		freeAttr( ebxValue );
+		mov( 1, ebxValue.dword_vt );
+		xor( eax, eax );
+		mov( eax, ebxValue.dword_vt[4] );
+		mov( eax, ebxValue.dword_vt[8] );
+		mov( eax, ebxValue.dword_vt[12] );
+		mov( Uns8_pt, ebxValue.pType );
+		mov( &uns8_ste, ebxValue.symType );
+		
+		HLAerror
+		( 
+			"Arithmetic shift right operator's right operand " nl
+			"must be a small, non-negative, integer value"
+			nl
+		);
+		raise( ex.hlaerr );
+		
+	endif;
+	
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end aShiftRight;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// addition-
+//
+//	Called by the expression evaluator to add two
+// operands (if this is possible).  Note that this code
+// assumes that the caller has already coerced the two
+// types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// "addition" is defined for the operands.
+//
+//	Addition is defined for:
+//
+//		All unsigned operands (addition)
+//		All signed operands (addition)
+//		All real operands (addition)
+//		All character set operands (set union)
+//		All string operands (concatenation)
+//		All character operands (concatenation)
+//
+// Addition is undefined for other types.
+
+//proc( "addition" )
+procedure addition( var src:attr_t; var dest:attr_t );
+const
+	srcebx	:text := "attrEBX";
+	destecx	:text := "attrECX";
+	
+begin addition;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( src, ebx );
+	canAccess( [ebx] );
+	mov( dest, ecx );
+	canAccess( [ecx] );
+	movzx( destecx.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Uns64_pt, 
+			Uns128_pt, 
+			
+			Byte_pt,
+			Word_pt,
+			DWord_pt,
+			QWord_pt, 
+			TByte_pt, 
+			LWord_pt 
+		)
+		
+			// Just do a 128-bit addition here.
+			// Report a warning if there is an unsigned overflow.
+			
+			mov( srcebx.uns32_vt, eax );
+			add( eax, destecx.uns32_vt );
+			
+			mov( srcebx.uns32_vt[4], eax );
+			adc( eax, destecx.uns32_vt[4] );
+			
+			mov( srcebx.uns32_vt[8], eax );
+			adc( eax, destecx.uns32_vt[8] );
+			
+			mov( srcebx.uns32_vt[12], eax );
+			adc( eax, destecx.uns32_vt[12] );
+			if( @c ) then
+			
+				HLAwarning( "Unsigned overflow during addition" nl );
+				stc();
+				
+			endif;
+			
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt,
+			Int64_pt, 
+			Int128_pt 
+		)
+		
+			// Pretty much the same as for unsigned operands
+			// except we test the O flag for overflow.
+			
+			mov( srcebx.uns32_vt, eax );
+			add( eax, destecx.uns32_vt );
+			
+			mov( srcebx.uns32_vt[4], eax );
+			adc( eax, destecx.uns32_vt[4] );
+			
+			mov( srcebx.uns32_vt[8], eax );
+			adc( eax, destecx.uns32_vt[8] );
+			
+			mov( srcebx.uns32_vt[12], eax );
+			adc( eax, destecx.uns32_vt[12] );
+			clc();
+			if( @o ) then
+			
+				HLAwarning( "Signed overflow during addition" nl );
+				stc();
+				
+			endif;
+			
+
+		// Floating point addition is easy:
+
+		case( Real32_pt )
+		
+			
+			finit();
+			fclex();
+			fld( srcebx.real32_vt );
+			fadd( destecx.real32_vt );
+			fstp( destecx.real32_vt );
+			clc();
+		
+		case( Real64_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real64_vt );
+			fadd( destecx.real64_vt );
+			fstp( destecx.real64_vt );
+			clc();
+		
+		case( Real80_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real80_vt );
+			fld( destecx.real80_vt );
+			fadd();
+			fstp( destecx.real80_vt );
+			clc();
+			
+			
+			
+		// For two character sets, we must compute the union
+		// of the two characters (by ORing their bits together).
+		
+		case( Cset_pt, XCset_pt )
+		
+			mov( srcebx.dword_vt[0], eax );
+			or( eax, destecx.dword_vt[0] );
+			
+			mov( srcebx.dword_vt[4], eax );
+			or( eax, destecx.dword_vt[4] );
+			
+			mov( srcebx.dword_vt[8], eax );
+			or( eax, destecx.dword_vt[8] );
+			
+			mov( srcebx.dword_vt[12], eax );
+			or( eax, destecx.dword_vt[12] );
+			
+			mov( srcebx.dword_vt[16], eax );
+			or( eax, destecx.dword_vt[16] );
+			
+			mov( srcebx.dword_vt[20], eax );
+			or( eax, destecx.dword_vt[20] );
+			
+			mov( srcebx.dword_vt[24], eax );
+			or( eax, destecx.dword_vt[24] );
+			
+			mov( srcebx.dword_vt[28], eax );
+			or( eax, destecx.dword_vt[28] );
+			clc();
+
+		// For character operands, the '+' operator creates a string
+		// from the concatenation of the two characters:
+		
+		case( Char_pt, XChar_pt )
+		
+			stralloc( 2 );
+			mov( 2, (type str.strRec [eax]).length );
+			
+			mov( destecx.char_vt, dl );
+			mov( dl, [eax] );
+			mov( srcebx.char_vt, dl );
+			mov( dl, [eax+1] );
+			mov( #0, (type char [eax+2]) ); 
+
+			mov( eax, destecx.string_vt );
+			
+			mov( String_pt, destecx.pType );
+			mov( &string_ste, destecx.symType );
+			clc();
+						
+
+
+		// For unicode operands, the '+' operator creates a string
+		// from the concatenation of the two characters:
+		
+		case( Unicode_pt )
+		
+			stralloc( 5 );
+			mov( 4, (type str.strRec [eax]).length );
+			mov( destecx.unicode_vt, dx );
+			mov( dx, [eax] );
+			mov( srcebx.unicode_vt, dx );
+			mov( dx, [eax+2] );
+			mov( #0, (type word [eax+4]) ); 
+			mov( eax, destecx.string_vt );
+			
+			mov( UString_pt, destecx.pType );
+			mov( &ustring_ste, destecx.symType );
+			clc();
+						
+
+		// For strings (and utf-8s, the '+' operator 
+		// corresponds to concatenation:
+		
+		case( String_pt, Utf8_pt )
+		
+			str.a_cat( destecx.string_vt, srcebx.string_vt );
+			
+			// We have to free the previous two strings:
+			
+			strfree( srcebx.string_vt );
+			strfree( destecx.string_vt );
+			
+			// Now store the new string into the destination:
+			
+			mov( eax, destecx.string_vt );
+			
+			// Just to be safe, change the source operand to
+			// something other than a string (so somebody else
+			// doesn't try to free it):
+			
+			mov( Uns8_pt, srcebx.pType );
+			mov( &uns8_ste, srcebx.symType );
+			clc();
+				
+		
+		case( UString_pt )
+		
+			mov( destecx.string_vt, eax );
+			canAccess( [eax] );
+			mov( (type str.strRec [eax]).length, edx );
+			mov( srcebx.string_vt, eax );
+			canAccess( [eax] );
+			add( (type str.strRec [eax]).length, edx );
+			add( 1, edx );
+			stralloc( edx );
+			str.cpy( destecx.string_vt, (type string eax) );
+			str.cat( srcebx.string_vt, (type string eax ) );
+			mov( #0, (type char [eax+edx-1]));	// Extra zero-termination byte
+			
+			// We have to free the previous two strings:
+			
+			strfree( srcebx.string_vt );
+			strfree( destecx.string_vt );
+			
+			// Now store the new string into the destination:
+			
+			mov( eax, destecx.string_vt );
+			
+			// Just to be safe, change the source operand to
+			// something other than a string (so somebody else
+			// doesn't try to free it):
+			
+			mov( Uns8_pt, srcebx.pType );
+			mov( &uns8_ste, srcebx.symType );
+			clc();
+				
+			
+		default
+		
+			// Defensive code: is this even possible?
+			HLAerror
+			( 
+				"The '+' operator does not support these operand types" 
+				nl 
+			);
+			freeAttr( srcebx );
+			freeAttr( destecx );
+			raise( ex.hlaerr );
+			
+	endswitch;
+	setSmallestSize( [ecx] );
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end addition;
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// subtract-
+//
+//	Called by the expression evaluator to subtract two
+// operands (if this is possible).  Note that this code
+// assumes that the caller has already coerced the two
+// types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// "subtraction" is defined for the operands.
+//
+//	Subtraction is defined for:
+//
+//		All unsigned operands (subtract)
+//		All signed operands (subtract)
+//		All real operands (subtract)
+//		All character set operands (set difference)
+//
+// Subtraction is undefined for other types.
+
+
+//proc( "subtract" )
+procedure subtract( var src:attr_t; var dest:attr_t );
+const
+	srcebx	:text := "attrEBX";
+	destecx	:text := "attrECX";
+	
+begin subtract;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( src, ebx );
+	canAccess( [ebx] );
+	mov( dest, ecx );
+	canAccess( [ecx] );
+	movzx( destecx.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Uns64_pt, 
+			Uns128_pt, 
+			
+			Byte_pt,
+			Word_pt,
+			DWord_pt,
+			QWord_pt, 
+			TByte_pt, 
+			LWord_pt 
+		)
+		
+			// There is a minor problem with unsigned subtraction,
+			// if the right operand is greater than the left operand
+			// we could get a negative result.  Rather than treat this
+			// as an overflow error, we'll convert the result to a negative
+			// number.
+			
+			if(#{
+				mov( srcebx.uns32_vt[12], eax );
+				cmp( eax, destecx.uns32_vt[12] );
+				ja false;
+			 
+				mov( srcebx.uns32_vt[8], eax );
+				cmp( eax, destecx.uns32_vt[8] );
+				ja false;
+			 
+				mov( srcebx.uns32_vt[4], eax );
+				cmp( eax, destecx.uns32_vt[4] );
+				ja false;
+			 
+				mov( srcebx.uns32_vt[0], eax );
+				cmp( eax, destecx.uns32_vt[0] );
+				ja false;
+				
+			}#) then
+			 
+				// Just do a 128-bit subtraction here.
+				// Report a warning if there is an unsigned overflow.
+				
+				mov( srcebx.uns32_vt, eax );
+				sub( eax, destecx.uns32_vt );
+				
+				mov( srcebx.uns32_vt[4], eax );
+				sbb( eax, destecx.uns32_vt[4] );
+				
+				mov( srcebx.uns32_vt[8], eax );
+				sbb( eax, destecx.uns32_vt[8] );
+				
+				mov( srcebx.uns32_vt[12], eax );
+				sbb( eax, destecx.uns32_vt[12] );
+				if( @c ) then
+				
+					// Defensive code: this may not be possible.
+					HLAwarning
+					( 
+						"Unsigned overflow/undeflow during subtraction" 
+						nl 
+					);
+					stc();
+					
+				endif;
+				
+			else	// Okay, the right operand is greater than the left.
+					// So treat this as a signed operation.
+
+				// Just do a 128-bit subtraction here.
+				// Report a warning if there is an unsigned overflow.
+				
+				mov( Int128_pt, destecx.pType );	// setSmallestSize will
+				mov( &int128_ste, destecx.symType );	//  fix these later.
+				
+				mov( srcebx.uns32_vt, eax );
+				sub( eax, destecx.uns32_vt );
+				
+				mov( srcebx.uns32_vt[4], eax );
+				sbb( eax, destecx.uns32_vt[4] );
+				
+				mov( srcebx.uns32_vt[8], eax );
+				sbb( eax, destecx.uns32_vt[8] );
+				
+				mov( srcebx.uns32_vt[12], eax );
+				sbb( eax, destecx.uns32_vt[12] );
+				clc();
+				if( @o ) then
+				
+					HLAwarning
+					( 
+						"Unsigned overflow/undeflow during subtraction" 
+						nl 
+					);
+					stc();
+					
+				endif;
+				
+			endif;			
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt,
+			Int64_pt, 
+			Int128_pt 
+		)
+		
+			// Pretty much the same as for unsigned operands
+			// except we test the O flag for overflow.
+			
+			mov( srcebx.uns32_vt, eax );
+			sub( eax, destecx.uns32_vt );
+			
+			mov( srcebx.uns32_vt[4], eax );
+			sbb( eax, destecx.uns32_vt[4] );
+			
+			mov( srcebx.uns32_vt[8], eax );
+			sbb( eax, destecx.uns32_vt[8] );
+			
+			mov( srcebx.uns32_vt[12], eax );
+			sbb( eax, destecx.uns32_vt[12] );
+			clc();
+			if( @o ) then
+			
+				HLAwarning
+				( 
+					"Signed overflow/underflow during subtraction" 
+					nl 
+				);
+				stc();
+				
+			endif;
+			
+
+		// Floating point subtraction is easy:
+
+		case( Real32_pt )
+		
+			
+			finit();
+			fclex();
+			fld( srcebx.real32_vt );
+			fsubr( destecx.real32_vt );
+			fstp( destecx.real32_vt );
+			clc();
+		
+		case( Real64_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real64_vt );
+			fsubr( destecx.real64_vt );
+			fstp( destecx.real64_vt );
+			clc();
+		
+		case( Real80_pt )
+		
+			finit();
+			fclex();
+			fld( srcebx.real80_vt );
+			fld( destecx.real80_vt );
+			fsubr();
+			fstp( destecx.real80_vt );
+			clc();
+			
+			
+			
+		// For two character sets, we must compute the difference
+		// of the two characters (NOT src then AND with dest).
+		
+		case( Cset_pt, XCset_pt )
+		
+			mov( srcebx.dword_vt[0], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[0] );
+			
+			mov( srcebx.dword_vt[4], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[4] );
+			
+			mov( srcebx.dword_vt[8], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[8] );
+			
+			mov( srcebx.dword_vt[12], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[12] );
+			
+			mov( srcebx.dword_vt[16], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[16] );
+			
+			mov( srcebx.dword_vt[20], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[20] );
+			
+			mov( srcebx.dword_vt[24], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[24] );
+			
+			mov( srcebx.dword_vt[28], eax );
+			not( eax );
+			and( eax, destecx.dword_vt[28] );
+			clc();
+			
+
+		default
+
+			// Defensive code: this probably can't occur.
+		
+			HLAerror
+			( 
+				"The '-' operator does not support these operand types" 
+				nl 
+			);
+			freeAttr( srcebx );
+			freeAttr( destecx );
+			raise( ex.hlaerr );
+			
+	endswitch;
+	
+	setSmallestSize( [ecx] );
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end subtract;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// lessThan,
+// lessEqual,
+// equal,
+// notEqual,
+// greaterThan,
+// greaterEqual,
+// charInSet-
+//
+//	These procedures handle the relational operators in the HLA
+// expression evaluator.
+//
+// Inputs:
+//
+//	right-
+//		Right-most operand in the comparison.
+//
+//	left-
+//		Left-most operand in the comparison.
+//
+// Output:
+//
+//	left-
+//		Boolean result of comparison is stored here (type gets changed
+//		if it wasn't boolean).
+//
+//	carry-
+//		Set if there was some sort of error doing the comparison.
+//		Clear if the comparison was successful.
+//
+// The caller has already made the operands compatible for comparison.
+// Except for "charInSet" these functions can all assume that their
+// two operands are the same type.  For "charInCset" the right operand
+// is a character set and the left operand is a character.
+//
+//
+//	Comparison is defined for:
+//
+//		All unsigned operands (compare)
+//		All signed operands (compare)
+//		All real operands (compare)
+//		All character set operands (subset, superset)
+//		All string operands (compare)
+//		All character operands (compare)
+//		All boolean operands (compare)
+//		All enum types (treated as uns8)
+//
+// Comparison is undefined for other types.
+
+
+//proc( "lessThan" )
+procedure lessThan( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrECX";
+	right	:text := "attrEBX";
+	
+begin lessThan;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( rightOp, ebx );
+	canAccess( [ebx] );
+	mov( leftOp, ecx );
+	canAccess( [ecx] );
+	movzx( left.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Uns64_pt, 
+			Uns128_pt, 
+			
+			Byte_pt,
+			Word_pt,
+			DWord_pt,
+			QWord_pt, 
+			TByte_pt, 
+			LWord_pt,
+			Boolean_pt,
+			Enum_pt,
+			Char_pt,
+			XChar_pt,
+			Unicode_pt 
+		)
+		
+			// Do an unsigned 128-bit comparison and
+			// set the result value accordingly.
+			
+
+			mov( left.uns32_vt[12], eax );
+			cmp( eax, right.uns32_vt[12] );
+			jb setTrue;
+			ja setFalse;
+			
+		
+			mov( left.uns32_vt[8], eax );
+			cmp( eax, right.uns32_vt[8] );
+			jb setTrue;
+			ja setFalse;
+		
+			mov( left.uns32_vt[4], eax );
+			cmp( eax, right.uns32_vt[4] );
+			jb setTrue;
+			ja setFalse;
+		
+			mov( left.uns32_vt[0], eax );
+			cmp( eax, right.uns32_vt[0] );
+			jb setTrue;
+			jmp setFalse;
+			
+			
+		
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt,
+			Int64_pt, 
+			Int128_pt 
+		)
+		
+		
+			// Do an unsigned 128-bit signed comparison and
+			// set the result value accordingly.
+			
+			mov( left.uns32_vt[12], eax );
+			cmp( eax, right.uns32_vt[12] );
+			jl setTrue;
+			jg setFalse;
+		
+			mov( left.uns32_vt[8], eax );
+			cmp( eax, right.uns32_vt[8] );
+			jl setTrue;
+			jg setFalse;
+		
+			mov( left.uns32_vt[4], eax );
+			cmp( eax, right.uns32_vt[4] );
+			jl setTrue;
+			jg setFalse;
+		
+			mov( left.uns32_vt[0], eax );
+			cmp( eax, right.uns32_vt[0] );
+			jl setTrue;
+			jmp setFalse;
+			
+			
+
+		// Floating point comparisons are a bit tricky.
+		// We'll assume an FPU, but we won't assume anything
+		// beyond a straight 486 CPU (i.e., no easy FPU comparisons).
+
+		case( Real32_pt )
+		
+			finit();
+			fclex();
+			fld( right.real32_vt );
+			fld( left.real32_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			jb setTrue;
+			jmp setFalse;
+		
+		case( Real64_pt )
+		
+			finit();
+			fclex();
+			fld( right.real64_vt );
+			fld( left.real64_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			jb setTrue;
+			jmp setFalse;
+		
+		case( Real80_pt )
+		
+			finit();
+			fclex();
+			fld( right.real80_vt );
+			fld( left.real80_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			jb setTrue;
+			jmp setFalse;
+			
+			
+			
+		// For two character sets, one character set is
+		// less than another if it is a *proper* subset
+		// of that other set.  This means that if we
+		// take the intersection of the two sets, their
+		// intersection is equal to the left operand but
+		// is not equal to the right operand.
+		
+		case( Cset_pt, XCset_pt )
+		
+			// Use dl and dh to track whether the left operand
+			// is not equal to the right operand after intersection.
+			
+			xor( edx, edx );
+			
+			mov( right.dword_vt[0], eax );
+			and( left.dword_vt[0] , eax );
+			cmp( eax, left.dword_vt[0] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[0] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[4], eax );
+			and( left.dword_vt[4] , eax );
+			cmp( eax, left.dword_vt[4] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[4] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[8], eax );
+			and( left.dword_vt[8] , eax );
+			cmp( eax, left.dword_vt[8] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[8] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[12], eax );
+			and( left.dword_vt[12] , eax );
+			cmp( eax, left.dword_vt[12] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[12] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[16], eax );
+			and( left.dword_vt[16] , eax );
+			cmp( eax, left.dword_vt[16] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[16] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[20], eax );
+			and( left.dword_vt[20] , eax );
+			cmp( eax, left.dword_vt[20] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[20] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[24], eax );
+			and( left.dword_vt[24] , eax );
+			cmp( eax, left.dword_vt[24] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[24] );
+			setne( dl );
+			or( dl, dh );
+			
+			mov( right.dword_vt[28], eax );
+			and( left.dword_vt[28] , eax );
+			cmp( eax, left.dword_vt[28] );
+			jne setFalse;
+			cmp( eax, right.dword_vt[28] );
+			setne( dl );
+			or( dl, dh );
+			jne setTrue;
+			jmp setFalse;
+			
+			
+		case( String_pt, Utf8_pt, UString_pt )
+		
+			str.lt( left.string_vt, right.string_vt );
+
+			// We have to free the string storage here and
+			// change the type so it doesn't inadvertently get
+			// freed twice.
+			
+			strfree( left.string_vt );
+			strfree( right.string_vt );
+			mov( Uns8_pt, left.pType );
+			mov( Uns8_pt, right.pType );
+			mov( &uns8_ste, left.symType );
+			mov( &uns8_ste, right.symType );
+			
+			// Based on the comparison, set the return result true
+			// or false.
+			
+			cmp( al, 0 );
+			je setFalse;
+			
+		
+		// Sneak in setTrue and setFalse here.
+		
+		setTrue:
+
+			mov( 1, eax );
+			jmp setBoolean;
+
+		
+		setFalse:
+		
+			xor( eax, eax ); 
+			
+		setBoolean:
+			mov( eax, left.dword_vt );		// Sets boolean_vt field.
+			mov( eax, left.dword_vt[4] );	// Zero extend to 128 bits.
+			mov( eax, left.dword_vt[8] );
+			mov( eax, left.dword_vt[12] );
+			mov( Boolean_pt, left.pType );
+			mov( &boolean_ste, left.symType );
+
+		default
+		
+			// Defensive code: this probably can't occur
+			HLAerror
+			( 
+				"This relational operator does not support "
+				"these operand types"
+				nl 
+			);
+			freeAttr( left );
+			freeAttr( right );
+			raise( ex.hlaerr );
+			
+	endswitch;
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end lessThan;
+
+
+
+//proc( "lessEqual" )
+procedure lessEqual( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrECX";
+	right	:text := "attrEBX";
+	
+begin lessEqual;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( rightOp, ebx );
+	canAccess( [ebx] );
+	mov( leftOp, ecx );
+	canAccess( [ecx] );
+	movzx( left.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Uns64_pt, 
+			Uns128_pt, 
+			
+			Byte_pt,
+			Word_pt,
+			DWord_pt,
+			QWord_pt, 
+			TByte_pt, 
+			LWord_pt,
+			Boolean_pt,
+			Enum_pt,
+			Char_pt,
+			XChar_pt,
+			Unicode_pt 
+		)
+		
+			// Do an unsigned 128-bit comparison and
+			// set the result value accordingly.
+			
+			mov( left.uns32_vt[12], eax );
+			cmp( eax, right.uns32_vt[12] );
+			jb setTrue;
+			ja setFalse;
+		
+			mov( left.uns32_vt[8], eax );
+			cmp( eax, right.uns32_vt[8] );
+			jb setTrue;
+			ja setFalse;
+		
+			mov( left.uns32_vt[4], eax );
+			cmp( eax, right.uns32_vt[4] );
+			jb setTrue;
+			ja setFalse;
+		
+			mov( left.uns32_vt[0], eax );
+			cmp( eax, right.uns32_vt[0] );
+			jbe setTrue;
+			jmp setFalse;
+			
+			
+		
+		
+		case
+		(
+			Int8_pt,
+			Int16_pt,
+			Int32_pt,
+			Int64_pt, 
+			Int128_pt 
+		)
+		
+		
+			// Do an unsigned 128-bit signed comparison and
+			// set the result value accordingly.
+			
+			mov( left.uns32_vt[12], eax );
+			cmp( eax, right.uns32_vt[12] );
+			jl setTrue;
+			jg setFalse;
+		
+			mov( left.uns32_vt[8], eax );
+			cmp( eax, right.uns32_vt[8] );
+			jl setTrue;
+			jg setFalse;
+		
+			mov( left.uns32_vt[4], eax );
+			cmp( eax, right.uns32_vt[4] );
+			jl setTrue;
+			jg setFalse;
+		
+			mov( left.uns32_vt[0], eax );
+			cmp( eax, right.uns32_vt[0] );
+			jle setTrue;
+			jmp setFalse;
+			
+			
+
+		// Floating point comparisons are a bit tricky.
+		// We'll assume an FPU, but we won't assume anything
+		// beyond a straight 486 CPU (i.e., no easy FPU comparisons).
+
+		case( Real32_pt )
+		
+			finit();
+			fclex();
+			fld( right.real32_vt );
+			fld( left.real32_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			jbe setTrue;
+			jmp setFalse;
+		
+		case( Real64_pt )
+		
+			finit();
+			fclex();
+			fld( right.real64_vt );
+			fld( left.real64_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			jbe setTrue;
+			jmp setFalse;
+		
+		case( Real80_pt )
+		
+			finit();
+			fclex();
+			fld( right.real80_vt );
+			fld( left.real80_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			jbe setTrue;
+			jmp setFalse;
+			
+			
+			
+		// For two character sets, one character set is
+		// less than or equal to another if it is a subset
+		// of that other set.  This means that if we
+		// take the intersection of the two sets, their
+		// intersection is equal to the left operand.
+		
+		case( Cset_pt, XCset_pt )
+		
+			mov( right.dword_vt[0], eax );
+			and( left.dword_vt[0] , eax );
+			cmp( eax, left.dword_vt[0] );
+			jne setFalse;
+			
+			mov( right.dword_vt[4], eax );
+			and( left.dword_vt[4] , eax );
+			cmp( eax, left.dword_vt[4] );
+			jne setFalse;
+			
+			mov( right.dword_vt[8], eax );
+			and( left.dword_vt[8] , eax );
+			cmp( eax, left.dword_vt[8] );
+			jne setFalse;
+			
+			mov( right.dword_vt[12], eax );
+			and( left.dword_vt[12] , eax );
+			cmp( eax, left.dword_vt[12] );
+			jne setFalse;
+			
+			mov( right.dword_vt[16], eax );
+			and( left.dword_vt[16] , eax );
+			cmp( eax, left.dword_vt[16] );
+			jne setFalse;
+			
+			mov( right.dword_vt[20], eax );
+			and( left.dword_vt[20] , eax );
+			cmp( eax, left.dword_vt[20] );
+			jne setFalse;
+			
+			mov( right.dword_vt[24], eax );
+			and( left.dword_vt[24] , eax );
+			cmp( eax, left.dword_vt[24] );
+			jne setFalse;
+			
+			mov( right.dword_vt[28], eax );
+			and( left.dword_vt[28] , eax );
+			cmp( eax, left.dword_vt[28] );
+			jne setFalse;
+			jmp setTrue;
+			
+			
+		case( String_pt, Utf8_pt, UString_pt )
+		
+			str.le( left.string_vt, right.string_vt );
+			
+			// We have to free the string storage here and
+			// change the type so it doesn't inadvertently get
+			// freed twice.
+			
+			strfree( left.string_vt );
+			strfree( right.string_vt );
+			mov( Uns8_pt, left.pType );
+			mov( Uns8_pt, right.pType );
+			mov( &uns8_ste, left.symType );
+			mov( &uns8_ste, right.symType );
+			
+			// Based on the comparison, set the return result true
+			// or false.
+			
+			cmp( al, 0 );
+			je setFalse;
+			jmp setTrue;		// Yes, could fall through, but do this
+								// 'cause we'll add UString later.
+		
+		// Sneak in setTrue and setFalse here.
+		
+		setTrue:
+		
+			mov( 1, eax );
+			jmp setBoolean;
+
+		
+		setFalse:
+		
+			xor( eax, eax ); 
+			
+		setBoolean:
+			mov( eax, left.dword_vt );		// Sets boolean_vt field.
+			xor( eax, eax );
+			mov( eax, left.dword_vt[4] );	// Zero extend to 128 bits.
+			mov( eax, left.dword_vt[8] );
+			mov( eax, left.dword_vt[12] );
+			mov( Boolean_pt, left.pType );
+			mov( &boolean_ste, left.symType );
+
+		default
+		
+			// Defensive code: this probably can't occur
+			HLAerror
+			( 
+				"This relational operator does not support "
+				"these operand types"
+				nl 
+			);
+			freeAttr( left );
+			freeAttr( right );
+			raise( ex.hlaerr );
+			
+	endswitch;
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end lessEqual;
+
+
+
+//proc( "equals" )
+procedure equals( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	right	:text := "attrECX";
+	
+begin equals;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( rightOp, ecx );
+	canAccess( [ecx] );
+	mov( leftOp, ebx );
+	canAccess( [ebx] );
+	movzx( left.pType, eax );
+	switch( eax )
+	
+		case
+		(
+			Uns8_pt,
+			Uns16_pt,
+			Uns32_pt,
+			Uns64_pt, 
+			Uns128_pt,
+			
+			Int8_pt,
+			Int16_pt,
+			Int32_pt,
+			Int64_pt, 
+			Int128_pt,	 
+			
+			Byte_pt,
+			Word_pt,
+			DWord_pt,
+			QWord_pt, 
+			TByte_pt, 
+			LWord_pt,
+			Boolean_pt,
+			Enum_pt,
+			Char_pt,
+			XChar_pt,
+			Unicode_pt 
+		)
+		
+			// Just compare all 128 bits for equality and
+			// set the result value accordingly.
+			
+			mov( left.uns32_vt[12], eax );
+			cmp( eax, right.uns32_vt[12] );
+			jne setFalse;
+		
+			mov( left.uns32_vt[8], eax );
+			cmp( eax, right.uns32_vt[8] );
+			jne setFalse;
+		
+			mov( left.uns32_vt[4], eax );
+			cmp( eax, right.uns32_vt[4] );
+			jne setFalse;
+		
+			mov( left.uns32_vt[0], eax );
+			cmp( eax, right.uns32_vt[0] );
+			je setTrue;
+			jmp setFalse;
+			
+			
+		
+		// Floating point comparisons are a bit tricky.
+		// We'll assume an FPU, but we won't assume anything
+		// beyond a straight 486 CPU (i.e., no easy FPU comparisons).
+
+		case( Real32_pt )
+		
+			finit();
+			fclex();
+			fld( left.real32_vt );
+			fld( right.real32_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			je setTrue;
+			jmp setFalse;
+		
+		case( Real64_pt )
+		
+			finit();
+			fclex();
+			fld( left.real64_vt );
+			fld( right.real64_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			je setTrue;
+			jmp setFalse;
+		
+		case( Real80_pt )
+		
+			finit();
+			fclex();
+			fld( left.real80_vt );
+			fld( right.real80_vt );
+			fcompp();
+			fstsw( ax );
+			sahf();
+			je setTrue;
+			jmp setFalse;
+			
+			
+			
+		// For two character sets, one character set is
+		// equal to another only if they contain the same elements.
+		// So we just compare all the bits.
+		
+		case( Cset_pt )
+		
+			mov( right.dword_vt[0], eax );
+			cmp( eax, left.dword_vt[0] );
+			jne setFalse;
+			
+			mov( right.dword_vt[4], eax );
+			cmp( eax, left.dword_vt[4] );
+			jne setFalse;
+			
+			mov( right.dword_vt[8], eax );
+			cmp( eax, left.dword_vt[8] );
+			jne setFalse;
+			
+			mov( right.dword_vt[12], eax );
+			cmp( eax, left.dword_vt[12] );
+			jne setFalse;
+			jmp setTrue;
+			
+			
+		case( XCset_pt )
+		
+			mov( right.dword_vt[0], eax );
+			cmp( eax, left.dword_vt[0] );
+			jne setFalse;
+			
+			mov( right.dword_vt[4], eax );
+			cmp( eax, left.dword_vt[4] );
+			jne setFalse;
+			
+			mov( right.dword_vt[8], eax );
+			cmp( eax, left.dword_vt[8] );
+			jne setFalse;
+			
+			mov( right.dword_vt[12], eax );
+			cmp( eax, left.dword_vt[12] );
+			jne setFalse;
+			
+			mov( right.dword_vt[16], eax );
+			cmp( eax, left.dword_vt[16] );
+			jne setFalse;
+			
+			mov( right.dword_vt[20], eax );
+			cmp( eax, left.dword_vt[20] );
+			jne setFalse;
+			
+			mov( right.dword_vt[24], eax );
+			cmp( eax, left.dword_vt[24] );
+			jne setFalse;
+			
+			mov( right.dword_vt[28], eax );
+			cmp( eax, left.dword_vt[28] );
+			jne setFalse;
+			jmp setTrue;
+			
+			
+		case( String_pt, Utf8_pt, UString_pt )
+		
+			str.eq( left.string_vt, right.string_vt );
+			
+			// We have to free the string storage here and
+			// change the type so it doesn't inadvertently get
+			// freed twice.
+			
+			strfree( left.string_vt );
+			strfree( right.string_vt );
+			mov( Uns8_pt, left.pType );
+			mov( Uns8_pt, right.pType );
+			mov( &uns8_ste, left.symType );
+			mov( &uns8_ste, right.symType );
+			
+			// Based on the comparison, set the return result true
+			// or false.
+			
+			cmp( al, 0 );
+			je setFalse;
+			jmp setTrue;		// Yes, could fall through, but do this
+								// 'cause we'll add UString later.
+			
+			
+		// Sneak in setTrue and setFalse here.
+		
+		setTrue:
+		
+			mov( 1, eax );
+			jmp setBoolean;
+
+		
+		setFalse:
+		
+			xor( eax, eax ); 
+			
+		setBoolean:
+			mov( eax, left.dword_vt );		// Sets boolean_vt field.
+			xor( eax, eax );
+			mov( eax, left.dword_vt[4] );	// Zero extend to 128 bits.
+			mov( eax, left.dword_vt[8] );
+			mov( eax, left.dword_vt[12] );
+			mov( Boolean_pt, left.pType );
+			mov( &boolean_ste, left.symType );
+
+		default
+		
+			// Defensive code: this probably can't occur
+			HLAerror
+			( 
+				"This relational operator does not support "
+				"these operand types" 
+				nl 
+			);
+			freeAttr( left );
+			freeAttr( right );
+			raise( ex.hlaerr );
+			
+	endswitch;
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end equals;
+
+
+
+
+//proc( "notEquals" )
+procedure notEquals( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	
+begin notEquals;
+
+	// Do notEquals by inverting the result from equals:
+	
+	equals( rightOp, leftOp );
+	if( @nc ) then
+
+		push( ebx );
+		mov( leftOp, ebx );
+		canAccess( [ebx] );
+		xor( 1, left.boolean_vt );
+		pop( ebx );
+		clc();
+
+	endif;
+	
+end notEquals;
+
+
+
+
+//proc( "greaterThan" )
+procedure greaterThan( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	
+begin greaterThan;
+
+	// Do greatThan by inverting the result from lessEqual:
+	
+	lessEqual( rightOp, leftOp );
+	if( @nc ) then
+
+		push( ebx );
+		mov( leftOp, ebx );
+		canAccess( [ebx] );
+		xor( 1, left.boolean_vt );
+		pop( ebx );
+		clc();
+
+	endif;
+	
+end greaterThan;
+
+
+
+
+//proc( "greaterEqual" )
+procedure greaterEqual( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	
+begin greaterEqual;
+
+	// Do greaterThan by inverting the result from lessThan:
+	
+	lessThan( rightOp, leftOp );
+	if( @nc ) then
+	
+		push( ebx );
+		mov( leftOp, ebx );
+		canAccess( [ebx] );
+		xor( 1, left.boolean_vt );
+		pop( ebx );
+		clc();
+
+	endif;
+	
+end greaterEqual;
+
+
+
+
+//proc( "charInSet" )
+procedure charInSet( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	right	:text := "attrECX";
+	
+begin charInSet;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// The left operand has to be a character and the right
+	// operand has to be a cset or xcset.
+	
+	mov( leftOp, ebx );
+	canAccess( [ebx] );
+	mov( rightOp, ecx );
+	canAccess( [ecx] );
+	mov( left.pType, al );
+	if( al = Char_pt || al = XChar_pt ) then
+	
+		// If we drop down here, we know that the second
+		// operand was a cset or xcset;  coerceOperands
+		// has verified this.
+		
+		movzx( left.char_vt, eax );		// Works for xchar too!
+		bt( eax, right.cset_vt );		// Words for xcset too!
+		mov( 0, eax );
+		adc( 0, eax );					// Set eax=carry.		
+		mov( eax, left.dword_vt );		// Set boolean result to
+		xor( eax, eax );				//  value of carry flag
+		mov( eax, left.dword_vt[4] );	//  (c=1 if char in set).
+		mov( eax, left.dword_vt[8] );
+		mov( eax, left.dword_vt[12] );
+		mov( eax, left.dword_vt[16] );
+		mov( eax, left.dword_vt[20] );
+		mov( eax, left.dword_vt[24] );
+		mov( eax, left.dword_vt[28] );
+		mov( Boolean_pt, left.pType );
+		mov( &boolean_ste, left.symType );
+		clc();
+				
+	else
+	
+		// Defensive code: this probably can't occur
+		HLAerror
+		( 
+			"The 'in' operator requires a character and a character set "
+			"operand pair" 
+			nl 
+		);
+		freeAttr( left );
+		freeAttr( right );
+		raise( ex.hlaerr );
+
+	endif;
+	pop( edx );
+	pop( ecx );							   
+	pop( ebx );
+	pop( eax );
+	
+end charInSet;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// logicalAnd,
+// logicalOr,
+// logicalXor-
+//
+//	Called by the expression evaluator to compute the
+// specified logical operation on two operands (if this is possible).  
+// Note that this code assumes that the caller has already coerced 
+// the two types so that they are compatible (by calling coerceOperands)
+// So this procedure only needs to worry about whether
+// AND/OR/XOR is defined for the operands.
+//
+//	AND, OR, and XOR is defined for:
+//
+//		All unsigned operands (bitwise)
+//		All signed operands (bitwise)
+//		Boolean operands (arithmetic)
+//
+// The logical operations are undefined for other types.
+
+
+
+//proc( "logicalAnd" )
+procedure logicalAnd( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	right	:text := "attrECX";
+	
+begin logicalAnd;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( rightOp, ecx );
+	canAccess( [ecx] );
+	mov( leftOp, ebx );
+	canAccess( [ebx] );
+	mov( left.pType, al );
+
+	if( al = Boolean_pt || isNumber( al )) then
+		
+		// Just and all 128 bits together and
+		// set the result value accordingly.
+		
+		mov( right.uns32_vt[0], eax );
+		and( eax, left.uns32_vt[0] );
+		
+		mov( right.uns32_vt[4], eax );
+		and( eax, left.uns32_vt[4] );
+		
+		mov( right.uns32_vt[8], eax );
+		and( eax, left.uns32_vt[8] );
+		
+		mov( right.uns32_vt[12], eax );
+		and( eax, left.uns32_vt[12] );
+		setSmallestSize( left );
+	
+
+	else
+		
+		HLAerror
+		( 
+			"The '&' operator does not support "
+			"these operand types" 
+			nl 
+		);
+		freeAttr( left );
+		freeAttr( right );
+		raise( ex.hlaerr );
+			
+	endif;	
+	clc();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end logicalAnd;
+
+
+//proc( "logicalOr" )
+procedure logicalOr( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	right	:text := "attrECX";
+	
+begin logicalOr;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( rightOp, ecx );
+	canAccess( [ecx] );
+	mov( leftOp, ebx );
+	canAccess( [ebx] );
+	mov( left.pType, al );
+	if( al = Boolean_pt || isNumber( al )) then
+		
+		// Just OR all 128 bits together and
+		// set the result value accordingly.
+		
+		mov( right.uns32_vt[0], eax );
+		or( eax, left.uns32_vt[0] );
+		
+		mov( right.uns32_vt[4], eax );
+		or( eax, left.uns32_vt[4] );
+		
+		mov( right.uns32_vt[8], eax );
+		or( eax, left.uns32_vt[8] );
+		
+		mov( right.uns32_vt[12], eax );
+		or( eax, left.uns32_vt[12] );
+		
+		setSmallestSize( left );
+		clc();
+	
+
+	else
+		
+		HLAerror
+		( 
+			"The '|' operator does not support "
+			"these operand types" 
+			nl 
+		);
+		freeAttr( left );
+		freeAttr( right );
+		raise( ex.hlaerr );
+	
+	endif;	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end logicalOr;
+		
+
+
+
+//proc( "logicalXor" )
+procedure logicalXor( var rightOp:attr_t; var leftOp:attr_t );
+const
+	left	:text := "attrEBX";
+	right	:text := "attrECX";
+	
+begin logicalXor;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	// Both operand types should be the same, so we'll just pick the
+	// destination operand to grab the type from.
+	
+	mov( rightOp, ecx );
+	canAccess( [ecx] );
+	mov( leftOp, ebx );
+	canAccess( [ebx] );
+	mov( left.pType, al );
+
+	if( al = Boolean_pt || isNumber( al )) then
+		
+		// Just OR all 128 bits together and
+		// set the result value accordingly.
+		
+		mov( right.uns32_vt[0], eax );
+		xor( eax, left.uns32_vt[0] );
+		
+		mov( right.uns32_vt[4], eax );
+		xor( eax, left.uns32_vt[4] );
+		
+		mov( right.uns32_vt[8], eax );
+		xor( eax, left.uns32_vt[8] );
+		
+		mov( right.uns32_vt[12], eax );
+		xor( eax, left.uns32_vt[12] );
+		
+		setSmallestSize( left );
+		clc();
+	
+
+	else
+		
+		HLAerror
+		( 
+			"The '^' operator does not support "
+			"these operand types" 
+			nl 
+		);
+		freeAttr( left );
+		freeAttr( right );
+		raise( ex.hlaerr );
+			
+	endif;	
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end logicalXor;
+
+
+
+end funcs;

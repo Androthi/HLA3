@@ -1,0 +1,770 @@
+unit unicodeUnit;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )						
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// utf8Index-
+//
+//	Given a character index, this function computes the byte index into
+// a UTF-8 string.
+
+//proc( "utf8Index" )
+procedure utf8Index( utf8Str:string; charIndex:dword );
+begin utf8Index;
+
+	push( ecx );
+	push( edx );
+	push( esi );
+
+	mov( utf8Str, esi );
+	mov( charIndex, ecx );
+	xor( eax, eax );
+	jcxz done;
+
+		dec( eax );
+		repeat
+
+			add( 1, eax );
+			mov( [esi+eax], dl );
+			cmp( dl, 0 );
+			je done;
+			if( dl >= $80 ) then
+
+				add( 1, eax );
+				mov( [esi+eax], dl );
+
+				while( dl in $80..$bf ) do
+
+					add( 1, eax );
+					mov( [esi+eax], dl );
+
+				endwhile;
+
+			endif;
+
+			dec( ecx );
+
+		until( @z );
+
+	done:
+
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+
+end utf8Index;
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// utf8Index2-
+//
+//	Just like utf8Index, except it starts searching from a specified 
+// (byte) index.
+
+//proc( "utf8Index2" )
+procedure utf8Index2( utf8Str:string; charIndex:dword; startIndex:dword );
+begin utf8Index2;
+
+	push( ecx );
+	push( edx );
+	push( esi );
+
+	mov( utf8Str, esi );
+	mov( charIndex, ecx );
+	mov( startIndex, eax );
+	jcxz done;
+
+		dec( eax );
+		repeat
+
+			add( 1, eax );
+			mov( [esi+eax], dl );
+			cmp( dl, 0 );
+			je done;
+			if( dl >= $80 ) then
+
+				repeat
+
+					add( 1, eax );
+					mov( [esi+eax], dl );
+
+				until( dl not in $80..$bf );
+				dec( eax );
+
+			endif;
+
+			dec( ecx );
+
+		until( @z );
+
+	done:
+
+	sub( startIndex, eax );
+	inc( eax );
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+
+end utf8Index2;
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// byteToCharUTF8-
+//
+//	Given a UTF-8 string and a byte index into that string, this function
+// computes the character index into that string. If the specified byte index
+// is beyond the end of the string, this function returns the char index
+// to the end of the string. This is the converse of the utf8Index function.
+//
+//	This function returns the character index in the EAX register.
+
+//proc( "byteToCharUTF8" )
+procedure byteToCharUTF8( utf8Str:string; byteIndex:dword );
+begin byteToCharUTF8;
+
+	push( ecx );
+	push( edx );
+	push( esi );
+
+	mov( utf8Str, esi );
+	xor( eax, eax );		// Char index
+	xor( edx, edx );		// Byte index
+	while( edx < byteIndex ) do
+	
+		mov( [esi+edx], cl );
+		breakif( cl = #0 );
+		add( 1, edx );
+		if( cl not in $80..$bf ) then
+
+			add( 1, eax );
+
+		endif;
+
+	endwhile;
+
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+
+end byteToCharUTF8;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// utf8Len-
+//
+//	Just like utf8Index, except it starts searching from a specified 
+// (byte) index.
+
+//proc( "utf8Len" )
+procedure utf8Len( utf8Str:string );
+begin utf8Len;
+
+	push( ecx );
+	push( edx );
+	push( esi );
+
+	mov( utf8Str, esi );
+	xor( eax, eax );
+	xor( ecx, ecx );
+	while( (type byte [esi+ecx]) <> #0 ) do
+
+		if( (type byte [esi+ecx]) not in $80..$bf ) then
+
+			inc( eax );
+
+		endif;
+		inc( ecx );
+
+	endwhile;
+	pop( esi );
+	pop( edx );
+	pop( ecx );
+
+end utf8Len;
+/////////////////////////////////////////////////////////////////////////////
+//
+// unicodeToAnsi-
+//
+//	Converts a unicode string to an ANSI string (if possible).
+//	Conversion is done "in-place" without allocating any additional storage.
+//
+// Returns:
+//
+//	carry clear if conversion was possible, carry set otherwise.
+
+//proc( "unicodeToAnsi" )
+procedure unicodeToAnsi( theString:string );
+begin unicodeToAnsi;
+
+	push( eax );
+	push( ecx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+	
+	mov( theString, esi );
+	mov( esi, edi );
+	
+	// Note: length field contains the number of *bytes*, not the
+	// number of characters. So we have to divide this by two in
+	// order to obtain the number of characters.
+	
+	canAccess( [esi] );
+	mov( (type str.strRec [esi]).length, ecx );
+	shr( 1, ecx );
+	
+	// Set the final length of the string:
+	
+	mov( ecx, (type str.strRec [esi]).length );
+	
+	// If there are any characters in the string, then convert
+	// each unicode character to an ANSI character, checking
+	// for overflow while we do this:
+	
+	if( @nz ) then
+	
+		repeat
+		
+			lodsw();
+			if( ax >= $100 ) then
+			
+				// ANSI overflow - return failure.
+				
+				popfd();
+				pop( edi );
+				pop( esi );
+				pop( ecx );
+				pop( eax );
+				stc();
+				exit unicodeToAnsi;
+				
+			endif;
+			stosb();
+			dec( ecx );
+			
+		until( @z );
+
+	endif;
+	
+	// Zero-terminate the string and return success:
+	
+	mov( 0, (type byte [edi]) );
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( eax );
+	clc();
+	
+end unicodeToAnsi;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// unicodeToUtf8-
+//
+//	Converts a unicode string to a UTF-8 string.
+//
+// Conversion is always possible. This allocates storage for the new string
+// and returns a pointer to that string in EAX.
+
+//proc( "unicodeToUtf8" )
+procedure unicodeToUtf8( theString:string );
+begin unicodeToUtf8;
+
+	push( ebx );
+	push( ecx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+	
+	mov( theString, esi );
+	mov( esi, edi );
+	
+	// Note: length field contains the number of *bytes*, not the
+	// number of characters. So we have to multiply this by 1.5 in
+	// order to obtain the maximum number of characters that a UTF-8
+	// string (in theory) could consume.  Usually, the UTF-8 string
+	// will be smaller than this maximum size, but we'll allocate
+	// the extra storage just to be safe.
+	
+	canAccess( [esi] );
+	mov( (type str.strRec [esi]).length, ecx );
+	mov( ecx, eax );
+	shr( 1, ecx );		// Compute 3*length
+	add( eax, ecx );
+	stralloc( ecx );
+	push( eax );
+	mov( eax, edi );
+	
+	
+	// If there are any characters in the string, then convert
+	// each unicode character to a UTF-8 character:
+	
+	if( ecx > 0 ) then
+	
+		repeat
+		
+			lodsw();
+			if( ax < $7f ) then
+
+				stosb();
+
+			elseif( ax < %1000_0000_0000 ) then
+
+				// Two-byte UTF-8 sequences begin with
+				// a value >= $80 and <= $DF:
+
+				mov( eax, ebx );
+				and( $3f, ebx );
+				shr( 6, eax );
+				and( $1f, eax );
+				stosb();
+				mov( bl, [edi] );
+				inc( edi );
+
+			else
+
+				// If the Unicode value is greater than $800, then
+				// assume it's a three-byte UTF-8 sequence (MS-Windows
+				// doesn't handle UTF-16, only 16-bit Uncode, so we
+				// don't really need to do much more than this; at
+				// some point, we may want to handle UTF-16 for other
+				// OSes).
+
+				mov( eax, ebx );
+				shr( 12, eax );
+				or( $e0, eax );
+				stosb();
+				mov( ebx, eax );
+				shr( 6, eax );
+				and( $3f, eax );
+				or( $c0, eax );
+				stosb();
+				and( $3f, ebx );
+				or( $c0, ebx );
+				mov( bl, [edi] );
+				inc( edi );
+
+			endif;
+
+			dec( ecx );
+			
+		until( @z );
+
+	endif;
+	
+	// Zero-terminate the string and return success:
+	
+	mov( 0, (type byte [edi]) );
+	pop( eax );		// Retrieve ptr to UTF-8 string.
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	clc();
+	
+end unicodeToUtf8;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// utf8ToAnsi-
+//
+//	Converts a UTF-8 string to an ANSI string (if possible).
+//	Conversion is done "in-place" without allocating any additional storage.
+//
+// Returns:
+//
+//	carry clear if conversion was possible, carry set otherwise.
+
+//proc( "utf8ToAnsi" )
+procedure utf8ToAnsi( theString:string );
+begin utf8ToAnsi;
+
+	push( eax );
+	push( ecx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+	
+	mov( theString, esi );
+	mov( esi, edi );
+	
+	// Note: length field contains the number of *bytes*, not the
+	// number of characters. Fortunately, we can't translate any
+	// non-ANSI characters, so the # of bytes and the number of
+	// characters are the same thing unless there is an error.
+	
+	canAccess( [esi] );
+	mov( (type str.strRec [esi]).length, ecx );
+	
+	
+	// If there are any characters in the string, then convert
+	// each UTF-8 character to an ANSI character, checking
+	// for overflow while we do this. All we really have to
+	// do is verify that there are no characters whose character
+	// code is greater than $80.
+	
+	if( @nz ) then
+	
+		repeat
+		
+			lodsb();
+			if( al >= $80 ) then
+			
+				// ANSI overflow - return failure.
+				
+				popfd();
+				pop( edi );
+				pop( esi );
+				pop( ecx );
+				pop( eax );
+				stc();
+				exit utf8ToAnsi;
+				
+			endif;
+			stosb();
+			dec( ecx );
+			
+		until( @z );
+
+	endif;
+		
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( eax );
+	clc();
+	
+end utf8ToAnsi;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// AnsiToUnicode-
+//
+//	Converts an ANSI string to a unicode string. This procedure returns a
+// pointer to the newly allocated string in EAX.
+//
+// Note that this conversion always succeeds (assuming memory allocation
+// doesn't fail, which raises an exception).
+
+//proc( "ansiToUnicode" )
+procedure ansiToUnicode( theString:string );
+begin ansiToUnicode;
+
+	push( ecx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+	
+	mov( theString, esi );
+	canAccess( [esi] );
+	mov( (type str.strRec [esi]).length, ecx );
+	
+	// Allocate a string that is twice as large as the input string
+	// (including an extra spot for the two-byte zero terminator):
+	
+	lea( edi, [ecx*2 + 1] );
+	stralloc( edi );
+	
+	// Set the length to the number of *bytes* in the final string:
+	
+	dec( edi ); // Don't count extra terminating byte
+	mov( edi, (type str.strRec [eax]).length );
+	
+	// Copy the characters from the source string to the destination
+	// string, converting to unicode as we go along:
+	
+	xchg( eax, edi );
+	push( edi );		// This is our return value.
+	if( ecx <> 0 ) then
+	
+		mov( 0, ah );	// Zero out H.O. word of each character.
+		repeat
+		
+			lodsb();
+			stosw();
+			dec( ecx );
+			
+		until( @z );
+		
+	endif;
+	
+	// Zero-terminate the string.
+	xor( eax, eax );
+	stosw();
+	pop( eax );
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( ecx );		
+
+end ansiToUnicode;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// utf8ToUnicode-
+//
+//	Converts a utf8ToUnicode string to a unicode string. This procedure returns a
+// pointer to the newly allocated string in EAX.
+//
+// Note that this conversion fails if the UTF8 string contains values
+// outside the 16-bit point set provided by 16-bit Unicode (under Windows).
+
+//proc( "utf8ToUnicode" )
+procedure utf8ToUnicode( theString:string );
+var
+	error:boolean;
+begin utf8ToUnicode;
+
+	push( ebx );
+	push( ecx );
+	push( esi );
+	push( edi );
+	pushfd();
+	cld();
+	
+	mov( false, error );	// Assume no error.
+	mov( theString, esi );
+	canAccess( [esi] );
+	mov( (type str.strRec [esi]).length, ecx );
+	
+	// Allocate a string that is twice as large as the input string
+	// (including an extra spot for the two-byte zero terminator). This
+	// may actually be more storage than we require, since not every
+	// byte in the UTF-8 string generates a two-byte Unicode character,
+	// but this is a safe amount of memory to allocate (as we'll never
+	// need any more than this).
+	
+	lea( edi, [ecx*2 + 1] );
+	stralloc( edi );
+	
+	// Set the length to the number of *bytes* in the final string:
+	
+	dec( edi ); // Don't count extra terminating byte
+	mov( edi, (type str.strRec [eax]).length );
+	
+	// Copy the characters from the source string to the destination
+	// string, converting to unicode as we go along:
+	
+	xchg( eax, edi );
+	push( edi );		// This is our return value.
+	if( ecx <> 0 ) then
+	
+		repeat
+		
+			mov( 0, ah );	// Zero out H.O. word of each character.
+			lodsb();
+			if( al >= $80 ) then
+
+				movzx( al, ebx );
+
+				// If H.O. two bits are %10, then we've got a
+				// 12-bit value specified by the L.O. six bits
+				// of al and the L.O. six bits of the next value.
+				// (no check for validity is done here, we'll assume
+				// the UTF-8 data is correct).
+				
+				if( al <= $df ) then
+				
+					dec( ecx );
+					if( @z ) then
+
+						// If we hit the end of the string, we've
+						// got a mal-formed UTF-8 string at this point.
+
+						mov( true, error );
+						break;
+
+					endif;
+					and( $1f, ebx );
+					lodsb(); 
+					shl( 6, ebx );
+					and( $3f, eax );
+					or( ebx, eax );
+
+				elseif( al < $ef ) then
+
+					dec( ecx );
+					if( @z ) then
+
+						// If we hit the end of the string, we've
+						// got a mal-formed UTF-8 string at this point.
+
+						mov( true, error );
+						break;
+
+					endif;
+					and( $f, ebx );
+					lodsb();
+					shl( 6, ebx );
+					and( $3f, eax );
+					or( eax, ebx );
+					dec( ecx );
+					if( @z ) then
+
+						// If we hit the end of the string, we've
+						// got a mal-formed UTF-8 string at this point.
+
+						mov( true, error );
+						break;
+
+					endif;
+					lodsb();
+					shl( 6, ebx );
+					and( $3f, eax );
+					or( ebx, eax );
+
+				else // A point out of the 16-bit range, so return an error
+
+					xor( eax, eax );	// NUL char
+					mov( true, error );
+
+				endif;
+
+			endif;
+			stosw();
+			dec( ecx );
+			
+		until( @z );
+		
+	endif;
+	
+	// Zero-terminate the string.
+	xor( eax, eax );
+	stosw();
+	pop( eax );
+	popfd();
+	pop( edi );
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	shr( 1, error );	// Return error status in carry flag.		
+
+end utf8ToUnicode;
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// checkUtf8-
+//
+//	Checks a UTF-8 string to make sure it is valid.
+//
+//	Returns carry clear if valid, carry set if invalid.
+//
+// Currently, this function only validates UTF-8 entities that can
+// be represented by three or fewer bytes (characters that fit
+// into a 16-bit Unicode variable) because of Windows restrictions.
+
+//proc( "checkUtf8" )
+procedure checkUtf8( theString:string );
+var
+	error:boolean;
+begin checkUtf8;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( esi );
+	cld();
+		
+	mov( false, error );	// Assume no error.
+	mov( theString, esi );
+	canAccess( [esi] );
+	mov( (type str.strRec [esi]).length, ecx );
+	
+	
+	// Copy the characters from the source string to the destination
+	// string, converting to unicode as we go along:
+	
+	if( ecx <> 0 ) then
+	
+		repeat
+		
+			mov( 0, ah );	// Zero out H.O. word of each character.
+			lodsb();
+			if( al >= $80 ) then
+
+
+				// If H.O. two bits are %10, then we've got a
+				// 12-bit value specified by the L.O. six bits
+				// of al and the L.O. six bits of the next value.
+				// (no check for validity is done here, we'll assume
+				// the UTF-8 data is correct).
+				
+				if( al <= $df ) then
+				
+					lodsb();
+					dec( ecx );
+					if( @z || al >= $c0) then
+
+						// If we hit the end of the string, we've
+						// got a mal-formed UTF-8 string at this point.
+
+						mov( true, error );
+						break;
+
+					endif;
+
+				elseif( al < $ef ) then
+
+					lodsw();
+					sub( 2, ecx );
+					if( (type int32 ecx) <= 0 || al >= $c0 || ah >= $c0 ) then
+
+						// If we hit the end of the string, we've
+						// got a mal-formed UTF-8 string at this point.
+
+						mov( true, error );
+						break;
+
+					endif;
+
+				else;
+				
+					// A point out of the 16-bit range, so return an error
+
+					mov( true, error );
+					break;
+
+				endif;
+
+			endif;
+			stosw();
+			dec( ecx );
+			
+		until( @z );
+		
+	endif;
+	
+	// Zero-terminate the string.
+	pop( esi );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	shr( 1, error );	// Return error status in carry flag.		
+
+end checkUtf8;
+
+end unicodeUnit;

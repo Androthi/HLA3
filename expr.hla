@@ -1,0 +1,2551 @@
+unit exprUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+
+//////////////////////////////////////////////////////////////////////////////
+////////////////                                         /////////////////////
+////////////////   Expression Evaluator Code             /////////////////////
+////////////////                                         /////////////////////
+//////////////////////////////////////////////////////////////////////////////
+//
+// expr-
+//
+//	Processes constant and memory expressions.
+//
+// Inputs:
+//	attr-
+//		Pointer to the attr_t object where expr will store its result.
+//		Note that attr.symClass will contain either Constant_c or
+//		Memory_c to denote whether the current expression is a constant
+//		or memory object.
+//
+//
+// Returns:
+//	attr-
+//		Expression result is stored in the attr_t object where attr points.
+//
+//	carry-
+//		Returns error status (0=success, 1=failure)
+//
+// Operators and Precedene:
+//
+//	High Precedence:
+//
+//	term:
+//		( expr )  -term  !term  ~term  literalConstant  ID  
+//		{cset}   [array]  recTypeID:[record]  @compileTimeFunc(parms)
+//		typeID(expr) (type typeID expr ) unionTypeID.field:[exprlist] 
+//		
+//
+//	mulp:
+//		term ( mulop term )*    mulop={*,/,div,mod,<<,>>}
+//
+//	addp:
+//		mulp ( addop mulp )*	addp={+,-}
+//
+//	cmpp:
+//		addp ( cmpop addp )*	cmpop={<,<=,<>, !=, =, ==, >=, >, in}
+//
+//	andp:
+//		cmpp ( '&' addp )*
+//
+//	expr:
+//		andp ( orOp andp )*		opOp={|,^}
+//	|	'&' StaticID
+//	|	'&' StaticID addp expr   (expr must be a constant expression)
+//	|	'&' StaticID '-' '&' StaticID
+//
+//	Low Precedence
+//
+//
+// Note: 	This procedure destroys the values of eax, ebx, ecx, and edx.
+//			EDI will point at the start of the last lexeme in the expression
+//			upon return and ESI will point at the first character beyond
+//			the last lexeme in the expression.
+
+//proc( "expr" )
+procedure expr( var attr:attr_t ); @noframe;
+
+var
+	op			:dword;
+	right		:attr_t;
+	theType		:symNodePtr_t;
+	arrayCnt	:dword;
+	totalCnt	:dword;
+	arrayType	:symNodePtr_t;
+	baseType	:symNodePtr_t;
+	dummyName	:string;
+
+	///////////////////////////////////////////
+	procedure andp( var attr:attr_t ); 
+		@noframe;
+		@returns( "@nc" );
+					
+	var
+		right	:attr_t;
+
+		///////////////////////////////////////
+		procedure cmpp( var attr:attr_t );
+			@noframe;
+			@returns( "@nc" );
+					
+		var
+			op		:dword;
+			right	:attr_t;
+
+
+			///////////////////////////////////
+			procedure addp( var attr:attr_t );
+				@noframe;
+				@returns( "@nc" );
+					
+			var
+				op		:dword;
+				right	:attr_t;
+
+
+				//////////////////////////////////
+				procedure mulp( var attr:attr_t ); 
+					@noframe;
+					@returns( "@nc" );
+					
+				var
+					op		:dword;
+					right	:attr_t;
+					
+					
+					
+					//////////////////////////////////
+					procedure term(	var attr:attr_t ); 
+						@noframe;
+						@returns( "@nc" );
+					var
+						theType		:symNodePtr_t;
+						staticExprL	:staticExprPtr_t;
+						staticExprR	:staticExprPtr_t;
+						offset		:int32;
+						coerceType	:symNodePtr_t;
+						/////////////////////////////////////////////////////
+						//
+						// processStaticID-
+						//
+						//	Handles a static pointer constant of the form:
+						//
+						//		&ID[constExpr]
+						//
+						//	Returns pointer to staticExpr_t object in EAX.
+						//	Returns the optional offset value in EDX.
+
+						procedure processStaticID;
+						var
+							staticExpr	:staticExprPtr_t;
+							offset		:int32;
+							fullName	:string;
+
+							baseOffset	:dword;
+							baseName	:symNodePtr_t;
+							curDotName	:symNodePtr_t;
+
+							tknHash		:dword;
+							tknTrue		:string;
+							tknLC		:string;
+							tknIsID		:boolean;
+							tknAlloc	:boolean;
+							tknClass	:classType_t;
+
+							align( 4 );
+							attr		:attr_t;
+
+						begin processStaticID;
+
+							mov( 0, offset );
+							mov( 0, baseOffset );
+							lex( esi );
+							if( ebx <> ID_tc ) then
+
+								HLAerror
+								( 
+									"Expected an identifier after "
+									"'&' operator" nl 
+								);
+								reuseLastTkn();
+								raise( ex.hlaerr );
+
+							endif;
+
+							push( eax );
+
+							// Preserve the current token values
+							// 'cause we're going to wipe them out.
+
+							if( eax <> tkn_undefID ) then
+
+								mov( tokenECX.symNode, eax );
+								canAccess( [eax] );
+
+								// Mark this guy as referenced so we
+								// emit the correct obj file info if this
+								// is an external symbol.
+
+								mov( true, symEAX.isReferenced );
+
+								mov( eax, curDotName );
+								mov( eax, baseName );
+								mov( symEAX.symClass, al );
+								mov( al, tknClass );
+
+
+							else
+
+								// If it's an undefined symbol,
+								// put some aribtrary values into these
+								// variables:
+
+								mov( NULL, curDotName );
+								mov( NULL, baseName );
+								mov( Var_ct, tknClass );
+
+							endif;
+
+							mov( tokenECX.hashValue, eax );
+							mov( eax, tknHash );
+							mov( tokenECX.trueName, eax );
+							mov( eax, tknTrue );
+							mov( tokenECX.lcName, eax );
+							mov( eax, tknLC );
+							mov( tokenECX.isID, al );
+							mov( al, tknIsID );
+							mov( tokenECX.alloc, al );
+							mov( al, tknAlloc );
+
+
+							// We need to see if this is a namespace,
+							// class, record, or union variable name:
+
+							lex( esi );
+							if( eax = '.' ) then
+
+								// Create a dummy string to pass to
+								// parseDotName:
+
+								mov( curDotName, eax );
+								str.a_cpy( symEAX.trueName );
+								mov( eax, fullName );
+								repeat
+
+									parseDotName( curDotName, fullName );
+									mov( eax, curDotName );
+									canAccess( [eax] );
+									mov( true, symEAX.isReferenced );
+									if( isStatic( symEAX.symClass )) then
+
+										// We've got a static object,
+										// so reset the base offset to zero.
+										// Also reset the base name to the
+										// current static field.
+
+										mov( 0, baseOffset );
+										mov( eax, baseName );
+
+									else
+
+										// If it's not a static object,
+										// add the offset of the current
+										// field to our base offset.
+
+										mov( symEAX.offset, edx );
+										add( edx, baseOffset );
+
+									endif;
+
+									// If we've not yet seen a static
+									// field, and the current field is
+									// a static field, then force the
+									// whole object to be a static object.
+
+									if( !isStatic( tknClass )) then
+
+										mov( symEAX.symClass, cl );
+										mov( cl, tknClass );
+
+									endif;
+
+									// Do we have another dotted name?
+
+									lex( esi );
+
+								until( eax <> '.' );
+								reuseLastTkn();
+
+								// Free up the full name we've created.
+
+								strfree( fullName );
+
+								// Cheat, and treat this like a locally
+								// defined symbol, because we're not
+								// going to look it up later -- it is
+								// fully described.
+
+								pop( eax );
+								pushd( tkn_localID );
+
+								// Note that tknHash contains
+								// garbage at this point, but that
+								// doesn't matter as we are not going
+								// to look up this string again.
+
+							else
+								
+								// Not a "dotted" name, so put the
+								// token back and process the single name.
+
+								reuseLastTkn();
+
+							endif;
+
+							// Need to allocate a staticExpr object for
+							// this variable:
+							safe_malloc( @size( staticExpr_t ));
+							mov( eax, staticExpr );
+							mov( eax, ebx );
+							xor( eax, eax );
+							mov( eax, staticEBX.next );
+							mov( eax, staticEBX.prev );
+							mov( eax, staticEBX.symbol );
+							mov( eax, staticEBX.seg );
+							mov( lineNumber, eax );
+							mov( eax, staticEBX.lineNumber );
+							mov( curLexLevel, eax );
+							mov( eax, staticEBX.lexLevel );
+							mov( tknHash, eax );
+							mov( eax, staticEBX.hashValue );
+							pop( eax );
+							if( eax = tkn_undefID ) then
+
+								// If the symbol is undefined, we need to 
+								// add this guy to the forward reference list.
+								// We need to have an allocated (and unused) 
+								// copy of the symbol's name for use with 
+								// the staticExpr record:
+
+								if( tknAlloc ) then
+
+									// Return ptr to names:
+
+									mov( tknTrue, eax );
+									mov( tknLC, edx );	
+
+								else
+
+									// If storage wasn't allocated
+									// for the names, then allocate
+									// storage for them and copy the
+									// name fields into the allocated 
+									// storage:
+
+									str.a_cpy( tknLC );
+									mov( eax, edx );
+									str.a_cpy( tknTrue );
+
+								endif;
+								mov( eax, staticEBX.trueName );
+								mov( edx, staticEBX.lcName );
+								mov( NULL, staticEBX.seg );
+								//mov( 0, staticEBX.offset ); 
+
+								// As the symbol was undefined,
+								// we need to add the current
+								// staticExpr_t record to the
+								// forward static expression
+								// list:
+
+								addFwdStaticExpr( ebx );
+
+							elseif( eax = tkn_globalID ) then
+
+								// If it's a global ID, we want to copy the
+								// symbol table info to the staticExpr record
+								// but we *still* want to add it to the 
+								// forward static expression list because if it
+								// gets defined locally later, we want to use 
+								// the local definition.
+
+								mov( baseName, eax );
+								canAccess( [eax] );
+								mov( true, symEAX.isReferenced );
+								mov( eax, staticEBX.symbol );
+								mov( symEAX.trueName, staticEBX.trueName );
+								mov( symEAX.lcName, staticEBX.lcName );
+								mov( symEAX.seg, edx );
+								mov( edx, staticEBX.seg );
+								mov( symEAX.offset, edx );
+								//mov( edx, staticEBX.offset );
+								mov( edx, offset );
+
+								if( tknAlloc ) then
+
+									// We don't need to use the token's strings.
+									// So deallocate them if they've been 
+									// allocated on the heap:
+
+									strfree( tknTrue );
+									strfree( tknLC );
+
+								endif;
+								addFwdStaticExpr( ebx );
+								
+							else // Must be defined locally
+
+								// We still have to create a staticExpr object
+								// so that other code can refer to this static
+								// constant. We'll just initialize that 
+								// staticExpr object with the local symbol's 
+								// information.
+
+								mov( baseName, eax );
+								canAccess( [eax] );
+								mov( true, symEAX.isReferenced );
+								mov( eax, staticEBX.symbol );
+								mov( symEAX.trueName, staticEBX.trueName );
+								mov( symEAX.lcName, staticEBX.lcName );
+								mov( symEAX.seg, edx );
+								mov( edx, staticEBX.seg );
+								mov( baseOffset, edx );
+								//mov( edx, staticEBX.offset );
+								mov( edx, offset );
+
+								// Make sure that this is a static object:
+
+								if( !isStatic( tknClass ) ) then
+
+									HLAerror
+									( 
+										"'&' address-of operator requires "
+										"a static identifier as its operand"
+										nl
+									);
+									raise( ex.hlaerr );
+
+								endif;
+
+								if( tknAlloc ) then
+
+									// We don't need to use the token's strings.
+									// So deallocate them if they've been 
+									// allocated on the heap:
+
+									strfree( tknTrue );
+									strfree( tknLC );
+
+								endif;
+
+							endif;
+
+							// Okay, we've processed the first identifier, 
+							// see if there is an optional expression/index 
+							// following it.
+
+							lex( esi );
+							if( eax = '[' || eax = '(' ) then 
+
+								constExpr( attr );
+								mov( attr.pType, al );
+								if( !isSmallNum( al ) ) then
+
+									HLAerror
+									(
+										"Expected a small integer value as "
+										"the numeric offset following ID"
+										nl
+									);
+									raise( ex.hlaerr );
+
+								endif;
+								mov( attr.int32_vt, eax );
+								add( eax, offset );
+
+								// Get the trailing ")"
+
+								matchRBracketOrParen();
+								raiseErr( @c );
+
+
+							else	// No expression follows, 
+									// reuse the current token.
+
+								reuseLastTkn();
+
+							endif;
+							mov( staticExpr, eax );
+							mov( offset, edx );
+
+						end processStaticID;
+
+						
+					begin term;
+
+						push( ebp );
+						mov( esp, ebp );
+						sub( _vars_, esp );
+						assert( attr <> NULL );
+					
+						lex( esi );
+
+						//----------------------------------------------------
+						// Handle literal constants here.
+						
+						if( ebx = const_tc ) then
+
+							// Okay, we parsed a constant.
+							// Now let's copy the data to the destination
+							// variable.
+							
+							push( esi );
+							push( edi );
+	
+							cld();
+							lea( esi, tokenECX.attr );
+							mov( @size( attr_t ), ecx );
+							mov( attr, edi );
+							rep.movsb();
+							
+							pop( edi );
+							pop( esi );
+							
+							// If it wasn't a string or character constant, 
+							// just return:
+
+							if
+							( 
+									eax <> tkn_strConst
+								&&	eax <> tkn_charConst 
+							) then
+							
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							endif;
+
+							// If it was a string or character constant, 
+							// deal with the fact that we may have to 
+							// concatenate other strings and characters 
+							// to the end of this constant.
+								
+							getStrConst( attr );
+							if( @c ) then // Bad string constant
+							
+								raise( ex.hlaerr );
+								
+							endif;							
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+								
+						
+						
+						//----------------------------------------------------
+						// Handle identifiers here.
+						
+						elseif( ebx = ID_tc ) then
+						
+							// Quick consistency check:
+							
+							assert( tokenECX.isID );
+
+							// See if it's a defined identifier:
+							
+							if( eax <> tkn_undefID ) then
+							
+								// Okay, we've got a local or global
+								// identifier that has been defined.
+								// Determine if this is a constant
+								// or memory identifier.
+
+								mov( tokenECX.symNode, ebx );
+								canAccess( [ebx] );
+								mov( symEBX.symClass, al );
+								if
+								( 
+										al = Constant_ct
+									||	al = Value_ct 
+								) then
+								
+									// Need to create a temporary string
+									// variable for use by processConstID:
+
+									str.a_cpy( symEBX.trueName );
+									push( eax );
+									mov( esp, eax );
+									
+									// Okay, it's a constant or value ID.
+									// Handle array, record, and union 
+									// objects here:
+
+									processConstID
+									( 
+										symEBX.va, 
+										[ebx],
+										attr,
+										[eax] 
+									);
+
+									// Need to free the string we allocated
+									// (and was extended by processConstID):
+
+									pop( eax );
+									str.free( eax );
+									
+									
+									mov( ebp, esp );
+									pop( ebp );
+									ret( _parms_ );
+									
+								
+								elseif( al = Type_ct ) then
+								
+									// If it's a type ID, we could
+									// have one of the following possibilities:
+									//
+									//	1:	recType:[ record_constant ]
+									//	2:  unionType.field[ const_expr ]
+									//	3:	primType( const_expr )
+									//  4:  classTypeName.<path>.constID
+									//
+									// Save the type so we can use it 
+									// later if this expression is
+									// syntactically correct:
+
+									mov(tokenECX.symNode, eax );
+									mov( eax, theType );
+
+									// Fetch the next token to see if we
+									// have a colon or a left parenthesis:
+									
+									lex( esi );
+									if( eax = ':' ) then
+									
+										mov( theType, ebx );
+										if( symEBX.pType <> Record_pt ) then
+
+											HLAerror
+											(
+												"Expected a record type "
+												"ID, encountered ",
+												symEBX.trueName,
+												nl
+											);
+											raise( ex.hlaerr );
+										endif;
+										try
+											getRecordConst
+											( 
+												#{ pushd( attr ); }#, 
+												theType 
+											);
+
+										 exception( ex.hlaerr )
+
+											defaultAttr( attr );
+											raise( ex.hlaerr );
+
+										endtry;
+										mov( ebp, esp );
+										pop( ebp );
+										ret( _parms_ );
+										
+									endif;
+									if( eax = '.' ) then
+									
+										mov( theType, ebx );
+										canAccess( [ebx] );
+										if( symEBX.pType = Union_pt ) then
+
+											getUnionConst
+											( 
+												attr, 
+												theType 
+											);
+											mov( ebp, esp );
+											pop( ebp );
+											ret( _parms_ );
+											
+										elseif( symEBX.pType = Class_pt ) then
+										
+											// getMemoryObject (below) wants
+											// to process the ".", so let's
+											// put it back.
+
+											reuseLastTkn();
+										
+											// Need to create a temporary 
+											// string variable for use by 
+											// getMemoryObject:
+
+											str.a_cpy( symEBX.trueName );
+											push( eax );
+											mov( esp, eax );
+											
+											// This is really a type, not
+											// a memory object, but when
+											// looking for a constant field
+											// we can use the getMemoryObject
+											// function to achieve what we
+											// want.
+
+											mov( attr, edx );
+											canAccess( [edx] );
+
+											mov( _none, attrEDX.m.baseReg );
+											mov( _none, attrEDX.m.indexReg );
+											mov( 0, attrEDX.m.scale );
+											mov( 0, attrEDX.m.constant );
+											mov( 0, attrEDX.m.constant[4] );
+											mov( NULL, attrEDX.m.dispBaseAdrs );
+											mov( NULL, attrEDX.m.dispMinusAdrs );
+											mov( NULL, attrEDX.m.staticSym );
+											getMemoryObject
+											( 
+												attrEDX, 
+												theType,
+												[eax] 
+											);
+
+											// Clean up the symbol string:
+
+											pop( eax );
+											str.free( eax );
+
+											mov( attr, ebx );
+											if
+											( 
+												isConstant
+												(
+													attrEBX.symClass 
+												)
+											) then
+
+												mov( ebp, esp );
+												pop( ebp );
+												ret( _parms_ );
+
+											endif;
+
+										endif;
+										HLAerror
+										(
+											"Expected a union or class "
+											"type ID, encountered ",
+											symEBX.trueName,
+											nl
+										);
+										raise( ex.hlaerr );
+										
+									endif;
+
+									reuseLastTkn();
+									HLAerror
+									(
+										"Unexpected type ID in expression"
+										nl
+									);
+									raise( ex.hlaerr );
+									 
+								elseif( al = Static_ct ) then
+									
+									// Need to create a temporary 
+									// string variable for use by 
+									// getMemoryObject:
+
+									str.a_cpy( symEBX.trueName );
+									push( eax );
+									mov( esp, eax );
+									
+									mov( attr, edx );
+									canAccess( [edx] );
+									mov( ebx, attrEDX.m.staticSym );
+									mov( _none, attrEDX.m.baseReg );
+									mov( _none, attrEDX.m.indexReg );
+									mov( 0, attrEDX.m.scale );
+									mov( 0, attrEDX.m.constant );
+									mov( 0, attrEDX.m.constant[4] );
+									mov( NULL, attrEDX.m.dispBaseAdrs );
+									mov( NULL, attrEDX.m.dispMinusAdrs );
+									
+									getMemoryObject( attr, [ebx], [eax] );
+
+									// Clean up the allocated string:
+									
+									pop( eax );
+									str.free( eax );
+										
+									mov( ebp, esp );
+									pop( ebp );
+									ret( _parms_ );
+
+								elseif
+								( 
+										al = Var_ct
+									||	al = Parm_ct 
+								) then
+									
+									// Need to create a temporary 
+									// string variable for use by 
+									// getMemoryObject:
+
+									str.a_cpy( symEBX.trueName );
+									push( eax );
+									mov( esp, eax );
+									
+									mov( attr, edx );
+									canAccess( [edx] );
+									mov( _EBP, attrEDX.m.baseReg );
+									mov( symEBX.offset, ecx );
+									mov( ecx, attrEDX.m.constant );
+									mov( 0, attrEDX.m.constant[4] );
+									mov( _none, attrEDX.m.indexReg );
+									mov( 0, attrEDX.m.scale );
+									mov( NULL, attrEDX.m.dispBaseAdrs );
+									mov( NULL, attrEDX.m.dispMinusAdrs );
+									getMemoryObject( attr, [ebx], [eax] );
+									
+									// Clean up the allocated string:
+									
+									pop( eax );
+									str.free( eax );
+										
+									mov( ebp, esp );
+									pop( ebp );
+									ret( _parms_ );
+
+								endif;
+								
+								HLAerror
+								(
+									"Illegal identifier type in "
+									"constant/memory expression"
+									nl
+								);
+								
+								// Need to return a dummy type of some
+								// sort to reduce cascading errors:
+								
+								mov( attr, ebx );
+								canAccess( [ebx] );
+								mov( 0, attrEBX.uns8_vt );
+								mov( Uns8_pt, attrEBX.pType );
+								mov( &uns8_ste, attrEBX.symType );
+								mov
+								( 
+									Static_ct, 
+									attrEBX.symClass 
+								);
+								
+								raise( ex.hlaerr );
+								
+							else // It's an undefined ID.
+
+								// Even though we've already searched for
+								// the symbol and didn't find it (in the
+								// lexer), we need to call lookupGlobal
+								// here in order to check for a case
+								// neutrality violation.
+								
+								lookupGlobal
+								( 
+									tokenECX.trueName,
+									tokenECX.lcName,
+									tokenECX.hashValue
+								);
+								if( eax = NULL ) then
+
+									HLAerror
+									( 
+										"Undefined symbol in expression: ",
+										tokenECX.trueName, 
+										nl 
+									);
+									
+								endif;
+								raise( ex.hlaerr );
+							
+							endif;
+								
+							
+							
+						//----------------------------------------------------
+						// Check for type coercion expressions here:
+						// primTypeID( expr )
+
+						elseif( ebx = type_tc && isPrimTypeTkn( eax )) then
+
+
+							// Save the type so we can use it 
+							// later if this expression is
+							// syntactically correct:
+							
+							sub( tkn_boolean, eax );
+							mov( tknToT [eax*4 ], theType );
+
+							lex( esi );
+							if( eax = '(' ) then
+
+								doConstCoercion( attr, theType );
+
+								// If matchRParen fails, raise the 
+								// syntax exception:
+
+								mustMatchRParen();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+
+							endif;
+							HLAerror
+							( 
+								"Syntax error, expected type coercion "
+								"operation with primitive type"
+								nl
+							);
+							raise( ex.hlaerr );
+
+							
+							
+						//----------------------------------------------------
+						// Check for parenthetical expressions here:
+						// ( expr )
+						
+						elseif( eax = '(' ) then
+
+							lex( esi );
+							if( eax = tkn_type ) then
+
+								// Okay, we should have "(type typeID expr)"
+								// at this point. Verify the syntax and
+								// do the coercion operation:
+
+								lex( esi );
+								if( isPrimTypeTkn( eax )) then
+
+									// If it was a type reserved word,
+									// then create a token value
+									// for this object:
+
+									sub( tkn_boolean, eax );
+									mov( tknToT[eax*4], eax );
+									canAccess( [eax] );
+									mov( eax, tokenECX.attr.symType );
+									mov( eax, tokenECX.symNode );
+									mov( symEAX.pType, al );
+									mov( al, tokenECX.attr.pType );
+									mov( Type_ct, tokenECX.attr.symClass );
+									mov( ID_tc, ebx );
+									mov( true, tokenECX.isID );
+									mov( false, tokenECX.alloc );
+									mov( false, tokenECX.hasAttr );
+
+								endif;
+								if
+								( 
+										ebx = ID_tc
+									&&	tokenECX.attr.symClass = Type_ct
+								) then
+
+									assert( tokenECX.isID );
+									mov( tokenECX.symNode, edx );
+									canAccess( [edx] );
+									mov( edx, coerceType );
+
+									// Process the expression after the
+									// type identifier:
+									expr( attr );
+									mov( attr, ebx );
+									canAccess( [ebx] );
+									mov( attrEBX.symClass, al );
+									if( al = Constant_ct || al = Value_ct ) then
+
+										// If it was a constant expression,
+										// then coerce it to the new type.
+										// Note that this will *not* convert
+										// text objects to strings. TEXT
+										// objects have already been expanded.
+										// Use <<type(expr)>> to convert TEXT
+										// to string objects.
+
+										constCoercion
+										( 
+											attrEBX, 
+											coerceType 
+										);
+
+									elseif
+									( 
+											al = Var_ct 
+										|| 	al = Parm_ct
+										||	al = Static_ct
+									) then
+
+										// It's a memory object, so just
+										// change the type of the item
+										// following the type designation.
+
+										mov( attr, ebx );
+										canAccess( [ebx] );
+										mov( coerceType, edx );
+										canAccess( [edx] );
+										mov( symEDX.pType, al );
+										mov( al, attrEBX.pType );
+										mov( edx, attrEBX.symType );
+
+									endif;
+									mustMatchRParen();
+
+									// At this point, we could have a
+									// constant or a memory operand that
+									// is record, union, etc. So there
+									// may be a "." or "[" following the
+									// expression. Deal with that here.
+
+									mov( attr, edx );
+									canAccess( [edx] );
+
+									mov( attrEDX.symClass, al );
+									if( al = Static_ct ) then
+
+										mov( tokenECX.symNode, ebx );
+										canAccess( [ebx] );
+										
+										// Initialize for getMemoryObject
+
+										mov( ebx, attrEDX.m.staticSym );
+										mov( _none, attrEDX.m.baseReg );
+										mov( _none, attrEDX.m.indexReg );
+										mov( 0, attrEDX.m.scale );
+										mov( 0, attrEDX.m.constant );
+										mov( 0, attrEDX.m.constant[4] );
+										mov( NULL, attrEDX.m.dispBaseAdrs );
+										mov( NULL, attrEDX.m.dispMinusAdrs );
+
+										// Need to create a temporary 
+										// string variable for use by 
+										// getMemoryObject:
+
+										mov( coerceType, ecx );
+										canAccess( [ecx] );
+										str.a_cpy( symECX.trueName );
+										push( eax );
+										mov( esp, eax );
+										getMemoryObject
+										( 
+											attrEDX, 
+											attrEDX.symType, 
+											[eax] 
+										);
+										
+										// Clean up the allocated string:
+										
+										pop( eax );
+										str.free( eax );
+
+									elseif( al = Var_ct || al = Parm_ct ) then
+
+										mov( tokenECX.symNode, ebx );
+										canAccess( [ebx] );
+										
+										// Initialize for getMemoryObject
+
+										mov( _EBP, attrEDX.m.baseReg );
+										mov( symEBX.offset, ecx );
+										mov( ecx, attrEDX.m.constant );
+										mov( 0, attrEDX.m.constant[4] );
+										mov( _none, attrEDX.m.indexReg );
+										mov( 0, attrEDX.m.scale );
+										mov( NULL, attrEDX.m.dispBaseAdrs );
+										mov( NULL, attrEDX.m.dispMinusAdrs );
+
+										// Need to create a temporary 
+										// string variable for use by 
+										// getMemoryObject:
+
+										mov( coerceType, ecx );
+										canAccess( [ecx] );
+										str.a_cpy( symECX.trueName );
+										push( eax );
+										mov( esp, eax );
+										getMemoryObject
+										( 
+											attrEDX, 
+											attrEDX.symType, 
+											[eax] 
+										);
+										
+										// Clean up the allocated string:
+										
+										pop( eax );
+										str.free( eax );
+
+									endif;
+
+								else
+									
+									HLAerror
+									( 
+										"Expected type name in type "
+										"coercion expression"
+										nl
+									);
+									raise( ex.hlaerr );
+									
+								endif;
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+
+							endif;
+
+							// Okay, it's not a type coercion operation,
+							// it has to be a parenthetical expression:
+
+							reuseLastTkn();
+						
+							constExpr( attr );
+							raiseErr( @c );
+							lex( esi );
+							if( eax <> ')' ) then
+							
+								HLAerror
+								( 
+									"Syntax error, expected ')' "
+									"but encountered '" 
+								);
+								dumpLexeme();
+								HLAerror2( "'" nl );
+								raise( ex.hlaerr );
+								
+							endif;
+							clc();
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+							
+							
+						//----------------------------------------------------
+						// Check for NULL here
+						
+						elseif( eax = tkn_null ) then
+
+							mov( attr, ebx );
+							canAccess( [ebx] );
+							mov( NULL, attrEBX.p.dispBaseAdrs );
+							mov( NULL, attrEBX.p.dispMinusAdrs );
+							mov( 0, attrEBX.p.constant );
+							mov( 0, attrEBX.p.constant[4] );
+
+							// Set up remaining attributes:
+							mov( 0, attrEBX.numElements );
+							mov( &pointer_ste, attrEBX.symType );
+							mov( Pointer_pt, attrEBX.pType );
+							mov( Constant_ct, attrEBX.symClass );
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+
+						//----------------------------------------------------
+						// Check for the negation operation here.
+						// -term
+						
+						elseif( eax = '-' ) then
+						
+							term( attr );
+							if( @c ) then 
+							
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							endif;
+							
+							// Determine the type of the object so we
+							// can figure out how to negate it:
+							
+							mov( attr, ebx );
+							canAccess( [ebx] );
+							mov( attrEBX.pType, al );
+							if
+							( 
+									al in Byte_pt..LWord_pt
+								||	al in Uns8_pt..Uns128_pt 
+							) then
+
+								// It's an unsigned value- negate it
+								// by subtracting the value from zero
+								// and report an error if it goes positive.
+
+								xor( eax, eax );
+								sub( (type dword attrEBX.lword_vt), eax );
+								mov( eax, (type dword attrEBX.lword_vt) );
+								
+								mov( 0, eax );
+								sbb( (type dword attrEBX.lword_vt[4]), eax );
+								mov( eax, (type dword attrEBX.lword_vt[4]) );
+								
+								mov( 0, eax );
+								sbb( (type dword attrEBX.lword_vt[8]), eax );
+								mov( eax, (type dword attrEBX.lword_vt[8]) );
+								
+								mov( 0, eax );
+								sbb( (type dword attrEBX.lword_vt[12]), eax );
+								mov( eax, (type dword attrEBX.lword_vt[12]) );
+								if( @o || @ns ) then
+								
+									HLAwarning
+									( 
+										"Integer overflow occurred during "
+										"negation" nl
+									);
+									
+								endif;
+								
+								// Figure out the type of the resulting
+								// constant (since it's probably negative,
+								// we need to change it to an INT type).
+								
+								movzx( attrEBX.pType, eax );
+								switch( eax )
+								
+									case( Uns8_pt, Byte_pt )
+
+										mov( Int8_pt, cl );
+										mov( &int8_ste, edx ); 
+										if( attrEBX.int16_vt < -128 ) then
+
+											mov( Int16_pt, cl );
+											mov( &int16_ste, edx ); 
+
+										endif;
+								
+									case( Uns16_pt, Word_pt )
+										mov( Int16_pt, cl );
+										mov( &int16_ste, edx ); 
+										if( attrEBX.int32_vt < -32768 ) then
+
+											mov( Int32_pt, cl );
+											mov( &int32_ste, edx ); 
+
+										endif;
+									
+								
+									case( Uns32_pt, DWord_pt )
+									
+										mov( Int32_pt, cl );
+										mov( &int32_ste, edx ); 
+										if
+										(
+												attrEBX.byte_vt[7] >= $80 
+											&&	attrEBX.byte_vt[3] >= $80 
+										) then
+
+											mov( Int64_pt, cl );
+											mov( &int64_ste, edx ); 
+
+										endif;
+									
+								
+									case( Uns64_pt, QWord_pt )
+									
+									
+										mov( Int64_pt, cl );
+										mov( &int64_ste, edx ); 
+										if
+										(
+												attrEBX.dword_vt[15] >= $80 
+											&&	attrEBX.byte_vt[7] >= $80 
+										) then
+
+											mov( Int128_pt, cl );
+											mov( &int128_ste, edx ); 
+
+										endif;
+								
+									case( Uns128_pt, TByte_pt, LWord_pt )
+									
+										mov( Int128_pt, cl );
+										mov( &int128_ste, edx ); 
+										
+								endswitch;
+									
+								mov( cl, attrEBX.pType );
+								mov( edx, attrEBX.symType );
+								setSmallestSize( attrEBX );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+								
+							// If it was an integer to begin with,
+							// we don't have to change the resulting
+							// type.
+							
+							elseif( al in Int8_pt..Int128_pt ) then
+
+								// It's a signed value- negate it
+								// by subtracting the value from zero
+								// and report an error if it overflows.
+								 
+								xor( eax, eax );
+								sub( (type dword attrEBX.lword_vt), eax );
+								mov( eax, (type dword attrEBX.lword_vt) );
+
+								mov( 0, eax );
+								sbb( (type dword attrEBX.lword_vt[4]), eax );
+								mov( eax, (type dword attrEBX.lword_vt[4]) );
+
+								mov( 0, eax );
+								sbb( (type dword attrEBX.lword_vt[8]), eax );
+								mov( eax, (type dword attrEBX.lword_vt[8]) );
+
+								mov( 0, eax );
+								sbb( (type dword attrEBX.lword_vt[12]), eax );
+								mov( eax, (type dword attrEBX.lword_vt[12]) );
+
+								if( @o ) then
+								
+									HLAwarning
+									( 
+										"Integer overflow occurred during "
+										"negation" nl
+									);
+									
+								endif;
+								setSmallestSize( attrEBX );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+								
+							// If it was a Real32, Real64, or Real80 value
+							// deal with the negation here.  Note that
+							// the type does not change, only the sign.
+							
+							elseif( al = Real32_pt ) then
+							
+								finit();
+								fclex();
+								fld( attrEBX.real32_vt );
+								fchs();
+								fstp( attrEBX.real32_vt );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							elseif( al = Real64_pt ) then
+							
+								finit();
+								fclex();
+								fld( attrEBX.real64_vt );
+								fchs();
+								fstp( attrEBX.real64_vt );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							elseif( al = Real80_pt ) then
+							
+								finit();
+								fclex();
+								fld( attrEBX.real80_vt );
+								fchs();
+								fstp( attrEBX.real80_vt );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+								
+							// Negating a character set means to take
+							// it's complement (i.e., invert all the
+							// bits in the set.
+							
+							elseif( al = Cset_pt ) then
+							
+								// For character sets, just invert all the
+								// bits in the set.
+								
+								not( (type dword attrEBX.lword_vt[0]) );
+								not( (type dword attrEBX.lword_vt[4]) );
+								not( (type dword attrEBX.lword_vt[8]) );
+								not( (type dword attrEBX.lword_vt[12]) );
+								mov( 0, attrEBX.dword_vt[16] );
+								mov( 0, attrEBX.dword_vt[20] );
+								mov( 0, attrEBX.dword_vt[24] );
+								mov( 0, attrEBX.dword_vt[28] );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							elseif( al = XCset_pt ) then
+							
+								// For extended character sets, just invert 
+								// all the bits in the set.
+								
+								not( (type dword attrEBX.lword_vt[0]) );
+								not( (type dword attrEBX.lword_vt[4]) );
+								not( (type dword attrEBX.lword_vt[8]) );
+								not( (type dword attrEBX.lword_vt[12]) );
+								not( (type dword attrEBX.lword_vt[16]) );
+								not( (type dword attrEBX.lword_vt[20]) );
+								not( (type dword attrEBX.lword_vt[24]) );
+								not( (type dword attrEBX.lword_vt[28]) );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							else
+							
+								HLAerror
+								( 
+									"Illegal data type for negation operator" 
+									nl 
+								);
+								raise( ex.hlaerr );
+								
+							endif;
+							 
+							
+						
+							
+			
+						//----------------------------------------------------
+						// Handle the Bitwise NOT operator here.
+						
+						elseif( eax = '!' ) then
+
+							term( attr );
+							if( @c ) then 
+							
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							endif;
+							
+							// Determine the type of the object so we
+							// can figure out how to invert it:
+							
+							mov( attr, ebx );
+							canAccess( [ebx] );
+							mov( attrEBX.pType, al );
+							if( al in Uns8_pt..Int128_pt ) then
+
+								// For integer/unsigned values, just invert 
+								// all the bits in the value.  Leave the
+								// type alone.
+								
+								not( attrEBX.dword_vt[0] );
+								not( attrEBX.dword_vt[4] );
+								not( attrEBX.dword_vt[8] );
+								not( attrEBX.dword_vt[12] );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							elseif( al = Boolean_pt ) then
+							
+								// For boolean objects, do a logical not.
+								
+								xor( 1, attrEBX.dword_vt[0] );
+								and( 1, attrEBX.dword_vt[0] );
+								xor( eax, eax );
+								mov( eax, attrEBX.dword_vt[4] );
+								mov( eax, attrEBX.dword_vt[8] );
+								mov( eax, attrEBX.dword_vt[12] );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							else
+							
+								// Reject everything else.
+								
+								HLAerror
+								( 
+									"Bitwise NOT operator ('!') is not "
+									"legal with this data type"
+									nl
+								);
+
+								raise( ex.hlaerr );
+								
+							endif;
+								
+								
+						
+							
+						//----------------------------------------------------
+						// Handle the Logical NOT operator here
+						// !x means produce 1 if x=0, produce 0 if x <> 0.
+			
+						elseif( eax = tkn_logNot ) then
+
+							term( attr );
+							if( @c ) then 
+							
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							endif;
+							
+							// Determine the type of the object so we
+							// can figure out how to NOT it:
+							
+							mov( attr, ebx );
+							canAccess( [ebx] );
+							mov( attrEBX.pType, al );
+							if( al in Uns8_pt..Int128_pt ) then
+
+								// For integer/unsigned values, we convert
+								// zero to one and not-zero to zero.
+								
+								mov( attrEBX.dword_vt[0], eax );
+								or( attrEBX.dword_vt[4], eax );
+								or( attrEBX.dword_vt[8], eax );
+								or( attrEBX.dword_vt[12], eax );
+								setz( al );
+								movzx( al, eax );
+								mov( eax, attrEBX.dword_vt[0] );
+								xor( eax, eax );
+								mov( eax, attrEBX.dword_vt[4] );
+								mov( eax, attrEBX.dword_vt[8] );
+								mov( eax, attrEBX.dword_vt[12] );
+								setSmallestSize( [ebx] );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							elseif( al = Boolean_pt ) then
+							
+								// For boolean objects, do a logical not.
+								
+								xor( 1, attrEBX.dword_vt[0] );
+								and( 1, attrEBX.dword_vt[0] );
+								xor( eax, eax );
+								mov( eax, attrEBX.dword_vt[4] );
+								mov( eax, attrEBX.dword_vt[8] );
+								mov( eax, attrEBX.dword_vt[12] );
+								clc();
+								mov( ebp, esp );
+								pop( ebp );
+								ret( _parms_ );
+								
+							else
+							
+								// Reject everything else.
+								
+								HLAerror
+								( 
+									"Logical NOT operator ('!!') is not "
+									"legal with this data type"
+									nl
+								);
+								raise( ex.hlaerr );
+
+							endif;
+							
+							
+						//----------------------------------------------------
+						// Handle character set constants here
+						
+						elseif( eax = '{' ) then
+						
+							getCsetConst( attr );
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+						
+						
+						//----------------------------------------------------
+						// Handle array constants here
+						
+						elseif( eax = '[' ) then
+						
+							getArrayConst( attr );
+							if( @c ) then // Just in case we missed a raise
+
+								raise( ex.hlaerr );
+
+							endif;
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+							
+						
+						//----------------------------------------------------
+						// Handle anonymous memory references here
+						
+						//elseif( ebx = regseg_tc ) then handle memory
+						#print( "TODO: handle memory ref with seg prefix" )
+						
+						//----------------------------------------------------
+						// Handle compile-time functions here
+						
+						elseif( ebx = func_tc ) then
+
+							// Dispatch to the appropriate function handler
+							// Note: this code assumes that "@a" has the
+							// smallest token value for all the compile-time
+							// functions (as they appear in alphabetical order,
+							// this is probably a good bet).
+
+							handleCompileTimeFuncs( eax, attr );
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+
+
+
+						// Check for static expressions here.
+						// This includes the following:
+						//
+						//	&staticID
+						//	&staticID[ constexpr ]
+						//	&staticID1 - &staticID2
+						//	&staticID1[ constexpr ] - &staticID2
+						//	&staticID1 - &staticID2[ constexpr ]
+						//	&staticID1[ constexpr ] - &staticID2[ constexpr]
+
+						elseif( eax = '&' ) then
+
+							mov( NULL, staticExprL );	// Assume error.
+							mov( NULL, staticExprR );	// Assume no 2nd expr
+							processStaticID();			// Exception, if error
+							mov( eax, staticExprL );
+							mov( edx, offset );
+							
+							// Check for optional "-&ID[constExpr]":
+
+							lex( esi );
+							if( eax = '-' ) then
+
+								lex( esi );
+								if( eax = '&' ) then
+
+									// processStaticID raises an exception
+									// if there is an error.
+									processStaticID();
+									mov( eax, staticExprR );
+									sub( edx, offset );
+
+								else
+
+									// Not a "&", so it must be an error
+
+									HLAerror
+									(
+										"Syntax error, expected "
+										"'&identifer' after '-'" nl
+									);
+									reuseLastTkn();
+									raise( ex.hlaerr );
+
+								endif;
+
+							else	// Wasn't '-', so let whomever 
+									// called us deal with
+									// the token:
+
+								reuseLastTkn();
+
+							endif;
+
+							// Okay, if we've fetched one or two legal 
+							// static expressions, build the attribute for 
+							// them here.
+
+							assert( staticExprL <> NULL );
+
+							// If not NULL, we had some expressions.
+							mov( attr, ebx );
+							canAccess( [ebx] );
+							mov( staticExprL, eax );
+							mov( eax, attrEBX.p.dispBaseAdrs );
+							mov( staticExprR, eax );
+							mov( eax, attrEBX.p.dispMinusAdrs );
+							mov( offset, eax );
+							mov( eax, attrEBX.p.constant );
+
+							// Set up remaining attributes:
+							mov( 0, attrEBX.numElements );
+							mov( &pointer_ste, attrEBX.symType );
+							mov( Pointer_pt, attrEBX.pType );
+							mov( Constant_ct, attrEBX.symClass );
+							mov( ebp, esp );
+							pop( ebp );
+							ret( _parms_ );
+
+						
+						endif;
+						
+						// If none of the above, then we've got an error.
+						
+						HLAerror
+						( 
+							"Expected a term in the expression "
+							"but encountered '" 
+						);
+						dumpLexeme();
+						HLAerror2( "'" nl );
+						reuseLastTkn();
+						raise( ex.hlaerr );						
+							
+					end term;
+					//////////////////////////////////
+					
+				begin mulp;
+				
+					push( ebp );
+					mov( esp, ebp );
+					sub( _vars_, esp );
+					assert( attr <> NULL );
+					
+					// Note: term raises an exception if there was an error.
+					term( attr );
+					forever
+					
+						lex( esi );
+						if( eax = tkn_div ) then
+						
+							mov( tkn_divOp, eax );
+							mov( mulOp_tc, ebx );
+							
+						elseif( eax = tkn_mod ) then
+						
+							mov( tkn_modOp, eax );
+							mov( mulOp_tc, ebx );
+							
+						endif;
+						mov( eax, op );
+						if( ebx <> mulOp_tc ) then
+
+							// If we don't have a mulOp token, then
+							// replace the previous token and leave
+							// returning success:
+							
+							reuseLastTkn();
+							break;
+							
+						endif;
+
+						lea( eax, right );
+						term( [eax] );
+						
+						// See if we can make the two operands
+						// compatible with one another before
+						// doing the operation on them.
+						
+						coerceOperands( attr, right, op );
+						raiseErr( @c );
+						mov( op, eax );
+						if( eax = '*' ) then
+							
+							multiply( right, attr );
+
+						elseif( eax = tkn_divOp ) then
+							
+							divide( right, attr );
+							
+						elseif( eax = tkn_modOp ) then
+							
+							modulo( right, attr );
+							
+						elseif( eax = '/' ) then
+							
+							fDivision( right, attr );
+							
+						elseif( eax = tkn_shlOp ) then
+							
+							shiftLeft( right, attr );
+							
+						elseif( eax = tkn_shrOp ) then
+							
+							shiftRight( right, attr );
+								
+						elseif( eax = tkn_aShrOp ) then
+							
+							aShiftRight( right, attr );
+								
+						else
+							
+							HLAerror
+							( 
+								"Bad mulOp value (internal HLA error)"
+								nl 
+							);
+							raise( ex.hlaerr );
+								
+						endif;
+							
+					endfor;
+						
+					mov( ebp, esp );
+					pop( ebp );
+					ret( _parms_ );					
+					
+				end mulp;
+				//////////////////////////////////
+				
+			begin addp;
+			
+				push( ebp );
+				mov( esp, ebp );
+				sub( _vars_, esp );
+				assert( attr <> NULL );
+				
+				// mulp raises an exception if there was an error:
+				mulp( attr );
+				forever
+				
+					lex( esi );
+					mov( eax, op );
+					if( ebx <> addOp_tc ) then
+
+						// If we don't have an addOp token, then
+						// replace the previous token and leave
+						// returning success:
+						
+						reuseLastTkn();
+						break;
+						
+					endif;
+
+					lea( eax, right );
+					mulp( [eax] );
+
+					// See if we can make the two operands
+					// compatible with one another before
+					// doing the operation on them.
+					
+					coerceOperands( attr, right, op );
+					raiseErr( @c );
+					if( op = '+' ) then
+
+						addition( right, attr );
+
+					elseif( op = '-' ) then
+					
+						subtract( right, attr );
+						
+					else
+						
+						HLAerror
+						( 
+							"Bad addOp value (internal HLA error)"
+							nl 
+						);
+								
+						// Set to a dummy type to help prevent some
+						// cascading errors:
+						
+						mov( attr, ebx );
+						dummyAttr( [ebx] );
+						raise( ex.hlaerr );
+							
+					endif;
+						
+				endfor;					
+				mov( ebp, esp );
+				pop( ebp );
+				ret( _parms_ );					
+				
+			end addp;
+			///////////////////////////////////
+
+		
+		begin cmpp;
+			
+			push( ebp );
+			mov( esp, ebp );
+			sub( _vars_, esp );
+			assert( attr <> NULL );
+			
+			// addp raises an exception if there was an error.
+			addp( attr );
+			forever
+			
+				lex( esi );
+				if( eax = tkn_in ) then
+				
+					mov( tkn_inOp, eax );
+					mov( relOp_tc, ebx );
+					
+				endif;
+				mov( eax, op );
+				if( ebx <> relOp_tc ) then
+
+					// If we don't have an addOp token, then
+					// replace the previous token and leave
+					// returning success:
+					
+					reuseLastTkn();
+					break;
+					
+				endif;
+
+				lea( eax, right );
+				addp( [eax] );
+
+				// See if we can make the two operands
+				// compatible with one another before
+				// doing the operation on them.
+				
+				coerceOperands( attr, right, op );
+				raiseErr( @c );
+				mov( op, eax );
+				if( eax = '<' ) then
+					
+					lessThan( right, attr );
+
+				elseif( eax = tkn_lessEqual ) then
+					
+					lessEqual( right, attr );
+
+				elseif( eax = '=' ) then
+					
+					equals( right, attr );
+
+				elseif( eax = tkn_notEqual ) then
+					
+					notEquals( right, attr );
+
+				elseif( eax = '>' ) then
+					
+					greaterThan( right, attr );
+
+				elseif( eax = tkn_greaterEqual ) then
+					
+					greaterEqual( right, attr );
+
+				elseif( eax = tkn_inOp ) then
+					
+					charInSet( right, attr );
+
+				else
+					
+					HLAerror
+					( 
+						"Bad relOp value (internal HLA error)"
+						nl 
+					);
+					
+					// Set to a dummy type to help prevent some
+					// cascading errors:
+					
+					mov( attr, ebx );
+					canAccess( [ebx] );
+					dummyAttr( [ebx] );
+					raise( ex.hlaerr );
+						
+				endif;
+					
+			endfor;
+			mov( ebp, esp );
+			pop( ebp );
+			ret( _parms_ );					
+				
+		end cmpp;
+		///////////////////////////////////////
+
+	
+	begin andp;
+			
+		push( ebp );
+		mov( esp, ebp );
+		sub( _vars_, esp );
+		assert( attr <> NULL );
+		
+		// cmpp raises an exception if there was an error.
+		cmpp( attr );
+		forever
+		
+			lex( esi );
+			if( ebx <> andOp_tc ) then
+
+				// If we don't have an addOp token, then
+				// replace the previous token and leave
+				// returning success:
+				
+				reuseLastTkn();
+				break;
+				
+			endif;
+
+			lea( eax, right );
+			cmpp( [eax] );
+
+			// The only andOp possible is '&':
+			
+			logicalAnd( right, attr );
+				
+		endfor;
+		mov( ebp, esp );
+		pop( ebp );
+		ret( _parms_ );					
+				
+	end andp;
+
+	///////////////////////////////////////////
+
+	
+begin expr;
+			
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+	assert( attr <> NULL );
+	
+	// andp raises an exception if there is an error:
+	andp( attr );
+	forever
+	
+		lex( esi );
+		breakif( ebx <> orOp_tc );
+		mov( eax, op );
+		lea( eax, right );
+		andp( [eax] );
+		raiseErr( @c );
+
+		if( op = '|' ) then
+		
+			logicalOr( right, attr );
+			
+		elseif( op = '^' ) then
+		
+			logicalXor( right, attr );
+			
+		else
+			
+			HLAerror
+			( 
+				"Bad orOp value (internal HLA error)"
+				nl 
+			);
+			
+			// Set to a dummy type to help prevent some
+			// cascading errors:
+			
+			mov( attr, ebx );
+			canAccess( [ebx] );
+			dummyAttr( [ebx] );
+			raise( ex.hlaerr );
+				
+		endif;
+						
+	endfor;
+
+	// Check for << <expr> DUP <expr> >> here:
+
+	if( eax = tkn_dup ) then
+
+		// Allocate string storage to hold a temporary type name, in
+
+		str.talloc( 256 );
+		mov( eax, dummyName );
+
+
+		// Okay, we better have <expr> dup <array_expr> here.
+		// The expression we've already processed had better be
+		// a small number.
+
+		mov( attr, ebx );
+		canAccess( [ebx] );
+		mov( attrEBX.pType, al );
+		if( !isSmallNum( al )) then
+
+			HLAerror
+			(
+				"Expression preceding DUP must be a small integer value" nl
+			);
+			raise( ex.hlaerr );
+
+		endif;
+		if( attrEBX.int32_vt = 0 || (isInt( al ) && attrEBX.int32_vt < 0) ) then
+
+			HLAerror
+			(
+				"Expression preceding DUP must be greater than zero" nl
+			);
+			raise( ex.hlaerr );
+
+		endif;
+
+		// Save the duplicate value so we can generate the specified
+		// number of array elements later:
+
+		mov( attrEBX.dword_vt, eax );
+		mov( eax, arrayCnt );
+
+		// Grab the constant expression following the DUP token:
+
+		expr( attr );
+
+		// The result had better be an array expression, else we've got
+		// an error:
+
+		mov( attr, ebx );
+		canAccess( [ebx] );
+		if( attrEBX.pType <> Array_pt ) then
+
+			HLAerror
+			(
+				"Expression after DUP operator must be an array expression"
+				nl
+			);
+			raise( ex.hlaerr );
+
+		endif;
+
+
+		// Okay, now we've got to make "arrayCnt" copies of the array constant.
+
+		mov( attrEBX.numElements, eax );	// Compute number of new 
+		intmul( arrayCnt, eax );			// array elements.
+		mov( eax, ecx );
+		mov( eax, totalCnt );
+
+		intmul( @size( attr_t ), eax );		// Allocate storage for new array.
+		malloc( eax );
+		mov( attrEBX.numElements, edx );	// # of old elements.
+		push( eax );						// Save address for later.		
+
+		push( esi );
+		push( edi );
+		mov( eax, edi );					// Destination for new array data.
+		mov( attrEBX.arrayValues_vt, esi );	// Source of array data.
+		mov( (type attr_t [esi]).symType, eax );
+		mov( eax, arrayType );				// Save element type for later.
+		while( ecx > 0 ) do
+
+
+			mov( (type attr_t [esi]).pType, al );
+			deepCopy
+			(
+				(type attr_t [esi]),
+				al,
+				(type attr_t [esi]).symType,
+		  		(type attr_t [edi] )
+			);
+			add( @size( attr_t ), esi );
+			add( @size( attr_t ), edi );
+			dec( ecx );
+			dec( edx );
+			if( @z ) then
+
+				mov( attrEBX.arrayValues_vt, esi );	// Source of array data.
+				mov( attrEBX.numElements, edx );	// # of old elements.
+
+			endif;
+
+		endwhile;
+		pop( edi );
+		pop( esi );
+
+		// Save type info so we can restore it after freeing the
+		// array storage:
+
+		freeAttr( attrEBX.arrayValues_vt );	// Free old storage
+		pop( eax );							// Pointer to new array data.
+
+		// Sneak this type declaration into the global
+		// symbol table:
+
+		push( curHashTable );		// Save these, to restore
+		push( curOwner );			//  them later.
+
+		// Continue saving type info:
+
+		mov( eax, attrEBX.arrayValues_vt );
+		push( ebx );
+		mov( attrEBX.symType, ecx );
+
+		// We need to create a dummy name for
+		// the anonymous array type that we're
+		// about to create.  This is of the form:
+		//
+		//	"@arrayXXX"
+		//
+		// where XXX is some unique numeric value.
+		// Note the '@' at the beginning of the
+		// string, this ensures that the program
+		// can never reference this symbol directly.
+		
+		makeLabel( "@arrayExpr" );
+
+		// lookupLocal is called just to compute the leaf
+		// node value in EBX:
+
+		push( eax );
+		computeHash( eax );
+		mov( eax, ebx );
+		mov( [esp], eax );
+		lookupLocal( eax, eax, ebx );
+		pop( eax );
+
+		// Create a symbol table entry for the anonymous
+		// type:
+		
+		enterType
+		(
+			eax,
+			eax,
+			NULL,
+			Array_pt,
+			ecx,
+			curOwner,
+			[ebx]
+		);
+		canAccess( [eax] );
+		pop( ebx );			// Retrieve constant pointer
+		canAccess( [ebx] );
+		mov( eax, attrEBX.symType );
+		mov( arrayType, edx );
+		mov( edx, symEAX.baseType );
+		//mov( arrayCnt, ecx );
+		mov( totalCnt, ecx );
+		mov( ecx, symEAX.numElements );
+		intmul( symEAX.objectSize, ecx );
+		mov( ecx, symEAX.objectSize );
+		mov( totalCnt, eax );
+		mov( eax, attrEBX.numElements );
+
+		// Restore original symbol table:
+
+		pop( curOwner );
+		pop( curHashTable );
+
+
+	else
+
+		reuseLastTkn();
+
+	endif;
+	mov( ebp, esp );
+	pop( ebp );
+	ret( _parms_ );					
+				
+end expr;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// constExpr-
+//	Called to parse constant expressions (only).
+//
+// Returns-
+//
+//	carry set/clr to indicate failure/success.
+//	If success, the attributes of the constant operand are stored in attr.
+
+//proc( "constExpr" )
+procedure constExpr( var attr:attr_t );
+begin constExpr;
+
+	assert( attr <> NULL );
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	expr( attr );
+	raiseErr( @c );
+
+	// Verify that the expression returned is a constant expressions.
+
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	if( attrEBX.symClass <> Constant_ct ) then
+
+		HLAerror
+		( 
+			"Expected a constant expression (was memory expr)" nl 
+		);
+		raise( ex.hlaerr );
+
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+		
+end constExpr;
+
+																			   
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// testExpr-
+//	Similar to constExpr, but this guy only checks to see if an expression
+//	is a valid constant expression. This function stores true or false into
+//	the attr variable passed in, depending on whether the expression is valid.
+//
+// Returns:
+//
+//	True/false in "attr" parameter based on the validity of the constant
+//	expression that it parses. This function also returns carry set if
+//	there was an error in the expression (carry clear if no error).
+
+
+//proc( "testExpr" )
+procedure testExpr( var attr:attr_t );
+var
+	exprResult	:boolean;
+	align(4);
+	saveESI		:dword;
+	saveEDI		:dword;
+	resultAttr	:attr_t;
+	 
+begin testExpr;
+
+	assert( attr <> NULL );
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	// Initialized dummy object to hold return result.
+
+	defaultAttr( resultAttr );
+
+	// Initialize return result (assume it's invalid )
+
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	defaultAttr( attrEBX );
+	mov( Boolean_pt, attrEBX.pType );
+	mov( &boolean_ste, attrEBX.symType );
+	mov( false, attrEBX.boolean_vt );
+
+	movzx( reportErrors, eax );	// Preserve reportErrors
+	push( eax );
+	mov( false, reportErrors );	// Go quiet on this call to expr
+	mov( false, exprResult );	// Assume it's not a valid expression.
+	try
+
+		mov( esi, saveESI );
+		mov( edi, saveEDI );
+		expr( resultAttr );
+		if( @nc ) then	// Just in case we missed an error return.
+			if( resultAttr.symClass = Constant_ct ) then
+			
+				// It's a valid expression, so return true as
+				// our function result:
+
+				mov( true, exprResult );
+							
+			endif;
+
+		endif;
+		freeAttr( resultAttr );
+		clc();
+
+
+      // If there was an error processing the exception, then
+	  // return false as the function result (we've already set
+	  // exprResult to false, so we don't have to do anything
+	  // except catch the following exceptions:
+
+	  exception( ex.hlaerr );
+
+		mov( saveESI, esi );
+		mov( saveEDI, edi );
+
+	endtry;
+
+	pop( eax );	// Retrieve saved reportErrors value and restore it
+	mov( al, reportErrors );
+
+	// Set the return result:
+
+	mov( attr, ebx );
+	mov( exprResult, al );
+	mov( al, attrEBX.boolean_vt );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+		
+end testExpr;
+
+																			   
+//////////////////////////////////////////////////////////////////////////////
+//
+// memory-
+//
+//	Used to parse an expression that must be a memory operand.
+//
+// Returns-
+//
+//	carry set/clr to indicate failure/success.
+//	If success, the attributes of the memory operand are stored in attr.
+//proc( "memory" )
+procedure memory( var attr:attr_t );
+var
+	error	:boolean;
+	 
+begin memory;
+
+	assert( attr <> NULL );
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	mov( attr, ebx );
+	mov( true, error );	// Assume an error.
+	try
+		expr( attr );
+		if( @nc ) then	// Just in case we missed an error condition.
+
+			// Verify that the expression returned is a memory address.
+
+			mov( false, error ); // Assume no error.
+			mov( attr, ebx );
+			canAccess( [ebx] );
+			if( attrEBX.symClass <> Memory_ct ) then
+
+				HLAerror( "Expected a memory address expression "
+				"(was constant expr)" nl );
+				mov( true, error );
+
+			endif;
+
+		endif;
+	
+	  // If an expected exception comes along, just ignore it
+	  // (because we're already assuming an error occurs );
+
+	  exception( ex.hlaerr );
+
+	endtry;
+	if( error ) then
+
+		HLAerror( "Error in memory expression" nl );
+
+		// Fake a constant to prevent cascading errors:
+		
+		dummyAttr( attr );
+
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	shr( 1, error );	// Put error status in carry flag.
+	
+end memory;
+
+
+																			   
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// testMemory-
+//	Similar to memory, but this guy only checks to see if an expression
+//	is a valid memory expression. This function stores true or false into
+//	the attr variable passed in, depending on whether the expression is valid.
+//
+// Returns:
+//
+//	True/false in "attr" parameter based on the validity of the memory
+//	expression that it parses. This function also returns carry set if
+//	there was an error in the expression (carry clear if no error).
+
+
+//proc( "testMemory" )
+procedure testMemory( var attr:attr_t );
+var
+	exprResult	:boolean;
+	align(4);
+	resultAttr	:attr_t;
+	 
+begin testMemory;
+
+	assert( attr <> NULL );
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	// Initialized dummy object to hold return result.
+
+	defaultAttr( resultAttr );
+
+	// Initialize return result (assume it's invalid )
+
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	defaultAttr( attrEBX );
+	mov( Boolean_pt, attrEBX.pType );
+	mov( &boolean_ste, attrEBX.symType );
+	mov( false, attrEBX.boolean_vt );
+
+	movzx( reportErrors, eax );	// Preserve reportErrors
+	push( eax );
+	mov( false, reportErrors );	// Go quiet on this call to expr
+	mov( false, exprResult );	// Assume it's not a valid expression.
+	try
+
+		expr( resultAttr );
+		if( @nc ) then
+		
+			if( resultAttr.symClass = Memory_ct ) then
+			
+				// It's a valid memory address, so return true as
+				// our function result:
+
+				mov( true, exprResult );
+							
+			endif;
+			freeAttr( resultAttr );
+			clc();
+
+		endif;
+
+      // If there was an error processing the exception, then
+	  // return false as the function result (we've already set
+	  // exprResult to false, so we don't have to do anything
+	  // except catch the following exceptions:
+
+	  exception( ex.hlaerr );
+
+	endtry;
+
+	pop( eax );	// Retrieve saved reportErrors value and restore it
+	mov( al, reportErrors );
+
+	// Set the return result:
+
+	mov( attr, ebx );
+	canAccess( [ebx] );
+	mov( exprResult, al );
+	mov( al, attrEBX.boolean_vt );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+		
+end testMemory;
+
+
+end exprUnit;

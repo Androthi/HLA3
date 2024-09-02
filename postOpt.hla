@@ -1,0 +1,15 @@
+unit postOptUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+procedure postOptimizer;
+begin postOptimizer;
+
+	mov( true, eax );		// Return true
+
+end postOptimizer;
+
+end postOptUnit;

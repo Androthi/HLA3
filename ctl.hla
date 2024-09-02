@@ -1,0 +1,4464 @@
+/************************************************************************/
+/*                                                                      */
+/* HLA Compile-time Language Module.                                    */
+/*                                                                      */
+/* This file contains routines that handle HLA compile-time statements. */
+/* These functions get called from the LEX.HLA and immediately return   */
+/* to the lexical analysis loop upon return. If one of these routines   */
+/* is really supposed to return a lexeme/token to the parser, then      */
+/* the routine must pop the return address off the stack and then       */
+/* return to the code at the new return address left on the stack.      */
+/*                                                                      */
+/************************************************************************/
+
+
+unit compileTimeLanguage;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;
+?@noframe := true;
+
+
+
+
+
+/*************************************************************/
+/*                                                           */
+/* checkCTstk-                                               */
+/*                                                           */
+/* This procedure checks the token on the top of the ctStack */
+/* to see if it matches the value in the "token" parameter.  */
+/* The "lexeme" string is the string form of the token we're */
+/* processing, the "expected" string is the lexeme of the    */
+/* token we expect to find on the stack (e.g., the lexeme    */
+/* form of "token").                                         */
+/*                                                           */
+/* Returns:                                                  */
+/* 	carry clear if a-okay.                                   */
+/* 	carry set if there was an error.                         */
+/*                                                           */
+/*************************************************************/
+
+//proc( "checkCTstk" )
+procedure checkCTstk( token:dword; lexeme:string; expected:string );
+	@frame;
+	@returns( "@nc" );
+
+begin checkCTstk;
+
+	// If there are files on the include stack, we've got to
+	// grab the ctSP value from the top of the include stack
+	// and ensure that the current ctSP value is greater than
+	// the value when the include file was opened. If there is
+	// no include file open, we need to ensure that there is
+	// *something* on the ctStack.
+
+	if( includeSP > 0 ) then	// Main file is at slot #0 in include stk.
+
+		assert( includeSP < MaxNestedIncludes );
+		intmul( @size( includeInfo_t ), includeSP, eax );
+		mov( includeStk.ctSP[ eax ], eax );
+
+	else
+
+		mov( -1, eax );
+
+	endif;
+
+	// Compare the current ctSP value against the value obtained above.
+
+	mov( ctSP, ebx );
+	assert( (type int32 ebx) < maxCTstk );
+	if( (type int32 ebx) > eax ) then
+
+		// Okay, we've got a decent item on the top of the
+		// compile-time statement stack. Compare the token
+		// passed in against the item on the top of the stack.
+
+		intmul( @size( ctStack_t ), ebx );
+		mov( ctStack.token[ebx], eax );
+		if( eax <> token ) then
+
+			mov( ctStack.lineNumber[ebx], eax ); 
+			HLAerror
+			( 
+				"Unmatched ",
+				lexeme,
+				" statement (matches compile-time statement "
+				"at line ",
+				(type uns32 eax),
+				")" nl
+			);
+			stc();
+			exit checkCTstk;
+
+		endif;
+
+	else // No corresponding item on the top of the ct stack.
+
+		HLAerror
+		( 
+			lexeme, 
+			" w/o corresponding ", 
+			expected, 
+			" in this file" nl 
+		);
+		stc();
+		exit checkCTstk;
+
+	endif;
+	clc();	// Return success
+
+end checkCTstk;
+
+
+/***************************************************/
+/*                                                 */
+/* pushCTstk-                                      */
+/*                                                 */
+/* 	Pushes a token onto the compile-time stack.    */
+/*                                                 */
+/* Returns:                                        */
+/* 	carry clear if successful, carry set if error. */
+/*                                                 */
+/***************************************************/
+
+//proc( "pushCTstk" )
+procedure pushCTstk( token:dword; textPosn:dword ); @frame; @returns( "@nc" );
+begin pushCTstk;
+
+	push( ebx );
+
+	inc( ctSP );
+	mov( ctSP, ebx );	// Bump up CT stack pointer by one.
+	if( ebx >= maxCTstk ) then
+
+		HLAerror
+		( 
+			"HLA Internal Error- compile-time language stack overflow" nl 
+		);
+		pop( ebx );
+		stc();
+		exit pushCTstk;
+
+	endif;
+	push( eax );
+	intmul( @size( ctStack_t ), ebx );
+	mov( lineNumber, eax );
+	mov( eax, ctStack.lineNumber[ ebx ] );
+	mov( fullFileName, eax );
+	mov( eax, ctStack.fileName[ ebx ] );
+	mov( textPosn, eax );
+	mov( eax, ctStack.textPtr[ ebx ] );
+	mov( token, ctStack.token[ ebx ] );
+
+	pop( eax );
+	pop( ebx );
+	clc();
+
+end pushCTstk;
+
+
+
+/*******************************************************************/
+/*                                                                 */
+/* pushFORstk-                                                     */
+/*                                                                 */
+/* Similar to pushCTstk, except it pushes data on the compile-time */
+/* statement stack for a #FOR loop.                                */
+/*                                                                 */
+/*******************************************************************/
+
+//proc( "pushFORstk" )
+procedure pushFORstk
+( 
+		token		:dword; 
+		textPosn	:dword;
+	var	ctrlVar		:symNode_t;
+		increment	:dword;
+		endValue	:dword;
+	var listBase	:attr_t
+); 
+	@frame; 
+	@returns( "@nc" );
+
+var
+	bitCnt	:dword;
+
+begin pushFORstk;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	inc( ctSP );
+	mov( ctSP, ebx );	// Bump up CT stack pointer by one.
+	if( ebx >= maxCTstk ) then
+
+		HLAerror
+		( 
+			"HLA Internal Error- compile-time language stack overflow" nl 
+		);
+		stc();
+
+	else
+
+		intmul( @size( ctStack_t ), ebx );
+		mov( token, 		ctStack.token[ ebx ] );
+		mov( ctrlVar, 		ctStack.ctlVar[ ebx ] );
+		mov( textPosn, 		ctStack.textPtr[ ebx ] );
+		mov( endValue, 		ctStack.endValue[ ebx ] );
+		mov( fullFileName, 	ctStack.fileName[ ebx ] );
+		mov( lineNumber, 	ctStack.lineNumber[ ebx ] );
+		mov( increment,	 	ctStack.increment[ ebx ] );
+
+		mov( listBase, 		ecx );
+		mov( ecx, ctStack.object[ ebx ] );
+		if( ecx <> NULL ) then
+
+			// For the foreach loop, initialize the index (increment)
+			// with zero:
+
+			mov( 0, ctStack.increment[ ebx ] );
+
+			// Copy the composite data onto the stack:
+
+			push( esi );
+			push( edi );
+			push( ecx );
+			cld();
+			mov( ecx, esi );
+			mov( @size( attr_t ), ecx );
+			lea( edi, ctStack.composite[ebx] );
+			rep.movsb();
+			pop( ecx );
+			pop( edi );
+			pop( esi );
+
+			// If the object is a UTF-8 string, convert it to Unicode
+			// to make processing easier:
+			mov( attrECX.pType, dl );
+			if( dl = Utf8_pt ) then
+
+				utf8ToUnicode( attrECX.string_vt );
+				strfree( attrECX.string_vt );
+				mov( UString_pt, dl );
+				mov( eax, attrECX.string_vt );
+				mov( dl, attrECX.pType );
+				mov( &ustring_ste, attrECX.symType );
+
+			endif;
+			// Set up the other foreach fields based on the type
+			// of the composite object:
+
+			if( dl = Cset_pt ) then
+
+				// Note: for character sets, the ending value is always
+				// the total number of bits in the set.
+				 
+				bits.cnt( (type dword attrECX.cset_vt) );
+				mov( eax, bitCnt );
+				bits.cnt( (type dword attrECX.cset_vt)[4] );
+				add( eax, bitCnt );
+				bits.cnt( (type dword attrECX.cset_vt)[8] );
+				add( eax, bitCnt );
+				bits.cnt( (type dword attrECX.cset_vt)[12] );
+				add( bitCnt, eax );
+				mov( eax, ctStack.endValue[ ebx ] );
+				clc();
+
+			elseif( dl = XCset_pt ) then
+
+				// Note: for character sets, the ending value is always
+				// the total number of bits in the set.
+				 
+				bits.cnt( (type dword attrECX.cset_vt) );
+				mov( eax, bitCnt );
+				bits.cnt( (type dword attrECX.cset_vt)[4] );
+				add( eax, bitCnt );
+				bits.cnt( (type dword attrECX.cset_vt)[8] );
+				add( eax, bitCnt );
+				bits.cnt( (type dword attrECX.cset_vt)[12] );
+				add( bitCnt, eax );
+				mov( eax, ctStack.endValue[ ebx ] );
+				bits.cnt( (type dword attrECX.cset_vt)[16] );
+				add( bitCnt, eax );
+				mov( eax, ctStack.endValue[ ebx ] );
+				bits.cnt( (type dword attrECX.cset_vt)[20] );
+				add( bitCnt, eax );
+				mov( eax, ctStack.endValue[ ebx ] );
+				bits.cnt( (type dword attrECX.cset_vt)[24] );
+				add( bitCnt, eax );
+				mov( eax, ctStack.endValue[ ebx ] );
+				bits.cnt( (type dword attrECX.cset_vt)[28] );
+				add( bitCnt, eax );
+				mov( eax, ctStack.endValue[ ebx ] );
+				clc();
+
+			elseif( dl = String_pt || dl = UString_pt || dl = Utf8_pt ) then
+
+				// Get the string's length and use that as the
+				// end value for this iteration:
+
+				mov( attrECX.string_vt, edx );
+				mov( (type str.strRec [edx]).length, ctStack.endValue[ ebx ] );
+				clc();
+
+			elseif( dl = Array_pt ) then
+
+				// Use the number of elements as the end value for 
+				// this iteration:
+
+				mov( attrECX.numElements, ctStack.endValue[ ebx ] );
+				clc();
+
+			elseif( dl = Record_pt ) then
+
+				// Use the number of fields as the end value 
+				// for this iteration:
+
+				mov( attrECX.numFields, ctStack.endValue[ ebx ] );
+				clc();
+
+			else
+
+				HLAerror
+				(
+					"Internal HLA error (unexpected type in pushFORstk)"
+					nl
+				);
+				stc();
+
+			endif;
+
+		endif;
+
+	endif;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end pushFORstk;
+
+
+/*--------------------------------------------------**
+**                                                  **
+** doingPoundElseIF-                                **
+**                                                  **
+** Used to search for an ELSEIF when the IF boolean **
+** expression evaluated false and we've encountered **
+** a #elseif statement.                             **
+**                                                  **
+**--------------------------------------------------*/
+
+
+procedure doingPoundElseIF; @frame;
+var
+	pndIFLineNum	:uns32;
+	ifCnt			:uns32;
+	boolResult		:attr_t;
+	saveRTNC		:boolean;
+
+begin doingPoundElseIF;
+
+
+	mov( lineNumber, eax );
+	mov( eax, pndIFLineNum );
+	try
+
+		matchLParen();
+		raiseErr( @c );
+		constExpr( boolResult );
+		if
+		( 
+				boolResult.pType <> Boolean_pt 
+			||	!( isConstant( boolResult.symClass ) )
+		) then
+
+			HLAerror( "#ELSEIF expected a constant boolean expression" nl );
+			freeAttr( boolResult );
+			raise( ex.hlaerr );
+
+		endif;
+		mustMatchRParen();
+
+	  exception( ex.hlaerr );
+
+		mov( false, boolResult.boolean_vt );
+		reSync();
+
+	endtry;
+
+
+	// Okay, process or eat the statements:
+
+	if( !boolResult.boolean_vt ) then
+
+		// False conditional, need to skip all statements up to an
+		// #ELSEIF, #ELSE, or #ENDIF
+
+		mov( rtnCTtkns, al );
+		mov( al, saveRTNC );
+		mov( true, rtnCTtkns );
+		mov( 0, ifCnt );
+		repeat
+
+			fastLex( esi );
+			if( eax = tkn_pound_if ) then
+
+				inc( ifCnt );
+
+			elseif( eax = tkn_pound_endif && ifCnt > 0 ) then
+
+				dec( ifCnt );
+				mov( 0, eax ); // Mustn't leave tkn_pound_endif in EAX!
+
+			endif;
+
+
+		until
+		(
+			(
+					eax = tkn_pound_endif
+				||	eax = tkn_pound_elseif
+				||	eax = tkn_pound_else
+				||	eax = tkn_EOF
+			)
+			&&	ifCnt = 0
+		);
+		mov( saveRTNC, dl );
+		mov( dl, rtnCTtkns );
+
+		if( eax = tkn_EOF ) then
+
+			mov( pndIFLineNum, eax );
+			HLAwarning
+			( 
+				"Encountered EOF with outstanding #ELSEIF (line ",
+				(type uns32 eax ),
+				")" nl 
+			);
+
+		elseif( eax = tkn_pound_elseif ) then
+
+			doingPoundElseIF();
+
+		elseif( eax = tkn_pound_else ) then
+		
+			// If it's an else, we still need to push an #IF
+			// item onto the ctl stack so we can pop it later.
+			
+			pushCTstk( tkn_pound_if, esi );
+			
+		//else must be a #endif, so we do nothing.
+
+		endif;
+
+	else	
+		// True condition, so we need to push an entry
+		// onto the CT stack that we can pop when we
+		// see an #else or an #endif:
+
+		pushCTstk( tkn_pound_if, esi );
+
+	endif;
+
+end doingPoundElseIF;
+
+/*********************************************************/
+/*                                                       */
+/* doPoundIF-                                            */
+/*                                                       */
+/*  This routine handles the #IF compile-time statement. */
+/*                                                       */
+/*********************************************************/
+
+//proc( "doPoundIF" )
+procedure doPoundIF; 
+var
+	ifLineNum	:uns32;
+	ifCnt		:uns32;
+	boolResult	:attr_t;
+	saveRTNC	:boolean;
+
+
+begin doPoundIF;
+
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+
+	resetTknQ();
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_if, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called lexer.
+		ret();
+
+	endif;
+
+	// Note the current line number in case there is an error.
+
+	mov( lineNumber, eax );
+	mov( eax, ifLineNum );
+
+	mov( false, boolResult.boolean_vt );	// Assume result is false
+	try
+
+		matchLParen();
+		raiseErr( @c );
+
+		// Get the boolean expression after the #IF:
+
+		constExpr( boolResult );
+		if
+		( 
+				boolResult.pType <> Boolean_pt 
+			||	!( isConstant( boolResult.symClass ) )
+		) then
+
+			HLAerror( "#IF expected a constant boolean expression" nl );
+			freeAttr( boolResult );
+			raise( ex.hlaerr );
+
+		endif;
+		mustMatchRParen();
+
+	  // If there was an error above, then resync on the next newline:
+
+	  exception( ex.hlaerr );
+
+		mov( false, boolResult.boolean_vt );
+		reSync();
+
+	endtry;
+
+	// Okay, process or eat the statements:
+
+	if( boolResult.boolean_vt ) then
+	
+		// Okay, process the statements up to #ELSEIF, #ELSE, or #ENDIF:
+
+		pushCTstk( tkn_pound_if, esi );
+		mov( ebp, esp );
+		pop( ebp );
+		ret();
+
+	endif;
+
+	// False conditional, need to skip all statements up to an
+	// #ELSEIF, #ELSE, or #ENDIF
+
+	mov( rtnCTtkns, al );
+	mov( al, saveRTNC );
+	mov( true, rtnCTtkns );
+	mov( 0, ifCnt );
+	repeat
+
+		fastLex( esi );
+		if( eax = tkn_pound_if ) then
+
+			inc( ifCnt );
+
+		elseif( eax = tkn_pound_endif && ifCnt > 0 ) then
+
+			dec( ifCnt );
+			mov( 0, eax ); // Mustn't leave tkn_pound_endif in EAX!
+
+		endif;
+
+
+	until
+	(
+		(
+				eax = tkn_pound_endif
+			||	eax = tkn_pound_elseif
+			||	eax = tkn_pound_else
+			||	eax = tkn_EOF
+		)
+		&&	ifCnt = 0
+	);
+	mov( saveRTNC, dl );
+	mov( dl, rtnCTtkns );
+
+	if( eax = tkn_EOF ) then
+
+		HLAwarning
+		( 
+			"Encountered EOF with outstanding #IF (line ",
+			ifLineNum,
+			")" nl 
+		);
+
+	elseif( eax = tkn_pound_elseif ) then
+
+		doingPoundElseIF();
+
+
+	elseif( eax = tkn_pound_else ) then
+	
+		// If it's an else, we still need to push an #IF
+		// item onto the ctl stack so we can pop it later.
+		
+		pushCTstk( tkn_pound_if, esi );
+		
+	//else must be a #endif, so we do nothing.
+		
+	endif;
+			
+	// Note: #else just returns and starts processing statements until
+	// we hit the #endif
+
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+end doPoundIF;
+
+
+
+/*************************************************************/
+/*                                                           */
+/* doPoundElseIf-                                            */
+/*                                                           */
+/*  This routine handles the #ELSEIF compile-time statement. */
+/*                                                           */
+/*************************************************************/
+
+//proc( "doPoundElseIf" )
+procedure doPoundElseIf;
+var
+	ifLineNum	:uns32;
+	ifCnt		:uns32;
+	boolResult	:attr_t;
+	saveRTNC	:boolean;
+
+begin doPoundElseIf;
+
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+	
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_elseif, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called lexer.
+		ret();
+
+	endif;
+
+	if( !checkCTstk( tkn_pound_if, "#ELSEIF", "#IF" )) then
+	
+		mov( ebp, esp );
+		pop( ebp );
+		ret();
+		
+	endif;
+
+
+	mov( lineNumber, eax );
+	mov( eax, ifLineNum );
+
+	// If we get to this point, it's because we've been processing
+	// a true conditional. That means we need to skip everything up
+	// to the corresponding #endif.
+
+	mov( rtnCTtkns, al );
+	mov( al, saveRTNC );
+	mov( true, rtnCTtkns );
+	mov( 0, ifCnt );
+	repeat
+
+		fastLex( esi );
+		if( eax = tkn_pound_if ) then
+
+			inc( ifCnt );
+
+		elseif( eax = tkn_pound_endif && ifCnt > 0 ) then
+
+			dec( ifCnt );
+			mov( 0, eax ); // Mustn't leave tkn_pound_endif in EAX!
+
+		endif;
+
+
+	until
+	(
+		(
+				eax = tkn_pound_endif
+			||	eax = tkn_EOF
+		)
+		&&	ifCnt = 0
+	);
+	mov( saveRTNC, dl );
+	mov( dl, rtnCTtkns );
+
+	if( eax = tkn_EOF ) then
+
+		HLAwarning
+		( 
+			"Encountered EOF with outstanding #ELSEIF (line ",
+			ifLineNum,
+			")" nl 
+		);
+
+	else // must be tkn_pound_endif
+
+		dec( ctSP );
+
+	endif;
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+
+
+
+end doPoundElseIf;
+
+
+
+
+/**********************************************/
+/*                                            */
+/* doPoundElse-                               */
+/*                                            */
+/* This procedure handles the #ELSE statement */
+/*                                            */
+/**********************************************/
+
+//proc( "doPoundElse" )
+procedure doPoundElse;
+var
+	ifCnt		:uns32;
+	ifLineNum	:uns32;
+	saveRTNC	:boolean;
+
+begin doPoundElse;
+
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_else, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called lexer.
+		ret();
+
+	endif;
+
+	if( !checkCTstk( tkn_pound_if, "#ELSE", "#IF" )) then
+	
+		mov( ebp, esp );
+		pop( ebp );
+		ret();
+		
+	endif;
+	mov( lineNumber, eax );
+	mov( eax, ifLineNum );
+
+	// If we get to this point, it's because we've been processing
+	// a true conditional. That means we need to skip everything up
+	// to the corresponding #endif.
+
+	mov( rtnCTtkns, al );
+	mov( al, saveRTNC );
+	mov( true, rtnCTtkns );
+	mov( 0, ifCnt );
+	repeat
+
+		fastLex( esi );
+		if( eax = tkn_pound_if ) then
+
+			inc( ifCnt );
+
+		elseif( eax = tkn_pound_endif && ifCnt > 0 ) then
+
+			dec( ifCnt );
+			mov( 0, eax ); // Mustn't leave tkn_pound_endif in EAX!
+
+		endif;
+
+
+	until
+	(
+		(
+				eax = tkn_pound_endif
+			||	eax = tkn_EOF
+		)
+		&&	ifCnt = 0
+	);
+	mov( saveRTNC, dl );
+	mov( dl, rtnCTtkns );
+
+	if( eax = tkn_EOF ) then
+
+		HLAwarning
+		( 
+			"Encountered EOF with outstanding #ELSE (line ",
+			ifLineNum,
+			")" nl 
+		);
+
+	else // must be tkn_pound_endif
+
+		dec( ctSP );
+
+	endif;
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+end doPoundElse;
+
+
+
+/***********************************************/
+/*                                             */
+/* doPoundEndIf-                               */
+/*                                             */
+/* This procedure handles the #ENDIF statement */
+/*                                             */
+/***********************************************/
+
+//proc( "doPoundEndIf" )
+procedure doPoundEndIf;
+begin doPoundEndIf;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_endif, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		add( 4, esp );	// Return to whomever called lexer.
+		ret();
+
+	endif;
+
+	if( checkCTstk( tkn_pound_if, "#ENDIF", "#IF" )) then
+	
+		// If we successfully matched a #IF on the stack,
+		// then pop the stack because we're done with the
+		// #IF statement:
+
+		dec( ctSP );
+		
+	endif;
+	ret();
+
+end doPoundEndIf;
+
+
+
+/*************************************************************/
+/*                                                           */
+/* doPoundFor-                                               */
+/*                                                           */
+/* This procedure handles the #FOR( x := y to z ) .. #ENDFOR */
+/* and the #FOR( a := b downto c ) compile-time for loops    */
+/*                                                           */
+/*************************************************************/
+
+//proc( "doPoundFor" )
+procedure doPoundFor;
+
+var
+	textPosn		:dword;
+	increment		:int32;
+	forCtlVar		:symNodePtr_t;
+	forLineNum		:int32;
+	forCnt			:int32;
+	forInitial		:attr_t;
+	forEnding		:attr_t;
+	forAttr			:attr_t;
+	saveRTNC		:boolean;
+
+	//proc( "skipFor" )
+	procedure skipFor;
+	begin skipFor;
+
+		// False conditional, need to skip all statements up to an
+		// #ENDFOR
+
+		mov( rtnCTtkns, al );
+		mov( al, ebp::saveRTNC );
+		mov( true, rtnCTtkns );
+		mov( 0, ebp::forCnt );
+		repeat
+
+			fastLex( esi );
+			if( eax = tkn_pound_for ) then
+
+				inc( ebp::forCnt );
+
+			elseif( eax = tkn_pound_endfor && ebp::forCnt > 0 ) then
+
+				dec( ebp::forCnt );
+				mov( 0, eax ); // Mustn't leave tkn_pound_endfor in EAX!
+
+			endif;
+
+
+		until
+		(
+			(
+					eax = tkn_pound_endfor
+				||	eax = tkn_EOF
+			)
+			&&	ebp::forCnt = 0
+		);
+		mov( ebp::saveRTNC, dl );
+		mov( dl, rtnCTtkns );
+
+		if( eax = tkn_EOF ) then
+
+			mov( ebp::forLineNum, eax );
+			HLAwarning
+			( 
+				"Encountered EOF with outstanding #FOR (line ",
+				(type uns32 eax),
+				")" nl 
+			);
+
+
+		endif;
+		ret();
+
+	end skipFor;
+
+
+
+begin doPoundFor;
+
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+	resetTknQ();
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_for, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called lexer.
+		ret();
+
+	endif;
+
+	try
+
+
+		mov( lineNumber, forLineNum );
+		mov( esi, textPosn );
+
+		matchLParen();
+		raiseErr( @c );
+
+		lex( esi );		// Grab the loop control variable
+		if( ebx <> ID_tc ) then
+
+			HLAerror
+			( 
+				"Expected an identifier for the #FOR loop control variable "
+				"found "
+			);
+			dumpLexeme();
+			HLAerror2( " instead" nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+		// Initialize a default ATTR value we can use to initialize the
+		// #FOR loop control variable:
+
+		defaultAttr( forAttr );
+		mov( 0, forAttr.int32_vt );
+		mov( 0, forAttr.numElements );
+		mov( &int32_ste, forAttr.symType );
+		mov( Int32_pt, forAttr.pType );
+		mov( Constant_ct, forAttr.symClass );
+
+		// Okay, we've got an identifier.  What to do with it?
+		//
+		//	1. If it's local, and it's a VAL object, use it.
+		//	2. If it's local, and it's not a VAL object, it's an error.
+		//	3. If it's global, and it's a VAL object, use it.
+		//	4. If it's global, and it's not a VAL object, create a local VAL object.
+		//	5. If it's undefined, create a local VAL object.
+
+		if( eax = tkn_undefID || tokenECX.attr.symClass <> Value_ct ) then
+
+			if( eax = tkn_localID ) then
+
+				// Local ID that is not a VAL object. This is an error.
+
+				HLAerror
+				( 
+					"Duplicate symbol definition, "
+					"#FOR requires a VAL identifier" 
+					nl 
+				);
+				raise( ex.hlaerr );
+
+			endif;
+			
+			// If this is an undefined symbol, we need to get the leaf node
+			// to link this symbol off of in the binary search tree. Call
+			// lookupLocal to do this. The leaf node address is in EBX.
+
+			lookupLocal( tokenECX.trueName, tokenECX.lcName, tokenECX.hashValue );
+			
+			// If we've got a non-Value_ct global symbol or an undefined ID.
+			// Create a local Value_ct symbol here.
+
+			enterVal
+			(
+				tokenECX.trueName,
+				tokenECX.lcName,
+				NULL,
+				&int32_ste,
+				forAttr,
+				curOwner,
+				[ebx]
+			);
+
+		else	// It's a defined Value_ct object. Just use it.
+
+			mov( tokenECX.symNode, eax );
+
+		endif;
+		mov( eax, forCtlVar );
+
+		// Okay, move on to the next token. It's either ":=" or tkn_in.
+
+		lex( esi );
+		if( eax = tkn_assign ) then
+
+			// We've got a standard #FOR loop.
+
+			constExpr( forInitial );
+			
+			// See if we've got a reasonable type for the initial expression:
+
+			mov( forInitial.symType, edx );
+			canAccess( [edx] );
+			mov( symEDX.pType, al );
+			if( !isSmallNum( al ) && (al < Boolean_pt || al > Unicode_pt) ) then
+
+				HLAerror
+				(
+					"Illegal initial value for #FOR. Must be a small integer"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+			if( al in Boolean_pt..Unicode_pt ) then
+
+				mov( forCtlVar, edx );
+				mov( al, symEDX.pType );
+				mov( forInitial.symType, eax );
+				mov( eax, symEDX.symType );
+
+			endif;
+
+			// Grab the "to" or "downto" reserved word:
+
+			lex( esi );
+			if( eax = tkn_to ) then
+
+				mov( 1, increment );
+
+			elseif( eax = tkn_downto ) then
+
+				mov( -1, increment );
+
+			else // syntax error
+
+				HLAerror( "Syntax error in #FOR: expected 'to' or 'downto'" nl );
+				raise( ex.hlaerr );
+
+			endif;
+
+			// Okay, get the ending expression value:
+
+			constExpr( forEnding );
+			
+			// See if we've got a reasonable type for the ending expression:
+
+			mov( forCtlVar, edx );
+			if( !makeCompatible( symEDX.symType,forEnding ) ) then
+
+				HLAerror
+				( 
+					"Starting and ending values for #FOR are incompatible" 
+					nl 
+				);
+				raise( ex.hlaerr );
+
+			endif;
+
+			// Get the closing parenthesis:
+
+			matchRParen();
+			if( @c ) then
+
+				HLAerror
+				( 
+					"#FOR at line ",
+					forLineNum,
+					" is missing closing parenthesis" 
+					nl 
+				);
+
+			endif;
+			
+			// Well, the syntax is correct and the values seem reasonable.
+			// Now let's determine if we have to execute the loop body at
+			// least once.
+
+			if( increment = 1 ) then 
+			
+				// 'to' was specified
+
+				mov( forInitial.int32_vt, eax );
+				if( (type int32 eax) > forEnding.int32_vt ) then
+
+					// Initial value is greater than ending value,
+					// so don't bother executing the loop's body:
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			else // 'downto' was specified
+
+				mov( forInitial.int32_vt, eax );
+				if( (type int32 eax) < forEnding.int32_vt ) then
+
+					// Initial value is less than ending value,
+					// so don't bother executing the loop's body:
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			endif;
+
+			// Okay, we need to execute the loop's body at least
+			// once, so push a #FOR record onto the compile-time
+			// stack so we can deal with this when #ENDFOR comes
+			// along.
+			//
+			// Begin by initializing the loop control variable:
+
+			mov( forCtlVar, edx );
+			canAccess( [edx] );
+			mov( forInitial.int32_vt, symEDX.va.int32_vt );
+			mov( forInitial.int32_vt[4], symEDX.va.int32_vt[4] );
+			mov( forInitial.int32_vt[8], symEDX.va.int32_vt[8] );
+			mov( forInitial.int32_vt[12], symEDX.va.int32_vt[12] );
+
+			// Now push the stack entry:
+
+			pushFORstk
+			( 
+				tkn_pound_for,
+				esi,
+				forCtlVar,
+				increment,
+				forEnding.int32_vt, 
+				NULL	// This is a std #FOR loop, not the foreach version.
+			); 
+
+
+		elseif( eax = tkn_in ) then
+
+			// We've got a foreach version of the #FOR loop. Grab the
+			// expression following the "in" keyword and process it.
+
+			try
+
+				constExpr( forInitial );
+
+			  exception( ex.hlaerr );
+
+				HLAerror( "Expected a constant expression after 'in'" nl );
+				raise( ex.hlaerr );
+
+			endtry;
+
+			// For the foreach version of the #FOR loop, the expression
+			// must be a composite object.
+
+			mov( forInitial.pType, al );
+			if( al = Array_pt ) then
+
+				// Get the element base type and set the FOR loop control
+				// variable to this type:
+
+				mov( forCtlVar, ebx );
+
+				// Set up the iterator:
+
+				if( forInitial.numElements > 0 ) then
+
+					// Determine the type of the array element:
+
+					mov( forInitial.symType, eax );
+					canAccess( [eax] );
+					repeat
+						mov( eax, ecx );
+						mov( symEAX.symType, eax );
+					until( eax = 0 );
+
+					// Copy the first array element to the
+					// loop control variable:
+
+					mov( forInitial.arrayValues_vt, eax );
+					canAccess( [eax] );
+					deepCopy
+					( 
+						[eax],
+						symECX.pType, //symEAX.pType, 
+						symECX, //symEAX.symType,
+						symEBX.va 
+					);
+					mov( symECX.pType, al );
+					mov( al, symEBX.pType );
+					mov( ecx, symEBX.symType );
+
+					// Set up the compile-time stack element
+					// with the rest of the array data:
+
+					pushFORstk
+					( 
+						tkn_pound_for,
+						esi,
+						forCtlVar,
+						0,
+						forInitial.numElements, 
+						forInitial 
+					);
+
+
+				else  // No elements in the array to process.
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			elseif( al = Record_pt ) then
+
+				mov( forCtlVar, ebx );
+				canAccess( [ebx] );
+
+				// Set up the iterator:
+
+				if( forInitial.numFields > 0 ) then
+
+					// Copy the first array element to the
+					// loop control variable:
+
+					mov( forInitial.fieldValues_vt, eax );
+					canAccess( [eax] );
+					deepCopy
+					( 
+						[eax],
+						attrEAX.pType, 
+						attrEAX.symType,
+						symEBX.va 
+					);
+					mov( attrEAX.symType, edx );
+					canAccess( [edx] );
+					mov( symEDX.pType, al );
+					mov( al, symEBX.pType );
+					mov( edx, symEBX.symType );
+
+					// Set up the compile-time stack element
+					// with the rest of the record data:
+
+					pushFORstk
+					( 
+						tkn_pound_for,
+						esi,
+						forCtlVar,
+						0,
+						forInitial.numFields, 
+						forInitial 
+					);
+
+					 
+
+				else  // No fields in the record to process.
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			elseif( al = String_pt ) then
+
+				mov( forCtlVar, ebx );
+				canAccess( [ebx] );
+
+				// Set up the iterator:
+
+				mov( forInitial.string_vt, eax );
+				canAccess( [eax] );
+				mov( (type str.strRec [eax]).length, ecx );
+				if( ecx > 0 ) then
+
+					push( ecx ); // Save length
+
+					// Copy the first character to the
+					// loop control variable:
+
+					mov( forCtlVar, edx );
+					canAccess( [edx] );
+					movzx( (type char [eax]), ecx );
+					mov( ecx, symEDX.va.uns32_vt );
+
+					mov( Char_pt, symEDX.pType );
+					mov( &char_ste, symEDX.symType );
+
+					// Set up the compile-time stack element
+					// with the rest of the string data:
+
+					pop( ecx );
+					pushFORstk
+					( 
+						tkn_pound_for,
+						esi,
+						forCtlVar,
+						0,
+						ecx, 
+						forInitial 
+					);
+
+
+				else  // No elements in the array to process.
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			elseif( al = UString_pt ) then
+
+				mov( forCtlVar, ebx );
+				canAccess( [ebx] );
+
+				// Set up the iterator:
+
+				mov( forInitial.string_vt, eax );
+				canAccess( [eax] );
+				mov( (type str.strRec [eax]).length, ecx );
+				if( ecx > 0 ) then
+
+					push( ecx ); // Save length
+
+					// Copy the first character to the
+					// loop control variable:
+
+					mov( forCtlVar, edx );
+					canAccess( [edx] );
+					movzx( (type char [eax]), ecx );
+					mov( ecx, symEDX.va.uns32_vt );
+
+					mov( Unicode_pt, symEDX.pType );
+					mov( &unicode_ste, symEDX.symType );
+
+					// Set up the compile-time stack element
+					// with the rest of the string data:
+
+					pop( ecx );
+					pushFORstk
+					( 
+						tkn_pound_for,
+						esi,
+						forCtlVar,
+						0,
+						ecx, 
+						forInitial 
+					);
+
+
+				else  // No elements in the array to process.
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			elseif( al = Cset_pt || al = XCset_pt ) then
+
+
+				bits.cnt( (type dword forInitial.cset_vt) );
+				mov( eax, ecx );
+				bits.cnt( (type dword forInitial.cset_vt)[4] );
+				add( eax, ecx );
+				bits.cnt( (type dword forInitial.cset_vt)[8] );
+				add( eax, ecx );
+				bits.cnt( (type dword forInitial.cset_vt)[12] );
+				add( eax, ecx );
+				if( dl = XCset_pt ) then
+					
+					bits.cnt( (type dword forInitial.cset_vt) );
+					add( eax, ecx );
+					bits.cnt( (type dword forInitial.cset_vt)[4] );
+					add( eax, ecx );
+					bits.cnt( (type dword forInitial.cset_vt)[8] );
+					add( eax, ecx );
+					bits.cnt( (type dword forInitial.cset_vt)[12] );
+					add( eax, ecx );
+
+				endif;
+
+				// Set up the iterator:
+
+				if( ecx > 0 ) then	// We have at least one set bit.
+
+					// Extract the first character from the character set:
+
+
+					// Set up the compile-time stack element
+					// with the rest of the string data:
+
+					pushFORstk
+					( 
+						tkn_pound_for,
+						esi,
+						forCtlVar,
+						0,
+						0, 				// pushForStk will recompute this!
+						forInitial 
+					);
+
+					mov( ctSP, ebx );
+					assert( (type int32 ebx) < maxCTstk );
+					intmul( @size( ctStack_t ), ebx );
+					lea( ebx, ctStack.composite.cset_vt[ebx] );
+					cs.extract( [ebx] );
+					if( eax = -1 && dl = XCset_pt ) then
+
+						cs.extract( [ebx+16] );
+
+					endif;
+					// EAX now contains the extracted character.
+
+					mov( forCtlVar, edx );
+					canAccess( [edx] );
+					mov( eax, symEDX.va.uns32_vt );
+					mov( Char_pt, symEDX.pType );
+					mov( &char_ste, symEDX.symType );
+
+				else  // No elements in the array to process.
+
+					raise( ex.hlaerr );
+
+				endif;
+
+			else
+
+				HLAerror
+				( 
+					"#FOR with the 'in' clause expected a composite data type" 
+					nl 
+				);
+				raise( ex.hlaerr );
+
+
+			endif;
+
+			// Get the closing parenthesis for this #FOR loop:
+
+			mustMatchRParen();
+
+
+		else // syntax error
+
+			HLAerror( "Syntax error in #FOR loop (expected ':=' or 'in')" nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+	  exception( ex.hlaerr );
+		
+		skipFor();
+
+	endtry;
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+end doPoundFor;
+
+
+
+
+/*********************************************/
+/*                                           */
+/* doPoundEndFor-                            */
+/*                                           */
+/* Handles the #ENDFOR clause of a for loop. */
+/*                                           */
+/*********************************************/
+
+//proc( "doPoundEndFor" )
+procedure doPoundEndFor;
+begin doPoundEndFor;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_endfor, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	endif;
+	if( checkCTstk( tkn_pound_for, "#ENDFOR", "#FOR" )) then
+	
+		// If we successfully matched a #FOR on the stack,
+		// then increment/decrement the loop control variable
+		// (or do the foreach operation) and determine if
+		// we need to repeat the loop's body.
+
+
+		mov( ctSP, ebx );
+		assert( (type int32 ebx) < maxCTstk );
+		intmul( @size( ctStack_t ), ebx );
+		if( ctStack.object[ ebx ] = NULL ) then
+
+			// Standard #FOR loop
+
+			mov( ctStack.increment[ ebx ], eax );
+			if( eax = 1 ) then
+
+				// #FOR loop had a 'to'
+
+				mov( ctStack.ctlVar[ ebx ], ecx );
+				inc( (type symNode_t [ecx]).va.int32_vt );
+				mov( (type symNode_t [ecx]).va.int32_vt, eax );
+
+				if( (type int32 eax) <= ctStack.endValue[ ebx ] ) then
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // loop terminates now; pop item from stack
+
+					dec( ctSP );
+
+				endif;
+
+
+			else
+
+				// #FOR loop had a 'downto'
+
+				mov( ctStack.ctlVar[ ebx ], ecx );
+				canAccess( [ecx] );
+				dec( (type symNode_t [ecx]).va.int32_vt );
+				mov( (type symNode_t [ecx]).va.int32_vt, eax );
+
+				if( (type int32 eax) >= ctStack.endValue[ ebx ] ) then
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // loop terminates now; pop item from stack
+
+					dec( ctSP );
+
+				endif;
+
+			endif;
+
+		else // foreach version of #FOR loop:
+
+
+			mov( ctStack.composite.pType[ ebx ], al );
+			if( al = Array_pt ) then
+
+				// Begin by freeing the existing value:
+
+				mov( ctStack.ctlVar[ebx], edx );
+				canAccess( [edx] );
+				freeAttr( symEDX.va );
+
+				// Okay, move on to the next element:
+
+				inc( ctStack.increment[ ebx ] );
+				mov( ctStack.increment[ ebx ], eax );
+				if( eax < ctStack.endValue[ ebx ] ) then
+
+					// Fetch the next array element:
+
+					intmul( @size( attr_t ), eax );
+					add( ctStack.composite.arrayValues_vt[ ebx ], eax );
+					deepCopy
+					( 
+						[eax], 
+						symEDX.pType, 
+						symEDX.symType, 
+						symEDX.va 
+					);
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // we're done:
+
+					lea( ebx, ctStack.composite[ebx] );
+					freeAttr( [ebx] );
+					dec( ctSP );
+
+				endif;
+
+			elseif( al = Record_pt ) then
+
+				// Begin by freeing the existing value:
+
+				mov( ctStack.ctlVar[ebx], edx );
+				canAccess( [edx] );
+				freeAttr( symEDX.va );
+
+				// Okay, move on to the next field:
+
+				inc( ctStack.increment[ ebx ] );
+				mov( ctStack.increment[ ebx ], eax );
+				if( eax < ctStack.endValue[ ebx ] ) then
+
+					// Fetch the next record field:
+
+					intmul( @size( attr_t ), eax );
+					add( ctStack.composite.arrayValues_vt[ ebx ], eax );
+					deepCopy
+					( 
+						[eax], 
+						symEDX.pType, 
+						symEDX.symType, 
+						symEDX.va 
+					);
+
+					// We have to update the type of the FOR loop
+					// control variable:
+
+					mov( attrEAX.symType, ecx );
+					mov( ecx, symEDX.symType );
+					mov( attrEAX.pType, cl );
+					mov( cl, symEDX.pType );
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // we're done:
+
+					lea( ebx, ctStack.composite[ebx] );
+					freeAttr( [ebx] );
+					dec( ctSP );
+
+				endif;
+
+			elseif( al = String_pt ) then
+
+				// Okay, move on to the next character:
+
+				inc( ctStack.increment[ ebx ] );
+				mov( ctStack.increment[ ebx ], eax );
+				if( eax < ctStack.endValue[ ebx ] ) then
+
+					// Fetch the next array element:
+
+					add( ctStack.composite.string_vt[ ebx ], eax );
+					canAccess( [eax] );
+					movzx( (type char [eax]), ecx );
+					mov( ctStack.ctlVar, edx );
+					canAccess( [edx] );
+					mov( ecx, symEDX.va.uns32_vt );
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // we're done:
+
+					lea( ebx, ctStack.composite[ebx] );
+					freeAttr( [ebx] );
+					dec( ctSP );
+
+				endif;
+
+			elseif( al = UString_pt ) then
+
+				// Okay, move on to the next character:
+
+				add( 2, ctStack.increment[ ebx ] );
+				mov( ctStack.increment[ ebx ], eax );
+				if( eax < ctStack.endValue[ ebx ] ) then
+
+					// Fetch the next array element:
+
+					add( ctStack.composite.string_vt[ ebx ], eax );
+					movzx( (type word [eax]), ecx );
+					mov( ctStack.ctlVar, edx );
+					canAccess( [edx] );
+					mov( ecx, symEDX.va.uns32_vt );
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // we're done:
+
+					lea( ebx, ctStack.composite[ebx] );
+					freeAttr( [ebx] );
+					dec( ctSP );
+
+				endif;
+
+			elseif( al = Cset_pt || al = XCset_pt ) then
+
+				mov( al, dl );
+
+				// Okay, move on to the next character:
+
+				inc( ctStack.increment[ ebx ] );
+				mov( ctStack.increment[ ebx ], eax );
+				if( eax < ctStack.endValue[ ebx ] ) then
+
+					// Fetch the next character from the set:
+
+					lea( ecx, ctStack.composite.cset_vt[ebx] );
+					cs.extract( [ecx] );
+					if( eax = -1 && dl = XCset_pt ) then
+
+						cs.extract( [ecx+16] );
+
+					endif;
+
+					// EAX now contains the extracted character.
+
+					mov( ctStack.ctlVar, edx );
+					canAccess( [edx] );
+					mov( eax, symEDX.va.uns32_vt );
+
+					// We need to repeat the loop:
+
+					mov( ctStack.lineNumber[ebx], lineNumber );
+					mov( ctStack.fileName[ebx], fullFileName );
+					assert( fullFileName <> NULL );
+
+					mov( ctStack.textPtr[ebx], esi );
+					mov( esi, edi );
+
+				else // we're done:
+
+					lea( ebx, ctStack.composite[ebx] );
+					freeAttr( [ebx] );
+					dec( ctSP );
+
+				endif;
+			else
+
+				HLAerror( "Internal HLA error; unexpected pType" nl );
+				dec( ctSP );
+
+			endif;
+			
+
+		endif;
+
+		
+	endif;
+	ret();
+
+end doPoundEndFor;
+
+
+/********************************************************/
+/*                                                      */
+/* doPoundWhile-                                        */
+/*                                                      */
+/* This procedure handles the #WHILE( expr )..#ENDWHILE */
+/* compile-time loop.                                   */
+/*                                                      */
+/********************************************************/
+
+//proc( "doPoundWhile" )
+procedure doPoundWhile;
+var
+	whileLineNum	:int32;
+	whileCnt		:int32;
+	textPosn		:dword;
+	boolResult		:attr_t;
+	saveRTNC		:boolean;   
+
+	//proc( "skipWhile" )
+	procedure skipWhile;
+	begin skipWhile;
+
+		// False conditional, need to skip all statements up to an
+		// #ENDWHILE
+
+		mov( rtnCTtkns, al );
+		mov( al, ebp::saveRTNC );
+		mov( true, rtnCTtkns );
+		mov( 0, ebp::whileCnt );
+		repeat
+
+			fastLex( esi );
+			if( eax = tkn_pound_while ) then
+
+				inc( ebp::whileCnt );
+
+			elseif( eax = tkn_pound_endwhile && ebp::whileCnt > 0 ) then
+
+				dec( ebp::whileCnt );
+				mov( 0, eax ); // Mustn't leave tkn_pound_endwhile in EAX!
+
+			endif;
+
+
+		until
+		(
+			(
+					eax = tkn_pound_endwhile
+				||	eax = tkn_EOF
+			)
+			&&	ebp::whileCnt = 0
+		);
+		mov( ebp::saveRTNC, dl );
+		mov( dl, rtnCTtkns );
+
+		if( eax = tkn_EOF ) then
+
+			mov( ebp::whileLineNum, eax );
+			HLAwarning
+			( 
+				"Encountered EOF with outstanding #WHILE (line ",
+				(type uns32 eax),
+				")" nl 
+			);
+
+
+		endif;
+		ret();
+
+	end skipWhile;
+
+begin doPoundWhile;
+
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+	resetTknQ();
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_while, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// return to whomever called the lexer.
+		ret();
+
+	endif;
+
+	mov( lineNumber, eax );
+	mov( eax, whileLineNum );
+	mov( esi, textPosn );
+
+	try
+
+		matchLParen();
+		raiseErr( @c );
+
+		constExpr( boolResult );
+		if
+		( 
+				boolResult.pType <> Boolean_pt 
+			||	!( isConstant( boolResult.symClass ) )
+		) then
+
+			HLAerror( "#WHILE expected a constant boolean expression" nl );
+			freeAttr( boolResult );
+			raise( ex.hlaerr );
+
+		endif;
+		mustMatchRParen();
+
+
+		// Okay, process or eat the statements:
+
+		if( boolResult.boolean_vt ) then
+
+			// Okay, process the statements up to #ENDWHILE:
+
+			pushCTstk( tkn_pound_while, textPosn );
+			mov( ebp, esp );
+			pop( ebp );
+			ret();
+
+		endif;
+
+		// False conditional, need to skip all statements up to an
+		// #ENDWHILE
+
+		skipWhile();
+
+	  exception( ex.hlaerr );
+		
+		skipWhile();
+
+	endtry;
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+end doPoundWhile;
+
+
+
+/******************************************************/
+/*                                                    */
+/* doPoundEndWhile-                                   */
+/*                                                    */
+/* This procedure handles the #ENDWHILE clause of the */
+/* #WHILE loop.                                       */
+/*                                                    */
+/******************************************************/
+
+//proc( "doPoundEndWhile" )
+procedure doPoundEndWhile;
+begin doPoundEndWhile;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_endwhile, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	endif;
+	if( checkCTstk( tkn_pound_while, "#ENDWHILE", "#WHILE" )) then
+	
+		// If we successfully matched a #WHILE on the stack,
+		// then pop the stack and reset the lexer pointer to
+		// the start of the while loop, then repeat.
+
+		mov( ctSP, ebx );
+		assert( (type int32 ebx) < maxCTstk );
+		intmul( @size( ctStack_t ), ebx );
+
+		mov( ctStack.lineNumber[ebx], eax );
+		mov( eax, lineNumber );
+		mov( ctStack.fileName[ebx], eax );
+		mov( eax, fullFileName );
+		assert( fullFileName <> NULL );
+
+		mov( ctStack.textPtr[ebx], esi );
+		mov( esi, edi );
+		dec( ctSP );
+		jmp doPoundWhile;
+		
+	endif;
+	ret();
+
+end doPoundEndWhile;
+
+
+/***********************************************/
+/*                                             */
+/* doPoundMacro-                               */
+/*                                             */
+/* This procedure handles a macro declaration. */
+/*                                             */
+/***********************************************/
+
+//proc( "doPoundMacro" )
+procedure doPoundMacro;
+var
+	macroLineNum		:uns32;
+	keywordLineNum		:uns32;
+	terminatorLineNum	:uns32;
+	macroCnt			:uns32;
+	theMacro			:symNodePtr_t;
+	localMacro			:symNodePtr_t;
+	macroHash			:dword;
+	macroLexLevel		:dword;
+	theKeyword			:symNodePtr_t;
+	localKeyword		:symNodePtr_t;
+	theTerminator		:symNodePtr_t;
+	localTerminator		:symNodePtr_t;
+	_fwdPtrList			:dword;
+	_curHashTable		:dword;
+	_curOwner			:dword;
+	_curLexLevel		:dword;
+	startText			:dword;
+	startKeyword		:dword;
+	startTerminator		:dword;
+	
+	hasKeyword			:boolean;
+	firstKeyword		:boolean;
+	saveRTNC			:boolean;
+	
+	
+	// skipMacro- skips over text in the source file until
+	// it finds the #endmacro that corresponds to the 
+	// current #macro declaration.
+	
+	//proc( "skipMacro" )
+	procedure skipMacro( macroLineNum:uns32 ); @frame;
+	var
+		macroCnt	:uns32;
+		saveRTNC	:boolean;
+
+	begin skipMacro;
+
+		// Error in macro declaration, need to skip all statements up to an
+		// #ENDMACRO. Set rtnCTtkns true so we don't process CTL items:
+
+		mov( rtnCTtkns, al );
+		mov( al, saveRTNC );
+		mov( true, rtnCTtkns );
+		
+		// Keep track of nested macro definitions via macroCnt:
+		
+		mov( 0, macroCnt );
+		
+		// Skip tokens to the appropriate #endmacro (or EOF):
+		
+		repeat
+
+			fastLex( esi );
+			if( eax = tkn_pound_macro ) then
+
+				inc( macroCnt );
+
+			elseif( eax = tkn_pound_endmacro && macroCnt > 0 ) then
+
+				dec( macroCnt );
+				mov( 0, eax ); // Mustn't leave tkn_pound_endmacro in EAX!
+
+			endif;
+
+
+		until
+		(
+				(
+						eax = tkn_pound_endmacro
+					&&	macroCnt = 0
+				)
+			||	eax = tkn_EOF
+			
+		);
+		mov( saveRTNC, dl );
+		mov( dl, rtnCTtkns );
+
+		// Report an error if we didn't find the end of the macro
+		// before the end of the file:
+		
+		if( eax = tkn_EOF ) then
+
+			HLAwarning
+			( 
+				"Encountered EOF with outstanding #macro (line ",
+				macroLineNum,
+				")" nl 
+			);
+
+		endif;
+
+	end skipMacro;
+
+
+
+	// getMacroBody- skips over text in the source file until
+	// it finds a #keyword, #terminator, or #endmacro keyword
+	// corresponding to the current #macro declaration.
+	
+	//proc( "getMacroBody" )
+	procedure getMacroBody( macType:string; macroLineNum:uns32 ); @frame;
+	var
+		macroCnt	:uns32;
+		saveRTNC	:boolean;
+		
+	begin getMacroBody;
+	
+		// Set rtnCTtkns true so we don't process CTL items:
+
+		mov( rtnCTtkns, al );
+		mov( al, saveRTNC );
+		mov( true, rtnCTtkns );
+		
+		// Keep track of nested macro definitions via macroCnt:
+		
+		mov( 0, macroCnt );
+		
+		// Skip tokens to the appropriate #endmacro (or EOF):
+		
+		repeat
+
+			fastLex( esi );
+			if( eax = tkn_pound_macro ) then
+
+				inc( macroCnt );
+
+			elseif( eax = tkn_pound_endmacro && macroCnt > 0 ) then
+
+				dec( macroCnt );
+				mov( 0, eax ); // Mustn't leave tkn_pound_endmacro in EAX!
+
+			endif;
+
+		until
+		(
+				(
+						(
+								eax = tkn_pound_endmacro
+							||	eax = tkn_pound_keyword
+							||	eax = tkn_pound_terminator
+						)
+					&&	macroCnt = 0
+				)
+			||	eax = tkn_EOF
+		);
+		mov( saveRTNC, dl );
+		mov( dl, rtnCTtkns );
+
+		// Report an error if we didn't find the end of the macro
+		// before the end of the file:
+		
+		if( eax = tkn_EOF ) then
+
+			HLAerror
+			( 
+				"Encountered EOF with outstanding ",
+				macType,
+				" (line ",
+				macroLineNum,
+				")" nl 
+			);
+
+		endif;
+
+	end getMacroBody;
+	
+	
+
+	// getMacro-
+	//	Processes a macro declaration and enters the
+	// macro into the symbol table.
+	
+	//proc( "getMacro" )
+	procedure getMacro( macClassType: classType_t; macLnNum:uns32 ); 
+		@frame; 
+		@returns( "@nc" );
+		
+	var
+		macName			:string;
+		maclcName		:string;
+		macHash			:dword;
+		classTypeStr	:string;
+		glbSymEntry		:symNodePtr_t;
+		lclSymEntry		:symNodePtr_t;
+		lclMacSym		:symNodePtr_t;
+		macAttr			:attr_t;
+		first			:boolean;
+	
+	begin getMacro;
+	
+		// Initialize classTypeStr in case we have an error.
+		
+		if( macClassType = Macro_ct ) then
+		
+			lea( eax, "#macro" );
+			
+		elseif( macClassType = Keyword_ct ) then
+		
+			lea( eax, "#keyword" );
+			
+		else
+		
+			lea( eax, "#terminator" );
+			
+		endif;
+		mov( eax, classTypeStr );
+	
+		// Okay, grab the identifier following the
+		// #macro, #keyword, or #terminator reserved word:
+		
+		lex( esi );
+		if( ebx <> ID_tc ) then
+
+			HLAerror
+			( 
+				"Expected an identifier after ",
+				classTypeStr,
+				nl 
+			);
+			skipMacro( macLnNum );
+			stc();
+			exit getMacro;
+
+		endif;
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+
+			// Local ID. This means we've got a duplicate symbol.
+
+			HLAerror
+			( 
+				"Duplicate symbol definition in ",
+				classTypeStr,
+				" declaration"
+				nl 
+			);
+
+			skipMacro( macLnNum );
+			stc();
+			exit getMacro;
+
+		endif;
+
+
+		// Save the procedure's name locally so we can easily
+		// refer to it later.
+
+		if( tokenECX.alloc ) then
+
+			mov( tokenECX.trueName, eax );
+			canAccess( [eax] );
+			mov( eax, macName );
+			mov( tokenECX.lcName, eax );
+			canAccess( [eax] );
+			mov( eax, maclcName );
+
+		else
+
+			// If the macro name wasn't allocated on the heap,
+			// do so now because we need a unique, allocated,
+			// copy to put into the symbol table.
+
+			str.a_cpy( tokenECX.trueName );
+			mov( eax, macName );
+			str.a_cpy( tokenECX.lcName );
+			mov( eax, maclcName );
+
+		endif;
+		mov( tokenECX.hashValue, eax );
+		mov( eax, macHash );
+		
+		// The following call to lookupLocal will (probably) return NULL.
+		// We call it just to get the leaf node value into EBX:
+
+		lookupLocal( macName, macName, macHash );
+
+		// Okay, enter the macro's name into the symbol table:
+
+		enterMacro
+		(
+			macName,
+			maclcName,
+			macHash,
+			curOwner,
+			macClassType,
+			[ebx]		// Leaf node pointer.
+		);
+		mov( eax, glbSymEntry );	// Save ptr to sym tbl entry for caller
+		canAccess( [eax] );
+		mov( NULL, symEAX.macro.macroParms );	// Initialize important
+		mov( NULL, symEAX.macro.locals );		//  macro symtab fields.
+		mov( NULL, symEAX.macro.keywords );
+		mov( NULL, symEAX.macro.terminator );
+		 
+		inc( curLexLevel );
+		mov( eax, curOwner );	// The procedure owns the new symbol table.
+
+		// Create a local symbol table for this procedure entry:
+
+		createLocalHashTable( glbSymEntry );
+		mov( eax, curHashTable );	// Future symtab entries go here.
+		
+		// We need to create a dummy entry to allow us to point
+		// linearSyms and lastLinear at something reasonable.
+		// Just make a copy of the current macro object
+		// (which is good, because we don't want to allow any
+		// parameters with the same name at the new lex level).
+		// Also, we'll enter it into the hash table we just
+		// created to prevent someone from attempting to use the
+		// macro name as a parameter name.
+
+		createLocalProc( glbSymEntry, macHash );
+		mov( eax, lclSymEntry );	// Save ptr to sym tbl entry for caller
+		canAccess( [eax] );
+		mov( NULL, symEAX.macro.macroParms );	// Initialize important
+		mov( NULL, symEAX.macro.locals );		//  macro symtab fields.
+		mov( NULL, symEAX.macro.keywords );
+		mov( NULL, symEAX.macro.terminator );
+		
+		// See if there are any optional parameters:
+		
+		mov( true, first );		// Used to catch first parameter.
+		lex( esi );
+		if( eax = '(' ) then
+		
+			// Get macro parameters
+
+			lex( esi );
+			if( eax <> ')' ) then
+
+				forever
+				
+					if( ebx <> ID_tc ) then
+
+						HLAerror
+						( 
+							"Expected an identifier in macro parameter "
+							"list, " nl
+							"encountered "
+						);
+						dumpQLexeme();
+						skipMacro( macLnNum );
+						stc();
+						exit getMacro;
+
+					endif;
+
+					// Enter ID into symbol table as a macro parameter:
+
+					// Initialize a default ATTR value we can use to initialize 
+					// the macro parameter:
+
+					mov( str.a_cpy(""), macAttr.string_vt );
+					mov( 0, macAttr.numElements );
+					mov( &string_ste, macAttr.symType );
+					mov( String_pt, macAttr.pType );
+					mov( Constant_ct, macAttr.symClass );
+		
+					// If this is an undefined symbol, we
+					// need to get the leaf node to link
+					// this symbol off of in the binary
+					// search tree. Call lookupLocal to do
+					// this. The leaf node address is in
+					// EBX.
+
+					lookupLocal
+					( 
+						tokenECX.trueName, 
+						tokenECX.lcName, 
+						tokenECX.hashValue 
+					);
+					
+					// If we've got a non-Value_ct global symbol or 
+					// an undefined ID, create a local Value_ct symbol here.
+
+					enterVal
+					(
+						tokenECX.trueName,
+						tokenECX.lcName,
+						NULL,
+						&text_ste,
+						macAttr,
+						curOwner,
+						[ebx]
+					);
+					mov( eax, lclMacSym );	// Save in case this is a var parm.
+					assert( eax <> NULL );
+					
+					// If this is the first macro parameter, then
+					// set the "macroParms" fields in the global and local
+					// symbol table entries to point at this symbol.
+
+					if( first ) then
+
+						mov( glbSymEntry, ebx );
+						canAccess( [ebx] );
+						mov( eax, symEBX.macro.macroParms );
+						mov( lclSymEntry, ebx );
+						mov( eax, symEBX.macro.macroParms );
+						mov( false, first );
+
+					endif;
+				
+					// Check for a "," or ")"
+
+					lex( esi );
+					if( eax = ')' ) then
+					
+						// Code following loop assumes that we've
+						// read the next token:
+
+						lex( esi );
+						break;
+						
+					endif;
+
+					// If the last macro parameter is followed by "()"
+					// then we allow a variable number of macro parameters.
+					// We will denote this in the symbol table by changing
+					// the parameter's type from "text" to "array/string" (as
+					// the variable parameter is always an array of string
+					// objects).
+
+					if( eax = '[' || eax ='(' ) then
+
+						// Must have "())" here:
+
+						lex( esi );
+						if( eax <> ']' && eax <> ')' ) then
+
+							HLAerror
+							( 
+								"Expected '()' in macro parameter list, "
+								"encountered '"
+							);
+							dumpLexeme();
+							HLAerror2( "'" nl );
+							skipMacro( macLnNum );
+							stc();
+							exit getMacro;
+
+						endif;
+						lex( esi );
+						if( eax <> ')' ) then
+
+							HLAerror
+							( 
+								"Expected ')' in macro parameter list, "
+								"encountered '"
+							);
+							dumpLexeme();
+							HLAerror2( "'" nl );
+							skipMacro( macLnNum );
+							stc();
+							exit getMacro;
+					
+						endif;
+
+						// Okay, we had "id() )" so the last macro
+						// parameter is a variable parameter. Denote
+						// this by setting its type to string.
+
+						mov( lclMacSym, eax );
+						canAccess( [eax] );
+						mov( &string_ste, symEAX.symType );
+						mov( String_pt, symEAX.pType );
+						mov( 0, symEAX.numElements);
+
+
+						// Get next symbol because the code following
+						// the for loop expects the token in EAX:
+
+						lex( esi );
+						break;
+
+					endif;
+					if( eax <> ',' ) then
+
+						HLAerror
+						( 
+							"Expected ',' or ')' in macro parameter list, "
+							"encountered '"
+						);
+						dumpLexeme();
+						HLAerror2( "'" nl );
+						skipMacro( macLnNum );
+						stc();
+						exit getMacro;
+					
+					endif;
+
+					// Get the next ID from the parameter list:
+
+					lex( esi );
+
+				endfor;
+
+			endif;
+			
+		endif;
+		
+		// See if there are any local macro identifiers:
+
+		mov( true, first );
+		if( eax = ':' ) then
+		
+			// Get local macro identifiers
+
+			forever
+
+				lex( esi );
+				if( ebx <> ID_tc ) then
+
+					HLAerror
+					( 
+						"Expected an identifier in macro local labels "
+						"list, " nl
+						"encountered "
+					);
+					dumpQLexeme();
+					skipMacro( macLnNum );
+					stc();
+					exit getMacro;
+
+				endif;
+
+				// Enter ID into symbol table as a local macro symbol:
+
+				str.length( tokenECX.trueName );
+				add( 16, eax ); 
+				stralloc( eax );
+				str.put
+				(
+					(type string eax), 
+					"_",
+					tokenECX.trueName,
+					"_", 
+					(type uns32 labelCntr), 
+					"_" 
+				);
+				inc( labelCntr );
+				mov( eax, macAttr.string_vt );
+				mov( 0, macAttr.numElements );
+				mov( &string_ste, macAttr.symType );
+				mov( String_pt, macAttr.pType );
+				mov( Constant_ct, macAttr.symClass );
+	
+				// If this is an undefined symbol, we
+				// need to get the leaf node to link
+				// this symbol off of in the binary
+				// search tree. Call lookupLocal to do
+				// this. The leaf node address is in
+				// EBX.
+
+				lookupLocal
+				( 
+					tokenECX.trueName, 
+					tokenECX.lcName, 
+					tokenECX.hashValue 
+				);
+				
+				enterVal
+				(
+					tokenECX.trueName,
+					tokenECX.lcName,
+					NULL,
+					&text_ste,
+					macAttr,
+					curOwner,
+					[ebx]
+				);
+
+				// If this is the first local macro symbol, then
+				// set the "locals" fields in the global and local
+				// symbol table entries to point at this symbol.
+
+				if( first ) then
+
+					mov( glbSymEntry, ebx );
+					canAccess( [ebx] );
+					mov( eax, symEBX.macro.locals );
+					mov( lclSymEntry, ebx );
+					mov( eax, symEBX.macro.locals );
+					mov( false, first );
+
+				endif;
+
+			
+				// Check for a "," or ";"
+
+				lex( esi );
+				breakif( eax = ';' );
+				if( eax <> ',' ) then
+
+					HLAerror
+					( 
+						"Expected ',' or ';' in local macro symbols list, "
+						"encountered '"
+					);
+					dumpLexeme();
+					HLAerror2( "'" nl );
+					skipMacro( macLnNum );
+					stc();
+					exit getMacro;
+				
+				endif;
+
+			endfor;			
+			
+		endif;
+		
+		if( eax <> ';' ) then
+		
+			HLAerror
+			(
+				"Syntax error in ",
+				classTypeStr,
+				" declaration: expected ';', encountered '"
+			);
+			dumpLexeme();
+			HLAerror2( "'" nl );
+			stc();
+			exit getMacro;
+			
+		endif;
+		
+		
+		// Return pointer to local entry in EAX and the
+		// pointer to the main entry in EBX:
+		
+		mov( glbSymEntry, ebx );
+		mov( lclSymEntry, eax );
+		
+		clc();
+		
+	end getMacro;
+	
+
+
+begin doPoundMacro;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_macro, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+
+
+	// Set up the activation record for the following code:
+		
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );
+	resetTknQ();
+	
+	// Save these values, as we need to change them to point at
+	// the local symbols in the procedure's symbol table.
+
+	mov( fwdPtrList, _fwdPtrList );
+	mov( curHashTable, _curHashTable );
+	mov( curOwner, _curOwner );
+	mov( curLexLevel, _curLexLevel );
+	mov( NULL, fwdPtrList );
+	
+
+	begin error;
+		
+		// Save the line number of the #macro stmt in case
+		// there is an error.
+		
+		mov( lineNumber, eax );
+		mov( eax, macroLineNum );
+
+		// Parse the macro declaration up through the local
+		// symbols. On return, EAX points at the local symbol
+		// table entry for the macro name and EBX points at
+		// the global entry.
+		
+		if( !getMacro( Macro_ct, macroLineNum )) then
+		
+			skipMacro( macroLineNum );
+			exit error;
+		
+		endif;
+		mov( ebx, theMacro );
+		mov( eax, localMacro );
+		mov( curHashTable, eax );
+		mov( eax, macroHash );
+		mov( curLexLevel, eax );
+		mov( eax, macroLexLevel );
+		
+		// Set up "start of macro" info in the symbol table
+		// so we can correctly display error information if an
+		// error occurs during macro expansion:
+
+		mov( localMacro, ecx );
+		canAccess( [ecx] );
+		canAccess( [ebx] );
+
+		mov( fullFileName, edx );
+		mov( edx, symECX.macro.fullFileName );
+		mov( edx, symEBX.macro.fullFileName );
+		mov( filename, edx );
+		mov( edx, symECX.macro.filename );
+		mov( edx, symEBX.macro.filename );
+
+		mov( fileMapHandle, edx );
+		mov( edx, symECX.macro.fileMapHandle );
+		mov( edx, symEBX.macro.fileMapHandle );
+
+		mov( macroLineNum, edx );
+		mov( edx, symECX.macro.lineNumber );
+		mov( edx, symEBX.macro.lineNumber );
+
+
+		// Okay, ESI points at the start of the text for the
+		// macro:
+		
+		mov( esi, startText );
+		getMacroBody( "#macro", macroLineNum );	// Skip over the macro's body.
+		
+		mov( localMacro, ebx );
+		mov( theMacro, ecx );
+		canAccess( [ecx] );
+		canAccess( [ebx] );
+		mov( esi, symECX.macro.textEnd );
+		mov( esi, symEBX.macro.textEnd );
+		mov( startText, edx );
+		mov( edx, symECX.macro.textStart );
+		mov( edx, symEBX.macro.textStart );
+
+		mov( NULL, symEBX.macro.keywords );		// Initialize, in case there
+		mov( NULL, symEBX.macro.terminator );	// are no keywords/terminator.
+		mov( NULL, symECX.macro.keywords );		// Initialize, in case there
+		mov( NULL, symECX.macro.terminator );	// are no keywords/terminator.
+
+		cmp( eax, tkn_pound_keyword );
+		sete( hasKeyword );
+		mov( true, firstKeyword );
+		while( eax = tkn_pound_keyword ) do
+		
+			mov( lineNumber, eax );
+			mov( eax, keywordLineNum );
+			
+			// Process each of the #keyword sections here
+			
+			if( !getMacro( Keyword_ct, macroLineNum )) then
+			
+				skipMacro( macroLineNum );
+				exit error;
+			
+			endif;
+			mov( ebx, theKeyword );
+			mov( eax, localKeyword );
+
+			// If this is the first #keyword macro, then
+			// point the enclosing macro's "keywords" field
+			// at this guy's symbol table entry:
+
+			if( firstKeyword ) then
+
+				mov( theMacro, eax );
+				canAccess( [eax] );
+				mov( ebx, symEAX.macro.keywords );
+				mov( localMacro, eax );
+				mov( ebx, symEAX.macro.keywords );
+				mov( false, firstKeyword );
+
+			endif;
+			
+			// Okay, ESI points at the start of the text for the
+			// keyword macro:
+			
+			mov( esi, startText );
+			
+			// Skip over the keyword's body:
+			
+			getMacroBody( "#keyword", keywordLineNum );	
+
+			mov( localKeyword, ebx );
+			mov( theKeyword, ecx );
+			canAccess( [ebx] );
+			canAccess( [ecx] );
+
+			mov( esi, symECX.macro.textEnd );
+			mov( esi, symEBX.macro.textEnd );
+			mov( startText, edx );
+			mov( edx, symECX.macro.textStart );
+			mov( edx, symEBX.macro.textStart );
+			
+			mov( keywordLineNum, edx );
+			mov( edx, symECX.macro.lineNumber );
+			mov( edx, symEBX.macro.lineNumber );
+
+			// Set up file info:
+			
+			mov( fullFileName, edx );
+			mov( edx, symECX.macro.fullFileName );
+			mov( edx, symEBX.macro.fullFileName );
+			mov( filename, edx );
+			mov( edx, symECX.macro.filename );
+			mov( edx, symEBX.macro.filename );
+
+			mov( fileMapHandle, edx );
+			mov( edx, symECX.macro.fileMapHandle );
+			mov( edx, symEBX.macro.fileMapHandle );
+			
+			// Restore important pointers for next
+			// #keyword or #terminator entry:
+			
+			mov( macroHash, edx );
+			mov( edx, curHashTable );
+			mov( macroLexLevel, edx );
+			mov( edx, curLexLevel );
+			mov( theMacro, edx );
+			mov( edx, curOwner );			
+		
+		endwhile;
+		
+		if( eax = tkn_pound_terminator ) then
+
+			// Process terminator section here.
+
+			mov( lineNumber, eax );
+			mov( eax, keywordLineNum );
+			
+			// Process the #terminator section here
+			
+			if( !getMacro( Terminator_ct, macroLineNum )) then
+			
+				skipMacro( macroLineNum );
+				exit error;
+			
+			endif;
+			mov( ebx, theTerminator );
+			mov( eax, localTerminator );
+			
+			// The the original macro's "terminator" field
+			// to point at this terminator's symbol table entry:
+
+			mov( theMacro, eax );
+			canAccess( [eax] );
+			mov( ebx, symEAX.macro.terminator );
+			mov( localMacro, eax );
+			canAccess( [eax] );
+			mov( ebx, symEAX.macro.terminator );
+			
+			// Okay, ESI points at the start of the text for the
+			// keyword macro:
+			
+			mov( esi, startText );
+			
+			// Skip over the terminator's body:
+			
+			getMacroBody( "#terminator", terminatorLineNum );	
+			
+			mov( localTerminator, ebx );
+			mov( theTerminator, ecx );
+			canAccess( [ebx] );
+			canAccess( [ecx] );
+			mov( esi, symECX.macro.textEnd );
+			mov( esi, symEBX.macro.textEnd );
+			mov( startText, edx );
+			mov( edx, symECX.macro.textStart );
+			mov( edx, symEBX.macro.textStart );		
+
+			mov( keywordLineNum, edx );
+			mov( edx, symECX.macro.lineNumber );
+			mov( edx, symEBX.macro.lineNumber );
+
+			// Set up file info:
+			
+			mov( fullFileName, edx );
+			mov( edx, symECX.macro.fullFileName );
+			mov( edx, symEBX.macro.fullFileName );
+			mov( filename, edx );
+			mov( edx, symECX.macro.filename );
+			mov( edx, symEBX.macro.filename );
+
+			mov( fileMapHandle, edx );
+			mov( edx, symECX.macro.fileMapHandle );
+
+			mov( edx, symEBX.macro.fileMapHandle );
+			
+			
+		
+		elseif( hasKeyword ) then
+		
+			HLAerror
+			(
+				"#macro declaration has a #keyword section but no "
+				"#terminator section",
+				nl
+			);
+			exit error;
+				
+		endif;
+
+	end error;
+	
+	// Restore original global values:
+	
+	mov( _fwdPtrList, fwdPtrList );
+	mov( _curHashTable, curHashTable );
+	mov( _curOwner, curOwner );
+	mov( _curLexLevel, curLexLevel );
+
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+end doPoundMacro;
+
+
+/*************************************************/
+/*                                               */
+/* doPoundKeyword-                               */
+/*                                               */
+/* This procedure handles a #KEYWORD clause that */
+/* appears outside a macro definition.           */
+/*                                               */
+/*************************************************/
+
+//proc( "doPoundKeyword" )
+procedure doPoundKeyword;
+begin doPoundKeyword;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_keyword, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+	
+
+	// See if we've got an actively expanding macro on the macro stack.
+	// If not, then we've encountered a superfluous #keyword token.
+			 
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	mov( includeStk.incRecType[ebx], al );
+	if
+	(
+			(type int32 ebx) <= 0				// No text expansion
+		||	al < irt_macro						// Not #macro or #keyword
+		||	al = irt_terminator					// #terminator can't encounter
+	) then										//  a #keyword.
+
+		HLAerror( "Unexpected #KEYWORD token" nl );
+		ret();
+
+	endif;
+		 
+	// We've been processing a #macro or a #keyword and we've
+	// just come to the end of it, hitting a #keyword keyword.
+	// If it was a #keyword, then we need to pop the item off
+	// the top of the stack. If it was a #macro we were processing,
+	// then we need to mark the top of stack item "inactive" but
+	// leave it on the stack.
+
+	if( al = irt_keyword ) then
+
+		// It must have been a #keyword macro, pop it from the stack:
+	
+		popIncStack();		// Pop macro's include entry.
+
+	elseif( al = irt_macro ) then	
+		
+		// It was a #macro, mark it inactive, restore text stream
+		// but don't pop the item from the include stack.
+
+		mov( false, includeStk.active[ ebx ] );
+		getIncStack();
+
+	endif;
+
+	// Call the lexer again to get a real token that whomever called
+	// the lexer is expecting to receive:
+
+	lex( esi );
+	ret();
+
+
+end doPoundKeyword;
+
+
+
+/***********************************************/
+/*                                             */
+/* doPoundTerminator-                          */
+/*                                             */
+/* This procedure handles a #TERMINATOR clause */
+/* that appears outside a macro definition.    */
+/*                                             */
+/***********************************************/
+
+//proc( "doPoundTerminator" )
+procedure doPoundTerminator;
+begin doPoundTerminator;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_terminator, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif; 
+
+
+	// See if we've got an actively expanding macro on the macro stack.
+	// If not, then we've encountered a superfluous #terminator token.
+			 
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	mov( includeStk.incRecType[ebx], al );
+	if
+	(
+			(type int32 ebx) <= 0				// No text expansion
+		||	al < irt_macro						// Not #macro or #keyword
+		||	al = irt_terminator					// #terminator can't encounter
+	) then										//  another #terminator.
+
+		HLAerror( "Unexpected #TERMINATOR token" nl );
+		ret();
+
+	endif;
+		 
+	// We've been processing a #macro or a #keyword and we've
+	// just come to the end of it, hitting a #terminator keyword.
+	// If it was a #keyword, then we need to pop the item off
+	// the top of the stack. If it was a #macro we were processing,
+	// then we need to mark the top of stack item "inactive" but
+	// leave it on the stack.
+
+	if( al = irt_keyword ) then
+
+		// It must have been a #keyword macro, pop it from the stack:
+	
+		popIncStack();		// Pop macro's include entry.
+
+	elseif( al = irt_macro ) then	
+		
+		// It was a #macro, mark it inactive, restore text stream
+		// but don't pop the item from the include stack.
+		
+		mov( false, includeStk.active[ ebx ] );
+		getIncStack();
+
+	endif;
+
+	// Call the lexer again to get a real token that whomever called
+	// the lexer is expecting to receive:
+
+	lex( esi );
+	ret();
+
+end doPoundTerminator;
+
+
+
+/**********************************************************/
+/*                                                        */
+/* doPoundEndMacro-                                       */
+/*                                                        */
+/* This procedure handles a #ENDMACRO clause that         */
+/* appears outside a macro definition in the source file. */
+/*                                                        */
+/**********************************************************/
+
+//proc( "doPoundEndMacro" )
+procedure doPoundEndMacro;
+begin doPoundEndMacro;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_endmacro, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+
+
+	// The record on the top of the include stack had better be
+	// a #macro or #terminator record (and if it's #macro, it
+	// had better be an active macro that we are current expanding).
+
+	assert( includeSP < MaxNestedIncludes );
+	intmul( @size( includeInfo_t ), includeSP, ebx );
+	if
+	( 
+			ebx <= 0
+		||	(
+					includeStk.incRecType[ebx] <> irt_macro
+				&&  includeStk.incRecType[ebx] <> irt_terminator
+			)
+		||	(
+					includeStk.incRecType[ebx] = irt_macro
+				&&	!includeStk.active[ebx]
+			)
+	) then
+
+		HLAerror( "Unexpected #ENDMACRO token" nl );
+		ret();
+
+	endif;
+		 
+
+	// Okay, we have a macro on the include stack. So let's
+	// pop the items off the stack until we get to the corresponding
+	// #macro entry (remember, we could have a #terminator macro currently
+	// sitting on the stack).
+
+	mov( includeStk.incRecType[ebx], al );
+	if( al = irt_terminator ) then
+
+		popIncStack();		// Only pop terminator.
+		
+		// Okay, there is also an inactive macro item sitting somewhere
+		// on the include stack (usually, it's the next item down, but
+		// it could be lower on the stack).
+		// Remove that macro entry as well.
+		//
+		// First, a quick check to see if it's the next entry on the
+		// include stack (note that EBX still points at the entry
+		// we just popped):
+		
+		assert( includeSP < MaxNestedIncludes );
+		intmul( @size( includeInfo_t ), includeSP, ebx );
+		if
+		( 
+				includeStk.incRecType[ebx] = irt_macro
+			&&	!includeStk.active[ebx]
+		) then
+		
+			// Okay, the inactive entry is now on the top of the include stack.
+			// Just pop it off.
+			
+			dec( includeSP );	// Skip macro record on stack.
+			
+		else
+		
+			// Oh dear, the inactive entry is not the next one on the stack.
+			// We have to search down into the include stack for the inactive
+			// entry and scoot all the other entries down on the stack.
+			
+			sub( @size( includeInfo_t ), ebx );
+			mov( @size( includeInfo_t ), ecx );
+			while
+			( 
+					(type int32 ebx) > 0
+				&&	(
+							includeStk.incRecType[ebx] <> irt_macro
+						||	includeStk.active[ebx]
+					)
+			) do
+			
+				sub( @size( includeInfo_t ), ebx );
+				add( @size( includeInfo_t ), ecx );
+			
+			endwhile;
+			if( (type int32 ebx) > 0 ) then
+			
+				// Okay, scoot everything down on the stack to cover up
+				// the inactive entry.
+				
+				push( esi );
+				push( edi );
+				lea( edi, includeStk[ebx] );
+				lea( esi, [edi+@size( includeInfo_t )] );
+				cld();
+				rep.movsb();
+				pop( edi );
+				pop( esi );
+				dec( includeSP );	// 'cause we just removed an entry.
+				
+			else
+			
+				HLAerror
+				(
+					"HLA Internal Error! Expected an inactive macro "
+					"entry on the stack" nl
+				);
+				quitHLA();
+				
+			endif;
+			
+		endif;
+
+	elseif( al = irt_macro ) then
+	
+		popIncStack();		// Pop macro's include entry.
+
+	endif;
+
+	// Call the lexer again to get a real token that whomever called
+	// the lexer is expecting to receive:
+
+	lex( esi );
+	ret();
+
+end doPoundEndMacro;
+
+
+
+
+
+/****************************************************/
+/*                                                  */
+/* doPoundASM-                                      */
+/*                                                  */
+/* This procedure handles a #ASM..#ENDASM sequence. */
+/*                                                  */
+/****************************************************/
+
+//proc( "doPoundASM" )
+procedure doPoundASM;
+begin doPoundASM;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_asm, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+
+	#print( "TODO: #ASM Handler" );
+	stdout.put( nl "#ASM encountered, fix this..." nl );
+	ret();
+
+end doPoundASM;
+
+
+
+/************************************************/
+/*                                              */
+/* doPoundEndASM-                               */
+/*                                              */
+/* This procedure handles a #ENDASM clause that */
+/* is outside an #ASM..#ENDASM block.           */
+/*                                              */
+/************************************************/
+
+//proc( "doPoundEndASM" )
+procedure doPoundEndASM;
+begin doPoundEndASM;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_endasm, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+
+	#print( "TODO: #ENDASM Handler" );
+	stdout.put( nl "#ENDASM encountered, fix this..." nl );
+	ret();
+
+end doPoundEndASM;
+
+
+
+/***********************************************/
+/*                                             */
+/* doPoundEmit-                                */
+/*                                             */
+/* This procedure handles the #EMIT statement. */
+/*                                             */
+/***********************************************/
+
+//proc( "doPoundEmit" )
+procedure doPoundEmit;
+begin doPoundEmit;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_emit, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+
+	#print( "TODO: #EMIT handler" )
+	stdout.put( nl "#EMIT encountered, fix this..." nl );
+	ret();
+
+end doPoundEmit;
+
+
+
+/***************************************************/
+/*                                                 */
+/* doPoundText-                                    */
+/*                                                 */
+/* This procedure handles a #TEXT..#ENDTEXT block. */
+/*                                                 */
+/***************************************************/
+
+//proc( "doPoundText" )
+procedure doPoundText;
+var
+	startOfText		:dword;
+	endOfText		:dword;
+	saveRtnCTtkns	:boolean;
+	textSym		:symNodePtr_t;
+	
+	 
+begin doPoundText;
+
+	push( ebp );
+	mov( esp, ebp );
+	sub( _vars_, esp );	
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_text, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		mov( ebp, esp );
+		pop( ebp );
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+	
+	// Okay, we really need to process this.
+	// Syntax is:
+	//
+	//	#text( identifier )
+	//
+	//		<< arbitrary text that does not contain #endtext >>
+	//
+	//	#endtext
+	//
+	// The following code captures all the text between #text..#endtext
+	// and creates a string to hold that data.
+	
+	resetTknQ();
+	mov( rtnCTtkns, al );
+	mov( al, saveRtnCTtkns );
+	begin error;
+
+		matchLParen();
+		exitif( @c ) error;
+		lex( esi );
+		if( ebx <> ID_tc ) then
+
+			HLAerror
+			( 
+				"Expected an identifier as #text argument" 
+				nl 
+			);
+			exit error;
+
+		endif;
+		checkValID( [ecx] );
+		exitif( @c ) error;
+		mov( tokenECX.symNode, eax );
+		mov( eax, textSym );
+		mustMatchRParen();
+		
+		mov( true, rtnCTtkns );
+		mov( esi, startOfText );
+		dec( esi );
+		forever
+		
+			add( 1, esi );
+			lea( eax, [esi+8] );
+			mov( esi, endOfText );
+			if( eax >= EOF ) then
+
+				HLAerror( "Encountered EOF while processing #text data" nl );
+				exit error;
+
+			endif;
+			if( (type char [esi]) = stdio.lf ) then
+
+				inc( lineNumber );
+				inc( totalLineCount );
+
+			endif;
+			continueif( (type byte [esi]) <> '#' );
+			
+			mov( [esi+1], al );
+			and( #$5f, al );		// lc->UC conversion.
+			continueif( al <> 'E' );
+		
+			mov( [esi+2], al );
+			and( #$5f, al );
+			continueif( al <> 'N' );
+		
+			mov( [esi+3], al );
+			and( #$5f, al );
+			continueif( al <> 'D' );
+		
+			mov( [esi+4], al );
+			and( #$5f, al );
+			continueif( al <> 'T' );
+			
+			mov( [esi+5], al );
+			and( #$5f, al );
+			continueif( al <> 'E' );
+			
+			mov( [esi+6], al );
+			and( #$5f, al );
+			continueif( al <> 'X' );
+			
+			mov( [esi+7], al );
+			and( #$5f, al );
+			continueif( al <> 'T' );
+			
+			add( 8, esi );
+			break;
+
+		endfor;
+		
+		// Okay, now we know the beginning and end of the
+		// block of text, let's turn it into a string:
+		
+		push( ecx );
+		push( edi );
+		push( esi );
+		pushfd();
+		cld();
+		mov( endOfText, ecx );
+		sub( startOfText, ecx );
+		stralloc( ecx );
+		mov( ecx, (type str.strRec [eax]).length );
+		mov( eax, edi );
+		mov( startOfText, esi );
+		rep.movsb();
+		mov( 0, (type byte [edi]) );	// Zero-terminate the string.
+		popfd();
+		pop( esi );
+		pop( edi );
+		pop( ecx );
+		
+				
+		mov( textSym, edx );
+		canAccess( [edx] );
+		mov( &string_ste, symEDX.symType );
+		mov( String_pt, symEDX.pType );
+		mov( 4, symEDX.objectSize );
+		mov( eax, symEDX.va.string_vt );
+
+
+		
+	end error;
+	mov( saveRtnCTtkns, dl );
+	mov( dl, rtnCTtkns );
+
+	// Return to the lexer, who will ignore the lexeme:
+	
+	mov( ebp, esp );
+	pop( ebp );
+	ret();
+
+end doPoundText;
+
+
+
+/***********************************************/
+/*                                             */
+/* doPoundEndText-                             */
+/*                                             */
+/* This procedure handles a #ENDTEXT statement */
+/* outside a #TEXT..#ENDTEXT block.            */
+/*                                             */
+/***********************************************/
+
+//proc( "doPoundEndText" )
+procedure doPoundEndText;
+begin doPoundEndText;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_endtext, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+
+		add( 4, esp );	// Return to whomever called the lexer.
+		ret();
+
+	endif;
+
+	HLAerror( "Unexpected #ENDTEXT found in source code" nl );
+	ret();
+
+end doPoundEndText;
+
+
+
+/********************************************************************/
+/*                                                                  */
+/* outputList-                                                      */
+/*                                                                  */
+/* This procedure handles the "guts" of a #ERROR, #PRINT, or #WRITE */
+/* statement. It fetches each operand and displays the value as     */
+/* appropriate for that operand.                                    */
+/*                                                                  */
+/********************************************************************/
+
+//proc( "outputList" )
+procedure outputList( handle:dword ); @frame;
+var
+	attr		:attr_t;
+	toFile		:boolean;
+
+
+	//proc( "printItem" )
+	procedure printItem( var attrToPrint:attr_t; handle:dword ); @frame;
+	const
+		attr	:text := "(type attr_t [ecx])";
+
+	var
+		numElements	:uns32;
+
+		procedure Put32CS( Handle:dword; index:dword ); @frame;
+		begin Put32CS;
+
+			push( ecx );
+			mov( index, ecx );
+			mov( ecx, ebx );
+			add( 32, ebx );
+			repeat
+
+				if
+				(#{
+					shr( 1, edx );
+					jnc false;
+				}#) then
+				
+					mov( cl, al );
+					if( al <= ' ' || al >= #$7f ) then
+					
+						fileio.puts( Handle, " #$" );
+						fileio.putb( Handle, al );
+						fileio.putc( Handle, ' ' );
+						
+					else
+						
+						fileio.putc( Handle, al );
+						
+					endif;
+					
+				endif;
+				inc( ecx );
+				
+			until( ecx = ebx );
+			pop( ecx );
+			
+		end Put32CS;
+
+
+	begin printItem;
+
+		push( ecx );
+		mov( attrToPrint, ecx );
+		canAccess( [ecx] );
+		movzx( attr.pType, eax );
+		switch( eax )
+
+			case( Byte_pt )
+
+				fileio.put( handle, attr.byte_vt );
+
+			case( Word_pt )
+
+				fileio.put( handle, attr.word_vt );
+
+			case( DWord_pt )
+
+				conv.setUnderscores( true );
+				fileio.put( handle, attr.dword_vt );
+				conv.setUnderscores( false );
+
+			case( QWord_pt )
+
+				conv.setUnderscores( true );
+				fileio.put( handle, attr.qword_vt );
+				conv.setUnderscores( false );
+
+			case( TByte_pt )
+
+				conv.setUnderscores( true );
+				fileio.put( handle,  attr.tbyte_vt );
+				conv.setUnderscores( false );
+
+			case( LWord_pt )
+
+				conv.setUnderscores( true );
+				fileio.put( handle, attr.lword_vt );
+				conv.setUnderscores( false );
+
+			case( Uns8_pt )
+
+				fileio.put( handle, attr.uns8_vt );
+
+			case( Uns16_pt )
+
+				fileio.put( handle, attr.uns16_vt );
+
+			case( Uns32_pt )
+
+				fileio.put( handle, attr.uns32_vt );
+
+			case( Uns64_pt )
+
+				fileio.putu64( handle, attr.uns64_vt );
+
+			case( Uns128_pt )
+
+				fileio.putu128( handle, attr.uns128_vt );
+
+			case( Int8_pt )
+
+				fileio.put( handle, attr.int8_vt );
+
+			case( Int16_pt )
+
+				fileio.put( handle, attr.int16_vt );
+
+			case( Int32_pt )
+
+				fileio.put( handle, attr.int32_vt );
+
+			case( Int64_pt )
+
+				fileio.puti64( handle, attr.int64_vt );
+
+			case( Int128_pt )
+
+				fileio.puti128( handle, attr.int128_vt );
+
+			case( Real32_pt )
+
+				fileio.put( handle, attr.real32_vt );
+
+			case( Real64_pt )
+
+				fileio.put( handle, attr.real64_vt );
+
+			case( Real80_pt )
+
+				fileio.put( handle, attr.real80_vt );
+
+			case( Boolean_pt )
+
+				fileio.put( handle, attr.boolean_vt );
+
+			case
+			( 
+				Char_pt,
+				XChar_pt,
+				Unicode_pt
+			)
+
+				fileio.put( handle, attr.char_vt );
+
+			case( String_pt, Utf8_pt )
+
+				fileio.put( handle, attr.string_vt );
+
+			case( UString_pt )
+
+				str.a_cpy( attr.ustring_vt );
+				unicodeToAnsi( (type string eax) );
+				if( @nc ) then
+
+					fileio.put( handle, (type string eax) );
+
+				else
+
+					HLAwarning( "Cannot display UNICODE string" nl );
+
+				endif;
+				strfree( eax );
+
+			case( Cset_pt )
+	
+				fileio.putc( handle, '{' );
+				mov( attr.dword_vt[0], edx );
+				Put32CS( handle, 0 );
+				
+				mov( attr.dword_vt[4], edx );
+				Put32CS( handle, 32 );
+				
+				mov( attr.dword_vt[8], edx );
+				Put32CS( handle, 64 );
+				
+				mov( attr.dword_vt[12], edx );
+				Put32CS( handle, 96 );
+				fileio.putc( handle, '}' );
+
+			case( XCset_pt )
+	
+				fileio.putc( handle, '{' );
+				mov( attr.dword_vt[0], edx );
+				Put32CS( handle, 0 );
+				
+				mov( attr.dword_vt[4], edx );
+				Put32CS( handle, 32 );
+				
+				mov( attr.dword_vt[8], edx );
+				Put32CS( handle, 64 );
+				
+				mov( attr.dword_vt[12], edx );
+				Put32CS( handle, 96 );
+				
+				mov( attr.dword_vt[16], edx );
+				Put32CS( handle, 128 );
+				
+				mov( attr.dword_vt[20], edx );
+				Put32CS( handle, 160 );
+				
+				mov( attr.dword_vt[24], edx );
+				Put32CS( handle, 192 );
+				
+				mov( attr.dword_vt[28], edx );
+				Put32CS( handle, 224 );
+				fileio.putc( handle, '}' );
+
+
+			case( Array_pt )
+
+				// For an array, print "[" then step through
+				// each of the items in the array and print them.
+				// Conclude with a "]".
+
+				fileio.put( handle, '[' );
+				mov( attr.numElements, eax );
+				dec( eax );
+				mov( eax, numElements );
+				for
+				( 
+					mov( 0, edx ); 
+					edx < numElements; 
+					inc( edx ) 
+				) do
+
+					push( ecx );
+					push( edx );
+					mov( attr.arrayValues_vt, eax );
+					intmul( @size( attr_t ), edx );
+					lea( eax, [eax+edx] );
+					printItem( [eax], handle );
+					fileio.put( handle, ", " );
+					pop( edx );
+					pop( ecx );
+
+				endfor;
+
+				// Print the last item as a special case:
+
+				mov( attr.arrayValues_vt, eax );
+				canAccess( [eax] );
+				intmul( @size( attr_t ), edx );
+				lea( eax, [eax+edx] );
+				printItem( [eax], handle );
+				fileio.put( handle, "]" );
+
+			
+			case( Record_pt )
+
+				// For a record, print "recname:[" followed by
+				// all the fields and then a closing "]".
+
+				mov( attr.symType, eax );
+				fileio.put( handle, symEAX.trueName, ":[" );
+				mov( attr.numFields, eax );
+				dec( eax );
+				mov( eax, numElements );
+				for
+				( 
+					mov( 0, edx ); 
+					edx < numElements; 
+					inc( edx ) 
+				) do
+
+					push( ecx );
+					push( edx );
+					mov( attr.fieldValues_vt, eax );
+					canAccess( [eax] );
+					intmul( @size( attr_t ), edx );
+					lea( eax, [eax+edx] );
+					printItem( [eax], handle );
+					fileio.put( handle, ", " );
+					pop( edx );
+					pop( ecx );
+
+				endfor;
+
+				// Print the last item as a special case:
+
+				mov( attr.fieldValues_vt, eax );
+				canAccess( [eax] );
+				intmul( @size( attr_t ), edx );
+				lea( eax, [eax+edx] );
+				printItem( [eax], handle );
+				fileio.put( handle, "]" );
+
+			default
+
+				mov( attr.symType, eax );
+				canAccess( [eax] );
+				HLAerror
+				( 
+					"Unable to output objects of type ",
+					(type symNode_t [eax]).trueName,
+					nl
+				);
+
+		endswitch;
+		pop( ecx );
+
+	end printItem;
+
+
+begin outputList;
+
+	matchLParen();
+
+	// We handle end of lines differently depending on
+	// whether we're writing to a file (#WRITE) or to
+	// the standard output device (#PRINT).
+
+	mov( true, toFile );
+	if( handle = 0 ) then
+
+		#if( @defined( Win32 ) )
+			mov( stdout.handle(), handle );
+		#else
+			mov( 1, handle );
+		#endif
+		mov( false, toFile );
+
+	endif;
+
+	// Okay, for each item in the list, print its value if possible.
+
+	repeat
+
+		resetTknQ();
+		lea( eax, attr );
+		try
+
+			constExpr( [eax] );
+			printItem( attr, handle );
+
+		  exception( ex.hlaerr );
+
+			HLAerror( "Expected a constant expression, encountered: " );
+			dumpLexeme();
+			HLAerror2( nl );
+
+		endtry;
+		lex( esi );
+
+	until( eax <> ',' );
+	if( eax <> ')' ) then
+
+		HLAerror( nl "Unexpected '" );
+		dumpLexeme();
+		HLAerror2( "' expected ')'" nl );
+
+	elseif( !toFile ) then
+
+		// If #PRINT or #ERROR, then generate a new line.
+
+		stdout.newln();
+
+	endif;
+
+end outputList;
+
+
+
+/************************************************/
+/*                                              */
+/* doPoundError-                                */
+/*                                              */
+/* This procedure handles the #ERROR statement. */
+/*                                              */
+/************************************************/
+
+//proc( "doPoundError" )
+procedure doPoundError;
+begin doPoundError;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_error, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	endif;
+
+	resetTknQ();
+	HLAerror( "#ERROR statement encountered" nl );
+	outputList( 0 );
+	ret();
+
+end doPoundError;
+
+
+
+
+/************************************************/
+/*                                              */
+/* doPoundPrint-                                */
+/*                                              */
+/* This procedure handles the #PRINT statement. */
+/*                                              */
+/************************************************/
+
+//proc( "doPoundPrint" )
+procedure doPoundPrint;
+begin doPoundPrint;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_print, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	endif;
+
+	resetTknQ();
+	outputList( 0 );
+	ret();
+
+end doPoundPrint;
+
+
+
+/***************************************************/
+/*                                                 */
+/* doPoundOpenRead-                                */
+/*                                                 */
+/* This procedure handles the #OPENREAD statement. */
+/*                                                 */
+/***************************************************/
+
+//proc( "doPoundOpenRead" )
+procedure doPoundOpenRead; @frame;
+var
+	saveESI	:dword;
+	saveEDI	:dword;
+	attr	:attr_t;
+
+begin doPoundOpenRead;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_openread, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		exit doPoundOpenRead;
+
+	endif;
+
+	resetTknQ();
+	if( openReadHandle <> 0 ) then
+
+		HLAerror( "#OPENREAD attempted while write file is already open" nl );
+		fileio.close( openReadHandle );
+		mov( 0, openReadHandle );
+
+	endif;
+	matchLParen();
+	lea( eax, attr );
+	constExpr( [eax] );
+	if( !isConstant( attr.symClass ) || attr.pType <> String_pt ) then
+	
+		HLAerror( "Expected a string constant parameter in #OPENREAD" nl );
+		
+	else
+
+		try
+
+			mov( esi, saveESI );
+			mov( edi, saveEDI );
+			fileio.open( attr.string_vt, fileio.r );
+			mov( eax, openReadHandle );
+
+		  exception( ex.MemoryAllocationFailure )
+
+			raise( ex.MemoryAllocationFailure );
+			
+		  anyexception
+
+			mov( saveESI, esi );
+			mov( saveEDI, edi );
+		  	HLAerror
+		  	( 
+		  		"Could not open file '", 
+		  		attr.string_vt, 
+		  		"' for input" nl 
+		  	);
+			mov( 0, openReadHandle );
+
+		endtry;
+		  		
+	endif;
+	matchRParen();
+	mov( false, lastWasEOF );
+
+end doPoundOpenRead;
+
+
+
+/****************************************************/
+/*                                                  */
+/* doPoundCloseRead-                                */
+/*                                                  */
+/* This procedure handles the #CLOSEREAD statement. */
+/*                                                  */
+/****************************************************/
+
+//proc( "doPoundCloseRead" )
+procedure doPoundCloseRead; @frame;
+var
+	saveESI	:dword;
+	saveEDI	:dword;
+
+begin doPoundCloseRead;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_closeread, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		exit doPoundCloseRead;
+
+	endif;
+
+
+	resetTknQ();
+	if( openReadHandle = 0 ) then
+
+		HLAerror
+		( 
+			"#CLOSEREAD attempted but output file is not open" nl 
+		);
+
+	else
+
+
+		try
+
+			mov( esi, saveESI );
+			mov( edi, saveEDI );
+			fileio.close( openReadHandle );
+			
+		  exception( ex.MemoryAllocationFailure )
+
+			raise( ex.MemoryAllocationFailure );
+			
+		  anyexception
+
+			mov( saveESI, esi );
+			mov( saveEDI, edi );
+		  	HLAerror( "Could not close file " nl );
+
+		endtry;
+		  		
+	endif;
+	mov( 0, openReadHandle );
+	mov( true, lastWasEOF );
+
+end doPoundCloseRead;
+
+
+
+/****************************************************/
+/*                                                  */
+/* doPoundOpenWrite-                                */
+/*                                                  */
+/* This procedure handles the #OPENWRITE statement. */
+/*                                                  */
+/****************************************************/
+
+//proc( "doPoundOpenWrite" )
+procedure doPoundOpenWrite;	@frame;
+var
+	saveESI	:dword;
+	saveEDI	:dword;
+	attr	:attr_t;
+
+begin doPoundOpenWrite;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_openwrite, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		exit doPoundOpenWrite;
+
+	endif;
+	resetTknQ();
+	if( openWriteHandle <> 0 ) then
+
+		HLAerror( "#OPENWRITE attempted while write file is already open" nl );
+		fileio.close( openWriteHandle );
+		mov( 0, openWriteHandle );
+
+
+	endif;
+	matchLParen();
+	lea( eax, attr );
+	constExpr( [eax] );
+	if( !isConstant( attr.symClass ) || attr.pType <> String_pt ) then
+	
+		HLAerror( "Expected a string constant parameter in #OPENWRITE" nl );
+		
+	else
+
+		try
+
+			mov( esi, saveESI );
+			mov( edi, saveEDI );
+			fileio.openNew( attr.string_vt );
+			mov( eax, openWriteHandle );
+			
+		  exception( ex.MemoryAllocationFailure )
+
+			raise( ex.MemoryAllocationFailure );
+			
+		  anyexception
+
+			mov( saveESI, esi );
+			mov( saveEDI, edi );
+		  	HLAerror
+		  	( 
+		  		"Could not open file ", 
+		  		attr.string_vt, 
+		  		" for output" nl 
+		  	);
+			mov( 0, openWriteHandle );
+
+		endtry;
+		  		
+	endif;
+	matchRParen();
+
+end doPoundOpenWrite;
+
+
+
+/*****************************************************/
+/*                                                   */
+/* doPoundCloseWrite-                                */
+/*                                                   */
+/* This procedure handles the #CLOSEWRITE statement. */
+/*                                                   */
+/*****************************************************/
+
+//proc( "doPoundCloseWrite" )
+procedure doPoundCloseWrite; @frame;
+var
+	saveESI	:dword;
+	saveEDI	:dword;
+
+begin doPoundCloseWrite;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_closewrite, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		exit doPoundCloseWrite;
+
+	endif;
+
+	if( openWriteHandle = 0 ) then
+
+		HLAerror
+		( 
+			"#CLOSEWRITE attempted but output file is not open" nl 
+		);
+
+	else
+
+
+		try
+
+			mov( esi, saveESI );
+			mov( edi, saveEDI );
+			fileio.close( openWriteHandle );
+			
+		  exception( ex.MemoryAllocationFailure )
+
+			raise( ex.MemoryAllocationFailure );
+			
+		  anyexception
+
+			mov( saveESI, esi );
+			mov( saveEDI, edi );
+		  	HLAerror( "Could not close file " nl );
+
+		endtry;
+		  		
+	endif;
+	mov( 0, openWriteHandle );
+
+end doPoundCloseWrite;
+
+
+
+/************************************************/
+/*                                              */
+/* doPoundWrite-                                */
+/*                                              */
+/* This procedure handles the #WRITE statement. */
+/*                                              */
+/************************************************/
+
+//proc( "doPoundWrite" )
+procedure doPoundWrite;
+begin doPoundWrite;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_write, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	endif;
+
+	resetTknQ();
+	if( openWriteHandle = 0 ) then
+
+		HLAerror( "#WRITE attempted, but output file is not open" nl );
+
+	else														  
+
+		outputList( openWriteHandle );
+
+	endif;
+	ret();
+
+end doPoundWrite;
+
+
+/*************************************************/
+/*                                               */
+/* doPoundSystem-                                */
+/*                                               */
+/* This procedure handles the #SYSTEM statement. */
+/*                                               */
+/*************************************************/
+
+//proc( "doPoundSystem" )
+procedure doPoundSystem; @frame;
+var
+	attr	:attr_t;
+
+begin doPoundSystem;
+
+	if( rtnCTtkns ) then
+
+		mov( tkn_pound_system, eax );
+		mov( ctStmt_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		exit doPoundSystem;
+
+	endif;
+
+	resetTknQ();
+	matchLParen();
+	lea( eax, attr );
+	constExpr( [eax] );
+	if( !isConstant( attr.symClass ) || attr.pType <> String_pt ) then
+	
+		HLAerror( "Expected a string constant parameter in #SYSTEM" nl );
+
+	else
+
+		os.system( attr.string_vt );
+		
+	endif;
+	matchRParen();
+
+end doPoundSystem;
+
+
+
+
+end compileTimeLanguage;
+

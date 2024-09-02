@@ -1,0 +1,1726 @@
+unit parseConstsUnit;
+
+#include( "stdlib.hhf" )
+#include( "hlacompiler.hhf" )
+	 
+
+?@nodisplay := true;
+?@noalignstack := true;									   
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// parseConst
+//
+//	Handle the parsing of the CONST section here.
+// Note that we've already seen the "CONST" lexeme.
+//
+//
+//	Grammar:
+//
+//	consts ::=
+//		(
+//				';'
+//			|	<ID> <cDcls>
+//		)*
+//		<optionalEndConst>
+//
+//	cDcls ::=
+//				':' <ForC> ';'
+//			|	':=' <constExpr> ';'
+//
+//	ForC ::=
+//				<typeID> <optionalBounds> ':=' <constExpr>
+//			|	enum '{' <idList> '}' ':=' <constExpr>
+//			|	pointer to <ptrTypeID> ':=' <constExpr>
+//			|	@forward '(' <id> ')
+//
+//	optionalEndConst ::=
+//				<empty string>
+//			|	endconst ';'
+//
+// Notes:	<ID> is an undefined ID or a globally defined ID.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the CONST reserved word.
+
+
+//proc( "parseConst" )
+procedure parseConst( isPrivate:boolean ); 
+var
+	constID		:string;
+	constlcID	:string;
+	constHash	:dword;
+	constType	:symNodePtr_t;
+	ptrType		:symNodePtr_t;
+	fwdResult	:symNodePtr_t;
+	constToken	:pointer to token_t;
+	dimensions	:dimPtr_t;
+	constResult	:attr_t;
+	nameConst	:attr_t; 
+
+	procedure cDcls; @noframe;
+	
+		procedure ForC; @noframe;
+		begin ForC;
+		
+			if( getTypeID() ) then
+			
+				mov( eax, ebp::constType );
+				optionalBounds();
+				mov( eax, ebp::dimensions );
+				if( eax <> NULL ) then
+
+					// We have an array type.  We need to build anonymous 
+					// type records for all array dimensions and link them
+					// together:
+					
+					mov( (type dimensions_t [eax]).arity, ecx );
+					repeat
+					
+						// Sneak this type declaration into the global
+						// symbol table rather than putting it inside the record:
+
+						push( curHashTable );		// Save these, to restore
+						push( curOwner );			//  them later.
+
+						lea( rootHashTable, ebx );	// Point symbol table at
+						mov( ebx, curHashTable );	//  the root symbol table
+						mov( rootOwner, ebx );
+						mov( ebx, curOwner );
+
+						// We need to create a dummy name for
+						// the anonymous array type that we're
+						// about to create.  This is of the form:
+						//
+						//	"@arrayXXX"
+						//
+						// where XXX is some unique numeric value.
+						// Note the '@' at the beginning of the
+						// string, this ensures that the program
+						// can never reference this symbol directly.
+						
+						makeLabel( "@array" );
+
+						// lookupLocal is called just to compute the leaf
+						// node value in EBX:
+
+						push( eax );
+						computeHash( eax );
+						mov( eax, ebx );
+						mov( [esp], eax );
+						lookupLocal( eax, eax, ebx );
+						pop( eax );
+
+						// Create a symbol table entry for the anonymous
+						// type:
+						
+						enterType
+						(
+							eax,
+							eax,
+							NULL,
+							Array_pt,
+							ebp::constType,
+							curOwner,
+							[ebx]
+						);
+						mov( ebp::constType, edx );
+						mov( symEDX.objectSize, edx );
+						mov( eax, ebp::constType );
+
+						pop( curOwner );
+						pop( curHashTable );
+						
+						// We need to fill in the array dimensions info here:
+						
+						mov( ebp::dimensions, ebx );
+						mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+						mov( ebx, symEAX.numElements );
+						intmul( ebx, edx );
+						mov( edx, symEAX.objectSize );
+						dec( ecx );
+						
+					until( @z );
+					
+
+				endif;
+				
+				// Okay, check for the ':=' operator:
+				
+				lex( esi );
+				if( eax = tkn_assign ) then
+				
+					constExpr( ebp::constResult );
+					clc();
+
+				else
+				
+					HLAerror
+					( 
+						"Expected ':=' operator "
+						"but encountered " 
+					);
+					dumpQLexeme();
+					reuseLastTkn();
+					raise( ex.hlaerr );
+					
+				endif;
+			
+			else
+			
+				lex( esi );
+				if( eax = tkn_enum ) then
+				
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+
+					// We need to create a dummy name for
+					// the anonymous enumerate type that we're
+					// about to create.  This is of the form:
+					//
+					//	"@enumXXX"
+					//
+					// where XXX is some unique numeric value.
+					// Note the '@' at the beginning of the
+					// string, this ensures that the program
+					// can never reference this symbol directly.
+					
+					makeLabel( "@enum" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Enum_pt,
+						&enum_ste,
+						curOwner,
+						[ebx]
+					);
+					mov( eax, ebp::constType );
+					pop( curOwner );
+					pop( curHashTable );
+					
+					// Go construct the constants for this anonymous
+					// enumerated type:
+					
+					buildEnumType( [eax] );
+					
+					// Check for the ':=' operator following the
+					// enum list:
+					
+					lex( esi );
+					if( eax = tkn_assign ) then
+					
+						constExpr( ebp::constResult );
+						
+					else
+					
+						HLAerror
+						( 
+							"Syntax error, expected ':=' operator "
+							"but encountered " 
+						);
+						dumpQLexeme();
+						reuseLastTkn();
+						raise( ex.hlaerr );
+						
+					endif;
+						
+				elseif( eax = tkn_at_forward ) then
+
+					// First, generate a string constant
+					// from the original type name:
+					
+					mov( NULL, ebp::fwdResult );
+					mov( ebp::constID, ebx );
+					mov( ebx, ebp::nameConst.string_vt );
+					mov( &string_ste, ebp::nameConst.symType );
+					mov( String_pt, ebp::nameConst.pType );
+					mov( Constant_ct, ebp::nameConst.symClass );
+					strfree( ebp::constlcID );
+
+					// Process the remainder of the FORWARD clause:
+
+					matchLParen();
+					
+					// Grab the identifier:
+
+					lex( esi );
+					if( eax = tkn_globalID ) then
+					
+						makeUndefID( [ecx] );
+						mov( tkn_undefID, eax );
+						
+					elseif( eax = tkn_localID ) then
+					
+						mov( tokenECX.symNode, ebx );
+						if( symEBX.symClass <> Value_ct ) then
+
+							HLAerror
+							( 
+								"Duplicate symbol definition: ", 
+								tokenECX.trueName,
+								nl
+							);
+							raise( ex.hlaerr );
+
+						endif;
+						
+					endif;
+
+					if( eax = tkn_undefID || eax == tkn_localID ) then
+					
+						// lookupLocal returns NULL if this is an
+						// undefined ID, it returns a pointer to
+						// a symbol table entry if it's a VAL ID.
+						// This also puts the leaf node address in EBX.
+						
+						push( ecx );
+						lookupLocal
+						( 
+							tokenECX.trueName, 
+							tokenECX.lcName, 
+							tokenECX.hashValue
+						);
+						mov( eax, ebp::fwdResult );
+						if( eax = NULL ) then
+
+							// Create a new text constant:
+							
+							mov( [esp], ecx );
+							enterConst
+							(
+								tokenECX.trueName,
+								tokenECX.lcName,
+								NULL,
+								&text_ste,
+								ebp::nameConst,
+								curOwner,
+								[ebx]
+							);
+							mov( eax, ebp::fwdResult );
+
+						elseif( symEAX.symClass = Value_ct ) then
+
+							// Change the value of the existing VAL object:
+
+							setVal
+							(
+								tokenECX.trueName,
+								tokenECX.lcName,
+								eax,
+								&text_ste,
+								ebp::nameConst,
+								curOwner,
+								[ebx]
+							);
+							
+						else
+						
+							// Defensive code: not really possible (?)
+							HLAerror
+							( 
+								"Symbol in @FORWARD must be undefined or a VAL symbol" 
+								nl 
+							);
+							mov( NULL, ebp::fwdResult );
+
+						endif;
+						pop( ecx );
+						
+						
+					else
+					
+						HLAerror
+						( 
+							"Expected an identifier, encountered " 
+						);
+						dumpQLexeme();
+						reuseLastTkn();
+									
+					endif;
+					matchRParen();
+					mov( ebp::fwdResult, eax );
+					ret();
+					
+				
+				elseif( eax = tkn_pointer ) then
+				
+					// We'll need a type symbol for this guy:
+
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+
+					// We need to create a dummy name for
+					// the anonymous pointer type that we're
+					// about to create.  This is of the form:
+					//
+					//	"@pointer"
+					
+					makeLabel( "@pointer" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Pointer_pt,
+						NULL,		// No base type, yet.
+						curOwner,
+						[ebx]
+					);
+					mov( eax, ebp::ptrType );
+					mov( &pointer_ste, ebp::constType );
+					pop( curOwner );
+					pop( curHashTable );
+				
+					lex( esi );
+					if( eax <> tkn_to ) then
+					
+						HLAerror( "Expected 'TO' after 'POINTER'" nl );
+						reuseLastTkn();
+						
+					endif;
+					if( getTypeID() ) then
+					
+						mov( ebp::ptrType, ebx );
+						mov( eax, symEBX.baseType );
+						mov( Pointer_pt, symEBX.pType );
+						mov( 4, symEBX.objectSize );
+						
+					else
+					
+						if( !getUndefTypeID( ebp::ptrType )) then
+										
+							HLAerror( "Expected a type ID, found " );
+							dumpQLexeme();
+							freeTkn( [ecx] );
+							resyncOnSemicolon();
+							
+						endif;
+
+							
+					endif;
+
+					// Okay, check for the ':=' operator:
+					
+					lex( esi );
+					if( eax = tkn_assign ) then
+					
+						constExpr( ebp::constResult );
+						
+					else
+					
+						HLAerror
+						( 
+							"Expected ':=' operator "
+							"but encountered " 
+						);
+						dumpQLexeme();
+						reuseLastTkn();
+						raise( ex.hlaerr );
+						
+					endif;
+				
+				
+				else
+				
+			
+					HLAerror
+					( 
+						"Expected a type identifier after the ':' "
+						"but encountered " 
+					);
+					dumpQLexeme();
+					raise( ex.hlaerr );
+					
+				endif;
+				
+			endif;
+			mov( NULL, eax );
+			ret();
+			
+		end ForC;
+		
+		
+				
+	begin cDcls;
+	
+		lex( esi );
+		if( eax = ':' ) then
+		
+			ForC();
+			if( eax <> NULL ) then
+
+				ret();
+
+			endif;
+			mustMatchSemicolon();
+
+		elseif( eax = tkn_assign ) then
+
+			constExpr( ebp::constResult );
+			mov( ebp::constResult.symType, eax );
+			mov( eax, ebp::constType );
+			mustMatchSemicolon();
+		
+		else
+		
+			HLAerror
+			( 
+				"Expected ':' or ':=' after identifier "
+				"but encountered " 
+			);
+			dumpQLexeme();
+			raise( ex.hlaerr );
+						
+		endif;
+		mov( NULL, eax );
+		ret();
+		
+	end cDcls;
+		
+begin parseConst;
+
+	forever
+
+
+		resetTknQ();	// Start marking the attributes.	
+		lex( esi );		// Get next constant declaration.
+
+		// Handle the const identifier.  If it's a global
+		// symbol, treat it as though it were undefined.
+		
+		if( eax = tkn_globalID ) then
+		
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );
+			
+		elseif( eax = tkn_localID ) then
+		
+			HLAerror
+			( 
+				"Duplicate symbol definition: ", 
+				tokenECX.trueName, 
+				nl 
+			);
+			makeUndefID( [ecx] );
+			mov( tkn_undefID, eax );			
+			
+		endif;
+		
+		if( eax = tkn_undefID ) then
+		
+			// Save away the ID info:
+
+			mov( tokenECX.trueName, constID );
+			mov( tokenECX.lcName, constlcID );
+			mov( tokenECX.hashValue, constHash );
+			
+			// Okay, we've got to process a constant declaration here.
+			// Begin by initializing the types to nothing.
+			
+			mov( NULL, constType );
+			mov( NULL, constResult.symType );
+			mov( ecx, constToken );
+			
+			try
+				cDcls();
+				if( EAX = NULL ) then
+		
+					
+					// Enter the constant into the symbol table:
+
+					if( makeCompatible( constType, constResult ) ) then
+
+						// The symbol is undefined at the local level,
+						// so the following call always returns false.
+						// We call it here to get the leaf node (in ebx)
+						// to which we must link the new symbol from.
+
+						lookupLocal( constID, constlcID, constHash );
+						enterConst
+						(
+							constID,
+							constlcID,
+							NULL,
+							constType,
+							constResult,
+							curOwner,
+							[ebx]
+						);
+						mov( isPrivate, bl );
+						mov( bl, symEAX.isPrivate );
+					
+					else
+
+							
+						mov( constResult.symType, ebx );
+						mov( constType, ecx );
+						if( ecx <> NULL && ebx <> NULL ) then
+						
+							HLAerror
+							( 
+								"Type mismatch between constant expression (",
+								symEBX.trueName,
+								") and type (",
+								symECX.trueName,
+								")"
+								nl
+							);
+							
+						else
+						
+							HLAerror
+							( 
+								"Type mismatch error between constant and type"
+								nl
+							);
+							
+						endif;
+					
+					endif;
+
+				endif;
+
+			  exception( ex.hlaerr );
+				
+				resyncOnSemicolon();			
+				
+			endtry;			
+			
+		else
+		
+			// It's either a ';' (which we'll eat) or something
+			// that doesn't belong in a CONST section.  If not a
+			// semicolon, let's just return and let the caller
+			// deal with it.
+			
+			breakif( eax <> ';' );
+			
+		endif;
+		
+	endfor;
+	if( eax = tkn_endconst ) then
+	
+		lex( esi );
+		if( eax <> ';' ) then
+		
+			HLAerror( "Syntax error, expected a ';'" nl );
+			resyncOnSemicolon();
+			
+		endif;
+	
+	else
+	
+		reuseLastTkn();
+		
+	endif;
+	
+end parseConst;
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// parseVAL
+//
+//	Handle the parsing of the VAL section or "?" statement here.
+// Note that we've already seen the "VAL" or "?" lexeme
+//
+//
+//	Grammar:
+//
+//	vals ::=
+//		(
+//				';'
+//			|	<ID> <vDcls>
+//		)*
+//		<optionalEndVal>
+//
+//	vDcls ::=
+//				':' <ForV> ';'
+//			|	':=' <constExpr> ';'
+//			|	'+=' <constExpr> ';'
+//			|	'-=' <constExpr> ';'
+//
+//	ForV ::=
+//				<typeID> <optionalBounds> ':=' <constExpr>
+//			|	enum '{' <idList> '}' ':=' <constExpr>
+//			|	pointer to <ptrTypeID> ':=' <constExpr>
+//			|	@forward '(' <ID> ')
+//
+// optionalEndVal ::=
+//				<empty string>
+//			|	endval ';'
+//
+//
+// Notes:	<ID> 	is an undefined ID, a globally defined ID, or a
+//					locally defined ID whose class is Value_ct.
+//			<typeID> is a defined symbol whose class is Type_ct.
+//			<ptrTypeID> is either a <typeID> or an undefined symbol.
+//
+// Like all parseXXXX procedures, this procedure has to call the
+// lexer to get the first token after the VAL reserved word.
+//
+// Note: this procedure gets called by both the VAL parser and
+//       the "?" parser. The "isQuestion" parameter determines
+//		 who called this guy (true="?").
+
+
+
+
+//proc( "parseVal" )
+procedure parseVal( isPrivate:boolean; isQuestion:boolean ); 
+var
+	constID		:string;
+	constlcID	:string;
+	constHash	:dword;
+	constType	:symNodePtr_t;
+	ptrType		:symNodePtr_t;
+	constToken	:pointer to token_t;
+	dimensions	:dimPtr_t;
+	constResult	:attr_t;
+	isSemicolon	:boolean; 
+	
+	procedure setEmpty( constType:symNodePtr_t; var constResult:attr_t );
+	begin setEmpty;
+	
+		push( eax );
+		push( ebx );
+		push( ecx );
+		mov( constResult, ebx );
+		mov( constType, ecx );
+		defaultAttr( [ebx] );
+		mov( ecx, attrEBX.symType );
+		mov( Constant_ct, attrEBX.symClass );
+		mov( symECX.pType, al );
+		mov( al, attrEBX.pType );
+		if( al = String_pt || al = UString_pt ) then
+			
+			str.a_cpy( "" );
+			mov( eax, attrEBX.string_vt );
+
+		elseif( al = Array_pt ) then
+
+			push( edx );
+			mov( symECX.numElements, eax );
+			mov( eax, attrEBX.numElements );
+			intmul( @size( attr_t ), eax );
+			malloc( eax );
+			mov( eax, attrEBX.arrayValues_vt );
+			mov( eax, edx );
+			for( mov( 0, ecx ); ecx<attrEBX.numElements; inc( ecx )) do
+
+				mov( attrEBX.symType, eax );
+				mov( symEAX.baseType, eax );
+				setEmpty( eax, attrEDX );
+				add( @size( attr_t ), edx ); 
+
+			endfor;
+			pop( edx );
+
+		elseif( al = Record_pt ) then
+
+			push( edx );
+			mov( symECX.fieldCnt, eax );
+			mov( eax, attrEBX.numFields );
+			intmul( @size( attr_t ), eax );
+			malloc( eax );
+			mov( eax, attrEBX.fieldValues_vt );
+			mov( eax, edx );
+			mov( symECX.linearSyms, eax );
+			for( mov( 0, ecx ); ecx<attrEBX.numFields; inc( ecx )) do
+
+				canAccess( [eax] ); 
+				if
+				( 
+						symEAX.pType in AnonRec_pt..EndAnonUnion_pt
+					||	symEAX.pType = Placeholder_pt 
+				) then
+
+					mov( symEAX.next, eax );
+					canAccess( [eax] );
+
+				elseif( symEAX.pType > EndAnonUnion_pt ) then
+
+					HLAerror
+					( 
+						"Unexpected VAL type (HLA Internal Error), pType=",
+						(type uns8 symEAX.pType),
+						nl 
+					);
+					raise( ex.hlaerr);
+
+				endif; 
+				setEmpty( eax, attrEDX );
+				add( @size( attr_t ), edx );
+				mov( symEAX.next, eax );
+
+			endfor;
+			pop( edx );
+
+		elseif( al = Pointer_pt ) then
+
+			mov( NULL, attrEBX.p.dispBaseAdrs );
+			mov( NULL, attrEBX.p.dispMinusAdrs );
+			mov( 0, attrEBX.p.constant );
+			mov( 0, attrEBX.p.constant[4] );
+			
+		elseif( al = Union_pt ) then
+
+			HLAerror( "You must assign a constant to a VAL/Union object" nl );
+			raise( ex.hlaerr );
+		elseif
+		( 
+				al = Class_pt
+			||	al = Thunk_pt
+			||	al >= Farptr_pt 
+		) then
+
+			HLAerror( "VAL type is illegal" nl );
+			raise( ex.hlaerr );
+		endif;
+		pop( ecx );
+		pop( ebx );
+		pop( eax );		
+		
+	end setEmpty;
+	
+
+	//proc( "vDcls" )
+	procedure vDcls; @noframe;
+	
+		procedure ForV; @noframe; @returns( "@nc" );
+		begin ForV;
+		
+			if( getTypeID() ) then
+			
+				mov( eax, ebp::constType );
+				optionalBounds();
+				mov( eax, ebp::dimensions );
+				if( eax <> NULL ) then
+
+					// We have an array type.  We need to build anonymous 
+					// type records for all array dimension and link them
+					// together:
+					
+					mov( (type dimensions_t [eax]).arity, ecx );
+					repeat
+					
+						// Sneak this type declaration into the global
+						// symbol table rather than putting it inside the record:
+
+						push( curHashTable );		// Save these, to restore
+						push( curOwner );			//  them later.
+
+						lea( rootHashTable, ebx );	// Point symbol table at
+						mov( ebx, curHashTable );	//  the root symbol table
+						mov( rootOwner, ebx );
+						mov( ebx, curOwner );
+
+						// We need to create a dummy name for
+						// the anonymous array type that we're
+						// about to create.  This is of the form:
+						//
+						//	" arrayXXX"
+						//
+						// where XXX is some unique numeric value.
+						// Note the '@' at the beginning of the
+						// string, this ensures that the program
+						// can never reference this symbol directly.
+						
+						makeLabel( "@array" );
+
+						// lookupLocal is called just to compute the leaf
+						// node value in EBX:
+
+						push( eax );
+						computeHash( eax );
+						mov( eax, ebx );
+						mov( [esp], eax );
+						lookupLocal( eax, eax, ebx );
+						pop( eax );
+
+						// Create a symbol table entry for the anonymous
+						// type:
+						
+						enterType
+						(
+							eax,
+							eax,
+							NULL,
+							Array_pt,
+							ebp::constType,
+							curOwner,
+							[ebx]
+						);
+						mov( ebp::constType, edx );
+						mov( symEDX.objectSize, edx );
+						mov( eax, ebp::constType );
+						pop( curOwner );
+						pop( curHashTable );
+						
+						// We need to fill in the array dimensions info here:
+						
+						mov( ebp::dimensions, ebx );
+						mov( (type dimensions_t [ebx]).dims[ecx*4-4], ebx );
+						mov( ebx, symEAX.numElements );
+						intmul( ebx, edx );
+						mov( edx, symEAX.objectSize );
+						dec( ecx );
+						
+					until( @z );
+					
+
+				endif;
+				
+				// Okay, check for the ':=' operator:
+				
+				lex( esi );
+				if( eax = tkn_assign ) then
+				
+					constExpr( ebp::constResult );
+					mov( tkn_assign, eax );
+					ret();
+					
+				endif;
+				if( eax = ';' ) then
+				
+					setEmpty( ebp::constType, ebp::constResult );
+					reuseLastTkn();
+					clc();
+					ret();
+				
+				endif;
+				
+				HLAerror
+				( 
+					"Expected ':=' operator or ';' "
+					"but encountered " 
+				);
+				dumpQLexeme();
+				reuseLastTkn();
+				raise( ex.hlaerr );
+					
+			else
+			
+				lex( esi );
+				if( eax = tkn_enum ) then
+				
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+
+					// We need to create a dummy name for
+					// the anonymous enumerated type that we're
+					// about to create.  This is of the form:
+					//
+					//	"@enumXXX"
+					//
+					// where XXX is some unique numeric value.
+					// Note the '@' at the beginning of the
+					// string, this ensures that the program
+					// can never reference this symbol directly.
+					
+					makeLabel( "@enum" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Enum_pt,
+						&enum_ste,
+						curOwner,
+						[ebx]
+					);
+					mov( eax, ebp::constType );
+					pop( curOwner );
+					pop( curHashTable );
+					
+					// Go construct the constants for this anonymous
+					// enumerated type:
+					
+					buildEnumType( [eax] );
+					
+					// Check for the ':=' operator following the
+					// enum list:
+					
+					lex( esi );
+					if( eax = tkn_assign ) then
+					
+						constExpr( ebp::constResult );
+						ret();
+						
+					endif;
+					if( eax = ';' ) then
+					
+						setEmpty( ebp::constType, ebp::constResult );
+						reuseLastTkn();
+						clc();
+						ret();
+					
+					endif;
+						
+					
+					HLAerror
+					( 
+						"Syntax error, expected ':=' operator or ';' "
+						"but encountered " 
+					);
+					dumpQLexeme();
+					reuseLastTkn();
+					raise( ex.hlaerr );
+						
+						
+				elseif( eax = tkn_at_forward ) then
+
+					// Process the remainder of the FORWARD clause:
+
+					matchLParen();
+					
+					// Grab the identifier:
+
+					lex( esi );
+					if( eax = tkn_globalID ) then
+					
+						makeUndefID( [ecx] );
+						mov( tkn_undefID, eax );
+						
+					elseif( eax = tkn_localID ) then
+					
+						mov( tokenECX.symNode, ebx );
+						if( symEBX.symClass <> Value_ct ) then
+
+							HLAerror
+							( 
+								"Duplicate symbol definition: ", 
+								tokenECX.trueName,
+								nl
+							);
+							raise( ex.hlaerr );
+
+						endif;
+						
+					endif;
+					if( eax = tkn_undefID || eax = tkn_localID ) then
+					
+						mov( ebp::constID, ebp::constResult.string_vt );
+						mov( String_pt, ebp::constResult.pType );
+						mov( &string_ste, ebp::constResult.symType );
+						mov( Constant_ct, ebp::constResult.symClass );
+						mov( 0, ebp::constResult.numElements );
+						strfree( ebp::constlcID );
+						
+						mov( tokenECX.trueName, ebp::constID );
+						mov( tokenECX.lcName, ebp::constlcID );
+						mov( tokenECX.hashValue, ebp::constHash );
+						
+						mov( &text_ste, ebp::constType );
+						
+					else
+					
+						HLAerror
+						( 
+							"Expected an identifier, encountered "
+						);
+						dumpQLexeme();
+						reuseLastTkn();
+						raise( ex.hlaerr );
+					
+					endif;
+					mustMatchRParen();
+				
+				elseif( eax = tkn_pointer ) then
+				
+					// We'll need a type symbol for this guy:
+
+					// Sneak this type declaration into the global
+					// symbol table rather than putting it inside the record:
+
+					push( curHashTable );		// Save these, to restore
+					push( curOwner );			//  them later.
+
+					lea( rootHashTable, ebx );	// Point symbol table at
+					mov( ebx, curHashTable );	//  the root symbol table
+					mov( rootOwner, ebx );
+					mov( ebx, curOwner );
+
+					// We need to create a dummy name for
+					// the anonymous pointer type that we're
+					// about to create.  This is of the form:
+					//
+					//	"@pointer"
+					
+					makeLabel( "@pointer" );
+
+					// lookupLocal is called just to compute the leaf
+					// node value in EBX:
+
+					push( eax );
+					computeHash( eax );
+					mov( eax, ebx );
+					mov( [esp], eax );
+					lookupLocal( eax, eax, ebx );
+					pop( eax );
+
+					// Create a symbol table entry for the anonymous
+					// type:
+					
+					enterType
+					(
+						eax,
+						eax,
+						NULL,
+						Pointer_pt,
+						NULL,		// No base type, yet.
+						curOwner,
+						[ebx]
+					);
+					mov( eax, ebp::ptrType );
+					mov( &pointer_ste, ebp::constType );
+					pop( curOwner );
+					pop( curHashTable );
+				
+					lex( esi );
+					if( eax <> tkn_to ) then
+					
+						HLAerror( "Expected 'TO' after 'POINTER'" nl );
+						reuseLastTkn();
+						
+					endif;
+					if( getTypeID() ) then
+											
+						mov( ebp::ptrType, ebx );
+						mov( eax, symEBX.baseType );
+						mov( Pointer_pt, symEBX.pType );
+						mov( 4, symEBX.objectSize );
+						
+					else
+
+						if( !getUndefTypeID( ebp::ptrType )) then
+										
+							HLAerror( "Expected a type ID, found " );
+							dumpQLexeme();
+							freeTkn( [ecx] );
+							resyncOnSemicolon();
+							
+						endif;
+
+							
+					endif;
+					// Okay, check for the ':=' operator:
+					
+					lex( esi );
+					if( eax = tkn_assign ) then
+					
+						constExpr( ebp::constResult );
+						clc();
+						ret();
+						
+					endif;
+					if( eax = ';' ) then
+					
+						setEmpty( ebp::constType, ebp::constResult );
+						reuseLastTkn();
+						clc();
+						ret();
+					
+					endif;
+						
+					HLAerror
+					( 
+						"Expected ':=' operator or ';' "
+						"but encountered " 
+					);
+					dumpQLexeme();
+					reuseLastTkn();
+					raise( ex.hlaerr );
+						
+				
+				else
+				
+					// Defensive code (never executes?):
+					HLAerror
+					( 
+						"Expected a type identifier after the ':' "
+						"but encountered " 
+					);
+					dumpQLexeme();
+					raise( ex.hlaerr );
+					
+				endif;
+				
+			endif;
+			ret();
+			
+		end ForV;
+		
+		
+				
+	begin vDcls;
+	
+		lex( esi );
+		if( eax = ':' ) then
+		
+			if( ForV() ) then
+			
+				mustMatchSemicolon();
+				
+			endif;
+		
+		elseif( eax = tkn_assign ) then
+		
+			constExpr( ebp::constResult );
+			mov( ebp::constResult.symType, eax );
+			mov( eax, ebp::constType );
+			mustMatchSemicolon();
+		elseif( eax = tkn_addAssign ) then
+
+			// Cheesy way to get "id += expr;"
+			// Note however, that this is *exactly*
+			// equivalent to "id = id + expr;" including
+			// any precedence problems that might result
+			// from this (i.e., this is not semantically
+			// equivalent to C/C+!).
+
+			str.a_cat( ebp::constID, "+" );
+			pushBackStr( eax );
+			push( eax );
+			constExpr( ebp::constResult );
+			mov( ebp::constResult.symType, eax );
+			mov( eax, ebp::constType );
+			mustMatchSemicolon();
+			pop( eax );
+			strfree( eax );
+
+		elseif( eax = tkn_subAssign ) then
+
+			// Cheesy way to get "id -= expr;"
+			// Note however, that this is *exactly*
+			// equivalent to "id = id - expr;" including
+			// any precedence problems that might result
+			// from this (i.e., this is not semantically
+			// equivalent to C/C+!).
+
+			str.a_cat( ebp::constID, "-" );
+			pushBackStr( eax );
+			push( eax );
+			constExpr( ebp::constResult );
+			mov( ebp::constResult.symType, eax );
+			mov( eax, ebp::constType );
+			mustMatchSemicolon();
+			pop( eax );
+			strfree( eax );
+		
+		else
+		
+			HLAerror
+			( 
+				"Expected ':' or ':=' after identifier "
+				"but encountered " 
+			);
+			dumpQLexeme();
+			raise( ex.hlaerr );
+			
+		endif;
+		ret();
+		
+	end vDcls;
+
+	// specialVDcls-
+	//
+	//	Special parser for handling expressions of the form
+	// @<identifer> := <<booleanExpr>>;
+	//
+	// This handles the assignment of a boolean constant to
+	// various build-in variables.
+	//
+	// This function returns the boolean result in AL. 
+
+	procedure specialVDcls; @noframe;
+	begin specialVDcls;
+
+		lex( esi );
+		if( eax <> tkn_assign ) then
+
+			HLAerror( "Expected ':=', encountered " );
+			dumpLexeme();
+			HLAerror2( nl );
+			reuseLastTkn();
+			raise( ex.hlaerr );
+
+		else
+
+			constExpr( ebp::constResult );
+			if( ebp::constResult.pType <> Boolean_pt ) then
+
+				HLAerror
+				( 
+					"Assignment to built-in variable requires a boolean result"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+
+		endif;
+		mustMatchSemicolon();
+		movzx( ebp::constResult.boolean_vt, eax );
+		ret();
+
+	end	specialVDcls;
+
+
+	procedure setTypeChkMap
+	( 
+		leftIndex:dword; 
+		rightIndex:dword; 
+		newValue:pType_t 
+	);
+	begin setTypeChkMap;
+
+		intmul( numpTypes, leftIndex, eax );
+		add( rightIndex, eax );
+		mov( newValue, dl );
+		mov( dl, typeChkMap[ eax ] );
+
+	end setTypeChkMap;
+		
+begin parseVal;
+
+	repeat
+
+		mov( false, isSemicolon );
+		try
+
+			resetTknQ();	// Start marking the attributes.
+			lex( esi );		// Get next constant declaration.
+			if( ebx = ID_tc ) then
+
+				// Handle the VAL identifier.  If it's a global
+				// symbol, treat it as though it were undefined.
+				
+				if( eax = tkn_globalID ) then
+				
+					makeUndefID( [ecx] );
+					mov( tkn_undefID, eax );
+					
+				elseif( eax = tkn_localID ) then
+				
+					// If it's a local ID, it's an error if it's not also
+					// a VAL ID:
+
+					mov( tokenECX.symNode, ebx );
+					if( symEBX.symClass <> Value_ct ) then
+
+						HLAerror
+						( 
+							"Duplicate symbol definition: ", 
+							tokenECX.trueName, 
+							nl 
+						);
+						raise( ex.hlaerr );
+						
+					endif;			
+					
+				endif;
+				
+				if( eax = tkn_undefID || eax = tkn_localID ) then
+				
+					// Save away the ID info:
+
+					mov( tokenECX.trueName, constID );
+					mov( tokenECX.lcName, constlcID );
+					mov( tokenECX.hashValue, constHash );
+					
+					// Okay, we've got to process a VAL declaration here.
+					// Begin by initializing the types to nothing.
+					
+					mov( NULL, constType );
+					mov( NULL, constResult.symType );
+					mov( ecx, constToken );
+					
+					vDcls();
+					
+					// Enter the constant into the symbol table:
+
+					if( makeCompatible( constType, constResult ) ) then
+		 
+						// If the symbol is undefined at the local level,
+						// then the following call returns NULL; otherwise
+						// it returns a pointer to the (VAL) symbol that
+						// is already defined at the local level.
+						// It also returns the leaf node (in ebx)
+						// to which we must link the new symbol to.
+
+						lookupLocal( constID, constlcID, constHash );
+						setVal
+						(
+							constID,
+							constlcID,
+							eax,
+							constType,
+							constResult,
+							curOwner,
+							[ebx]
+						);
+						mov( isPrivate, bl );
+						mov( bl, symEAX.isPrivate );
+
+					else
+							
+						mov( constResult.symType, ebx );
+						mov( constType, ecx );
+						if( ecx <> NULL && ebx <> NULL ) then
+						
+							HLAerror
+							( 
+								"Type mismatch between constant expression (",
+								symEBX.trueName,
+								") and type (",
+								symECX.trueName,
+								")"
+								nl
+							);
+							raise( ex.hlaerr );
+							
+						else
+						
+							HLAerror
+							( 
+								"Type mismatch error between constant and type"
+								nl
+							);
+							raise( ex.hlaerr );
+							
+						endif;
+					
+					endif;
+
+				endif;
+
+			// Check for the "special" identifiers that let us
+			// manipulate internal HLA variables:
+
+			elseif( eax = tkn_at_alignstack ) then
+
+				specialVDcls();
+				mov( al, defaultStackAlign );
+
+			elseif( eax = tkn_at_bound ) then
+
+				specialVDcls();
+				mov( al, doBound );
+
+			elseif( eax = tkn_at_display ) then
+
+				specialVDcls();
+				mov( al, defaultDisplay );
+
+			elseif( eax = tkn_at_enter ) then
+
+				specialVDcls();
+				mov( al, defaultEnter );
+
+			elseif( eax = tkn_at_enumsize ) then
+
+				lex( esi );
+				if( eax <> tkn_assign ) then
+
+					HLAerror( "Expected ':=', encountered " );
+					dumpLexeme();
+					HLAerror2( nl );
+					reuseLastTkn();
+					raise( ex.hlaerr );
+
+				else
+
+					constExpr( constResult );
+					mov( constResult.pType, al );
+					if( !isSmallNum( al )) then
+
+						HLAerror
+						( 
+							"Assignment to @enumsize requires a small "
+							"integer result"
+							nl
+						);
+						raise( ex.hlaerr );
+
+					else
+
+						mov( constResult.uns32_vt, eax );
+
+					endif;
+					if( eax <> 1 && eax <> 2 && eax <> 4 ) then
+
+						HLAerror
+						(
+							"Value assigned to @enumsize must be 1, 2, or 4" nl
+						);
+						raise( ex.hlaerr );
+
+					endif;
+
+				endif;
+				mov( eax, curEnumSize );
+				mov( eax, enum_ste.objectSize );
+				mustMatchSemicolon();
+
+				// Okay, we have successfully change the enum data type
+				// size. We need to adjust the typeChkMap table to reflect
+				// the new type conversion rules resulting from this change.
+
+				if( curEnumSize = 1 ) then
+
+					setTypeChkMap( Byte_pt, Enum_pt, Byte_pt );
+					setTypeChkMap( Word_pt, Enum_pt, Word_pt );
+					setTypeChkMap( DWord_pt, Enum_pt, DWord_pt );
+					setTypeChkMap( QWord_pt, Enum_pt, QWord_pt );
+					setTypeChkMap( TByte_pt, Enum_pt, TByte_pt );
+					setTypeChkMap( LWord_pt, Enum_pt, LWord_pt );
+					setTypeChkMap( Uns8_pt, Enum_pt, Uns8_pt );
+					setTypeChkMap( Uns16_pt, Enum_pt, Uns16_pt );
+					setTypeChkMap( Uns32_pt, Enum_pt, Uns32_pt );
+					setTypeChkMap( Uns64_pt, Enum_pt, Uns64_pt );
+					setTypeChkMap( Uns128_pt, Enum_pt, Uns128_pt );
+					setTypeChkMap( Int8_pt, Enum_pt, Int8_pt );
+					setTypeChkMap( Int16_pt, Enum_pt, Int16_pt );
+					setTypeChkMap( Int32_pt, Enum_pt, Int32_pt );
+					setTypeChkMap( Int64_pt, Enum_pt, Int64_pt );
+					setTypeChkMap( Int128_pt, Enum_pt, Int128_pt );
+
+				elseif( curEnumSize = 2 ) then
+
+					setTypeChkMap( Byte_pt, Enum_pt, Word_pt );
+					setTypeChkMap( Word_pt, Enum_pt, Word_pt );
+					setTypeChkMap( DWord_pt, Enum_pt, DWord_pt );
+					setTypeChkMap( QWord_pt, Enum_pt, QWord_pt );
+					setTypeChkMap( TByte_pt, Enum_pt, TByte_pt );
+					setTypeChkMap( LWord_pt, Enum_pt, LWord_pt );
+					setTypeChkMap( Uns8_pt, Enum_pt, Uns16_pt );
+					setTypeChkMap( Uns16_pt, Enum_pt, Uns16_pt );
+					setTypeChkMap( Uns32_pt, Enum_pt, Uns32_pt );
+					setTypeChkMap( Uns64_pt, Enum_pt, Uns64_pt );
+					setTypeChkMap( Uns128_pt, Enum_pt, Uns128_pt );
+					setTypeChkMap( Int8_pt, Enum_pt, Int16_pt );
+					setTypeChkMap( Int16_pt, Enum_pt, Int16_pt );
+					setTypeChkMap( Int32_pt, Enum_pt, Int32_pt );
+					setTypeChkMap( Int64_pt, Enum_pt, Int64_pt );
+					setTypeChkMap( Int128_pt, Enum_pt, Int128_pt );
+
+				elseif( curEnumSize = 4 ) then
+
+					setTypeChkMap( Byte_pt, Enum_pt, DWord_pt );
+					setTypeChkMap( Word_pt, Enum_pt, DWord_pt );
+					setTypeChkMap( DWord_pt, Enum_pt, DWord_pt );
+					setTypeChkMap( QWord_pt, Enum_pt, QWord_pt );
+					setTypeChkMap( TByte_pt, Enum_pt, TByte_pt );
+					setTypeChkMap( LWord_pt, Enum_pt, LWord_pt );
+					setTypeChkMap( Uns8_pt, Enum_pt, Uns32_pt );
+					setTypeChkMap( Uns16_pt, Enum_pt, Uns32_pt );
+					setTypeChkMap( Uns32_pt, Enum_pt, Uns32_pt );
+					setTypeChkMap( Uns64_pt, Enum_pt, Uns64_pt );
+					setTypeChkMap( Uns128_pt, Enum_pt, Uns128_pt );
+					setTypeChkMap( Int8_pt, Enum_pt, Int32_pt );
+					setTypeChkMap( Int16_pt, Enum_pt, Int32_pt );
+					setTypeChkMap( Int32_pt, Enum_pt, Int32_pt );
+					setTypeChkMap( Int64_pt, Enum_pt, Int64_pt );
+					setTypeChkMap( Int128_pt, Enum_pt, Int128_pt );
+
+				else
+
+					HLAerror( "Internal HLA error! 'curEnumSize' is invalid" nl );
+					raise( ex.hlaerr );
+
+				endif;
+
+			elseif( eax = tkn_at_frame ) then
+
+				specialVDcls();
+				mov( al, defaultFrame );
+
+			elseif( eax = tkn_at_leave ) then
+
+				specialVDcls();
+				mov( al, defaultLeave );
+
+			elseif( eax = tkn_at_noalignstack ) then
+
+				specialVDcls();
+				xor( 1, al );
+				mov( al, defaultStackAlign );
+
+			elseif( eax = tkn_at_nodisplay ) then
+
+				specialVDcls();
+				xor( 1, al );
+				mov( al, defaultDisplay );
+
+			elseif( eax = tkn_at_noenter ) then
+
+				specialVDcls();
+				xor( 1, al );
+				mov( al, defaultEnter );
+
+			elseif( eax = tkn_at_noframe ) then
+
+				specialVDcls();
+				xor( 1, al );
+				mov( al, defaultFrame );
+
+			elseif( eax = tkn_at_noleave ) then
+
+				specialVDcls();
+				xor( 1, al );
+				mov( al, defaultLeave );
+
+			elseif( eax = tkn_at_nostackalign ) then
+
+				specialVDcls();
+				xor( 1, al );
+				mov( al, defaultStackAlign );
+
+			elseif( eax = tkn_at_procprefix ) then
+
+				specialVDcls();
+				mov( al, prefixProcs );
+
+			elseif( eax = tkn_at_stackalign ) then
+
+				specialVDcls();
+				mov( al, defaultStackAlign );
+
+			elseif( eax = tkn_at_trace ) then
+
+				specialVDcls();
+				mov( al, traceCode );
+
+			elseif( eax = tkn_at_traceprocs ) then
+
+				specialVDcls();
+				mov( al, traceProcs );
+
+			else
+			
+				// It's either a ';' (which we'll eat) or something
+				// that doesn't belong in a VAL section.  If not a
+				// semicolon, let's just return and let the caller
+				// deal with it.
+				
+				mov( true, isSemicolon );
+					
+
+			endif;
+
+		  exception( ex.hlaerr );
+
+			resyncOnSemicolon();
+
+		endtry;
+
+		// Note: if this procedure was called to parse a "?"
+		// compile-time statement, then simply process 
+		// a single declaration. Otherwise process as many 
+		// declarations as we encounter.
+
+	until( isQuestion || isSemicolon );
+	
+	// If this is an actual VAL section (i.e., isquestion is false),
+	// then we allow an optional "endval;" at the end of the declaration.
+	
+	if( !isQuestion ) then
+	
+		if( eax == tkn_endval ) then
+	
+			lex( esi );
+			if( eax <> ';' ) then
+			
+				HLAerror( "Syntax error, expected a semicolon" nl );
+				resyncOnSemicolon();
+				
+			endif;
+		
+		else
+	
+			reuseLastTkn();
+
+		endif;
+		
+	endif;
+	
+end parseVal;
+
+
+
+end parseConstsUnit;

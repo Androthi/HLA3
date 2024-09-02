@@ -1,0 +1,3914 @@
+unit HLALexer;
+
+#includeonce( "hlacompiler.hhf" )
+//#includeonce( "hll.hhf" ) //< tries to override HLA keyword switch with macro of same name
+#includeonce( "stdio.hhf" )
+#includeonce( "stdout.hhf" )
+#includeonce( "conv.hhf" )
+#includeonce( "strings.hhf" )
+#includeonce( "chars.hhf" )
+#includeonce( "memory.hhf" )
+#include( "excepts.hhf" )
+
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+
+
+static
+
+	// StringBuf-	Build string constants here (also used for numeric
+	//				conversions):
+	
+	align(4);
+	StringBuf	:char[4096];
+	
+	// ID and lcID- Extract identifiers to these locations:
+	
+	ID			:str.strvar( 256 );
+	lcID		:str.strvar( 256 );
+	
+	
+	// strResult- Used to hold a string constant returned by
+	// expr for the #include statement.
+	
+	strResult	:attr_t; 
+
+
+
+	// Jump table for the normal lexical analyzer.  The index of each
+	// entry is the ASCII code of the character to process.  Note that
+	// the label "x" indicates an illegal character in the lexer.
+
+	lexJmpTbl: dword[256] :=
+	[
+		&x, &x, &x, &x, &x, &x, &x, &x,			// 0..7
+		&x, &ws, &IsLF, &x, &x, &IsCR, &x, &x,	// 8..$F
+		&x, &x, &x, &x, &x, &x, &x, &x,			// $10..$17
+		&x, &x, &x, &x, &x, &x, &x, &x,			// $18..$1F
+
+		// $20..$2F
+
+		&ws,			// Space char 
+		&Exclaim, 		// ! char
+		&Quote,			// " char 
+		&Pound,			// # char 
+		&Dollar, 		// $ char
+		&Percent, 		// % char
+		&Amper, 		// & char
+		&Apost,			// ' char
+		&LParen, 		// ( char
+		&RParen, 		// ) char
+		&Asterisk, 		// * char
+		&Plus, 			// + char
+		&Comma, 		// , char
+		&Minus, 		// - char
+		&Period, 		// . char
+		&Slash,			// / char
+
+		// $30..$3F
+
+		&Digit, 		// 0 char
+		&Digit,			// 1 char 
+		&Digit,			// 2 char 
+		&Digit,			// 3 char 
+		&Digit,			// 4 char 
+		&Digit,			// 5 char 
+		&Digit, 		// 6 char
+		&Digit,			// 7 char
+		&Digit,			// 8 char 
+		&Digit, 		// 9 char
+		&Colon, 		// : char
+		&Semicolon, 	// ; char
+		&Less, 			// < char
+		&Equal, 		// = char
+		&Greater, 		// > char
+		&Question,		// ? char
+
+		// $40..$5F
+
+		&Atsign, 		// @ char
+		&Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha,
+		&Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha,
+		&Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &u,     &Alpha, &Alpha,
+		&Alpha, &Alpha, &Alpha, 
+		&LBracket, &BackSlash, &RBracket, &Caret, &Underscore,
+		
+		// $60..$7F
+		
+		&GraveAccent, 
+		&Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha,
+		&Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &Alpha,
+		&Alpha, &Alpha, &Alpha, &Alpha, &Alpha, &u    , &Alpha, &Alpha,
+		&Alpha, &Alpha, &Alpha, 
+		&LBrace, &VertBar, &RBrace, &Tilde, &Del,
+		
+		// $80..$FF
+		
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x,
+		&x, &x, &x, &x, &x, &x, &x, &x
+	];
+
+						
+
+
+	// Jump table for the fast lexical analyzer.  The index of each
+	// entry is the ASCII code of the character to process.  Note that
+	// the label "y" indicates an illegal character in the lexer.
+
+	fastLexJmpTbl: dword[256] :=
+	[
+		&y, &y, &y, &y, &y, &y, &y, &y,					// 0..7
+		&y, &f_ws, &f_IsLF, &y, &y, &f_IsCR, &y, &y,	// 8..$F
+		&y, &y, &y, &y, &y, &y, &y, &y,					// $10..$17
+		&y, &y, &y, &y, &y, &y, &y, &y,					// $18..$1F
+
+		// $20..$2F
+
+		&f_ws,			// Space char 
+		&f_Exclaim,		// ! char
+		&f_Quote,		// " char 
+		&f_Pound,		// # char 
+		&f_Dollar, 		// $ char
+		&f_Percent,		// % char
+		&f_Amper, 		// & char
+		&f_Apost,		// ' char
+		&f_LParen, 		// ( char
+		&f_RParen, 		// ) char
+		&f_Asterisk, 	// * char
+		&f_Plus, 		// + char
+		&f_Comma, 		// , char
+		&f_Minus, 		// - char
+		&f_Period, 		// . char
+		&f_Slash,		// / char
+
+		// $30..$3F
+
+		&f_Digit, 		// 0 char
+		&f_Digit,		// 1 char 
+		&f_Digit,		// 2 char 
+		&f_Digit,		// 3 char 
+		&f_Digit,		// 4 char 
+		&f_Digit,		// 5 char 
+		&f_Digit, 		// 6 char
+		&f_Digit,		// 7 char
+		&f_Digit,		// 8 char 
+		&f_Digit, 		// 9 char
+		&f_Colon, 		// : char
+		&f_Semicolon, 	// ; char
+		&f_Less, 		// < char
+		&f_Equal, 		// = char
+		&f_Greater, 	// > char
+		&f_Question,	// ? char
+
+		// $40..$5F
+
+		&f_Atsign, 		// @ char
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha,
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, 
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_u, 
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, 
+		&f_LBracket, &f_BackSlash, &f_RBracket, &f_Caret, &f_Underscore,
+		
+		// $60..$7F
+		
+		&f_GraveAccent, 
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha,
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, 
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_u, 
+		&f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, &f_Alpha, 
+		&f_LBrace, &f_VertBar, &f_RBrace, &f_Tilde, &f_Del,
+		
+		// $80..$FF
+		
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y,
+		&y, &y, &y, &y, &y, &y, &y, &y
+	];
+
+						
+
+
+// extractID-
+//
+//	Utility routine used by the lexers.
+//
+//	Grabs the lexeme between edi and esi and stores
+// the characters of this string into ID and a lower case
+// version into lcID (static variables in lex)
+//
+// Inputs:
+//
+//	EDI-
+//		points at start of lexeme.
+//
+//	ESI-
+//		points at first character beyond lexeme.
+//
+// Returns
+//
+//	ID-
+//		Original identifier.
+//
+//	lcID-
+//		Identifier converted to lower case.
+
+procedure extractID; @noframe;
+begin extractID;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edi );
+	
+	assert( esi <= EOF );
+	mov( lcID, ecx );
+	canAccess( [ecx] );
+	mov( ID, ebx );
+	canAccess( [ebx] );
+	while( edi < esi ) do
+	
+		mov( [edi], al );
+		mov( al, [ ebx ] );
+		
+		// Cheap lowercase conversion that works for
+		// 'a'..'z', 'A'..'Z', '0'..'9', and '_':
+		
+		if( al <= 'Z' ) then
+		
+			or( $20, al );
+			
+		endif;
+		mov( al, [ ecx ] );
+		inc( edi );
+		inc( ecx );
+		inc( ebx );
+		
+	endwhile;
+	mov( 0, (type byte [ebx]));	// zero terminate the string.
+	mov( lcID, eax );
+	mov( ID, ebx );
+	sub( eax, ecx );
+	mov( ecx, (type str.strRec [eax]).length );
+	mov( ecx, (type str.strRec [ebx]).length );
+	
+	pop( edi );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	ret();
+		
+end extractID;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// ClearAttr- Clears out the attribute field prior.
+
+procedure ClearAttr( attr:attrPtr_t in ecx ); @noframe;
+begin ClearAttr;
+
+	canAccess( [ecx] );
+	push( eax );
+	xor( eax, eax );
+	mov( eax, attrECX.dword_vt[0] );
+	mov( eax, attrECX.dword_vt[4] );
+	mov( eax, attrECX.dword_vt[8] );
+	mov( eax, attrECX.dword_vt[12] );
+	mov( eax, attrECX.dword_vt[16] );
+	mov( eax, attrECX.dword_vt[20] );
+	mov( eax, attrECX.dword_vt[24] );
+	mov( eax, attrECX.dword_vt[28] );
+	pop( eax );
+	ret();
+
+end ClearAttr;
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// lex-
+//
+//	Lexical analyzer procedure.  Returns a token on each call.
+//
+// Input:
+//
+//	Cursor( in ESI)- pointer to text to begin scanning.
+//
+// Returns:
+//
+//	EAX-	Token value, see "hlacompiler.hhf" & "rwtokens.hhf" for definitions
+//	EBX-	Token Classification.
+//	ECX-	Pointer to tknQ entry (holds attribute, if any).
+//	ESI-	Points at first character beyond lexeme.
+//	EDI-	Points at start of lexeme.
+//
+// Global Return value:
+//
+//	Queues up a token in the tknQ queue.
+
+
+		 
+
+procedure lex( Cursor:dword in esi );  @noframe;
+const
+	fileEAX	:text := "(type fileList_t [eax])";
+	fileEBX	:text := "(type fileList_t [ebx])";
+	fileECX	:text := "(type fileList_t [ecx])";	
+
+
+	
+
+begin lex;
+
+		
+	LexAgain:
+
+		cmp( tknReuse, 0 );
+		jne FetchTknFromQ;
+	
+		// Move on to the next token queue element:
+		
+		mov( tknTail, ecx );
+		assert( ecx >= &tknQ && ecx <= &endTknQ );
+		inc( (type byte tknCnt) );
+		jz TokenOverflow;
+		add( @size( token_t ), tknTail );
+		
+	TestEOF: 
+	QuickLexAgain:
+	
+		mov( esi, edi );				// Save ptr to start of lexeme.
+		cmp( esi, EOF );
+		jae UnexpectedEOF;
+		
+		// Execute a jump table based on the first character of the lexeme:
+		
+		movzx( (type char [esi]), eax );
+		jmp( lexJmpTbl[ eax*4 ] );
+		
+		
+		
+	UnexpectedEOF:
+
+	
+		// If we just hit the end of the file, let's check to
+		// see if we've been processing an include file or
+		// lexing from a string via pushBackStr or pushBackMacro:
+		
+		assert( includeSP < MaxNestedIncludes );
+		if( includeSP > 0 ) then
+		
+			// Okay, we're processing an include file, macro, or
+			// a string.  Pop the include stack and
+			// try again.  Note that if the top of the stack
+			// is a macro entry, then we've got an error.
+
+			intmul( @size( includeInfo_t ), includeSP, ebx );
+			mov( includeStk.incRecType[ebx], al );
+			if( al <= irt_text ) then // Include file or string
+			
+				// If the top of stack is a string or an include
+				// file, just pop it and carry out about our business.
+				
+				popIncStack ();
+				jmp LexAgain;
+				
+			endif;
+			
+			if
+			(
+					includeStk.incRecType[ebx] = irt_macro
+				&&	!includeStk.active[ebx] 
+			) then
+			
+				// Here is a bit of a kludge.
+				// If a TEXT constant begins the invocation of a context-free
+				// macro and the #terminator doesn't occur within that string,
+				// we could get confused and report an EOF error here. To 
+				// prevent this, let's scan down the include stack and see if 
+				// there are any outstanding irt_text expansions taking place. 
+				// If so, and EOF matches that text expansion's EOF, then 
+				// we'll just terminate that entry instead of terminating the 
+				//current macro.
+				//
+				// Kludge! This only looks at the entry immediately below
+				// the current macro entry. Do we need to look below that
+				// point, as well?
+				
+				if
+				( 
+					includeStk.incRecType[ebx-@size(includeInfo_t)] = irt_text 
+				) then
+				
+					dec( includeSP );
+					getIncStack();
+					push( esi );
+					push( edi );
+					mov( @size( includeInfo_t ), ecx );
+					lea( edi, includeStk[ebx-@size(includeInfo_t)] );
+					lea( esi, includeStk[ebx] );
+					cld();
+					rep.movsb();
+					pop( edi );
+					pop( esi );
+					
+				else		
+			
+					HLAerror
+					( 
+						"Encountered end of file without a #terminator "
+						"to match the macro's invocation" nl
+					);
+					dec( includeSP );	// Pop the inactive record.
+					
+				endif;
+			
+			else
+			
+				popIncStack();
+
+			endif;
+			jmp LexAgain;			
+			
+			
+		else
+		
+			// On EOF, make sure the compile-time statement stack is empty:
+
+			mov( ctSP, eax );
+			assert( ctSP < maxCTstk );
+			if( eax <> -1 ) then
+
+				// This doesn't seem to be possible. The error gets
+				// caught in popIncStk. This code serves mainly as
+				// defensive code.
+				intmul( @size( ctStack_t ), eax );
+				mov( ctStack.lineNumber[eax], eax );
+				HLAwarning
+				( 
+					"At EOF, there was an outstanding compile-time "
+					"statement active" nl
+					"The original compile-time statement was at line #", 
+					(type uns32 eax),
+					nl
+				);
+
+			endif;
+
+			// Return the EOF token.
+			
+			mov( tkn_EOF, eax );
+			mov( EOF_tc, ebx );
+			mov( esi, edi );
+			mov( false, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+
+			ret();
+			
+		endif;
+		
+	TokenOverflow:
+		HLAerror( "Token queue overflow (internal HLA error)" nl );
+		quitHLA();
+		
+	// If we get down here, someone has decided to push a token
+	// onto the token queue for re-use.  Grab the token pointed
+	// at by tknHead.
+	
+	FetchTknFromQ:
+
+		dec( tknReuse );
+		if( tknReuse = 0 && pendingReset ) then
+		
+			// Fake a "resetTknQ" here.  We need to
+			// preserve the last token just in case
+			// someone decides to call "reuseLastTkn"
+			// upon our return (yes, it happens, and this
+			// is by design).
+			
+			mov( false, pendingReset );
+			mov( tknHead, esi );
+			mov( &tknQ, edi );
+			if( esi <> edi ) then
+			
+				mov( (@size( token_t ) + 3) div 4, ecx );
+				rep.movsd();
+				mov( &tknQ, tknHead );
+				mov( &tknQ+@size( token_t ), tknTail );
+				mov( 1, tknCnt );
+				
+			endif;
+		
+		endif;
+		
+		mov( tknHead, ecx );
+		add( @size( token_t ), tknHead );
+		mov( tokenECX.tknValue, eax );
+		mov( tokenECX.tknClass, ebx );
+		mov( tokenECX.endLexeme, esi );
+		mov( tokenECX.lexemeStart, edi );
+		ret();
+			
+
+
+
+	// Symbols we don't use or haven't implemented yet:
+	
+	BackSlash::
+	GraveAccent::
+	Del::
+	
+	// Handle illegal characters here:
+	
+	x::
+		HLAerror( "Illegal character in source file: $", al, nl nl );
+		
+		
+	// Handle whitespace characters here:
+	
+	ws::
+		inc( esi );
+		cmp( esi, EOF );
+		jae UnexpectedEOF;
+		
+		mov( [esi], al );
+		cmp( al, ' ' );
+		je ws;
+		cmp( al, stdio.tab );
+		je ws;
+		jmp QuickLexAgain;	// Don't bump token queue on whitespace
+		
+		
+	// Handle newlines here.
+	
+	IsCR::	// Return
+	
+		// If <CR><LF> sequence, skip the LF too.
+		
+		inc( esi );
+		cmp( esi, EOF );
+		jae UnexpectedEOF;
+		
+		mov( [esi], al );
+		cmp( al, stdio.lf );
+		je IsLF;
+		dec( esi );
+		
+	
+	IsLF::	// LineFeed
+	
+		inc( lineNumber );
+		inc( totalLineCount );
+		inc( esi );
+		jmp QuickLexAgain;	// Don't bump token queue on newlines.
+	
+	
+	
+	// Handle the ? operator here (VAL expression):
+
+	Question::
+		inc( esi );					// Skip the ?
+		parseVal( false, true );	// Process the VAL Dcl that follows.
+		jmp LexAgain;				// Continue scanning.
+	
+	
+	
+	
+	
+	// Handle the '-' and '->' operators here:
+	
+	Minus::
+		inc( esi );
+		cmp( esi, EOF );
+		jae doAddOp;
+		cmp( (type char [esi]), '=' );
+		je doSubAssign;
+		cmp( (type char [esi]), '>' );
+		jne doAddOp;
+
+		mov( mulOp_tc, ebx );
+		inc( esi );
+		mov( false, tokenECX.hasAttr );
+		mov( tkn_aShrOp, eax );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	// Deal with the -= operator here:
+
+	doSubAssign:
+		mov( tkn_subAssign, eax );
+	doOpAssign:
+		mov( addOp_tc, ebx );
+		inc( esi );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+		
+
+	// Handle the '+' and '+=' operators here:
+
+	Plus:: 	  
+		inc( esi );
+		cmp( esi, EOF );
+		jae doAddOp;
+		cmp( (type char [esi]), '=' );
+		jne doAddOp;
+		mov( tkn_addAssign, eax );
+		jmp doOpAssign;
+		
+	// Handle the '-' and '+' operators down here.
+	
+	doAddOp:
+		mov( addOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+		
+	// Deal with the "*" operator.
+	
+	Asterisk::
+		mov( mulOp_tc, ebx );
+		inc( esi );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	// Handle the single character punctuation symbols here.
+	
+	LParen::  
+	Semicolon::
+	LBracket::
+	RBracket::
+	LBrace::
+	Comma::   
+		mov( punct_tc, ebx );
+		inc( esi );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Deal with hexadecimal literal constants here.
+	
+	Dollar::
+		ClearAttr( ecx );	// Zero out the attribute region.  
+		inc( esi );			// skip the '$'
+		getHexConst( esi, tokenECX.attr );
+		if( @c ) then
+		
+			HLAerror( "Illegal hexadecimal constant: " );
+			dumpQLexeme();
+			HLAerror2( nl );
+			reSync();
+			jmp LexAgain;
+			
+		endif;
+		mov( tkn_numConst, eax );
+		mov( const_tc, ebx );
+		mov( true, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	// Deal with binary literal constants here.
+	
+	Percent::
+		ClearAttr( ecx );	// Zero out the attribute.  
+		inc( esi );			// skip the '%'
+		getBinConst( esi, tokenECX.attr );
+		if( @c ) then
+		
+			HLAerror( "Illegal binary constant: " );
+			dumpQLexeme();
+			HLAerror2( nl );
+			reSync();
+			jmp LexAgain;
+			
+		endif;
+		mov( tkn_numConst, eax );
+		mov( const_tc, ebx );
+		mov( true, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+		
+		
+	// Digit- Handle numeric constants.
+	//
+	//	This code is somewhat complicated by the fact that
+	// both integer and floating point values can start with
+	// a numeric digit.  This code has to figure out whether this
+	// is an integer or a real constant.
+	//
+	//	Note that integer constants are always treated as UNS values
+	//	(the size, i.e., uns8..uns128, is determined by the H.O. set bit).
+	//	Real values are always treated as REAL80 values.
+	
+	Digit::
+		ClearAttr( ecx );			// Zero out the attribute.
+		xor( eax, eax );
+		DigitLoop:
+		
+			inc( esi );				// Skip current digit.
+			cmp( esi, EOF );
+			jae ValidInt;
+			
+			mov( [esi], al );
+			cmp( al, '_' );
+			je DigitLoop;
+			cmp( al, '0' );
+			jb CheckFloat;
+			cmp( al, '9' );
+			jbe DigitLoop;
+		
+		// If we drop down here, check for a floating point constant.
+		// We've got a float value if we encounter a period or an "e".
+			
+		CheckFloat:
+			cmp( al, '.' );
+			je FloatPeriod;
+			cmp( al, 'e' );
+			je FloatE;
+			cmp( al, 'E' );
+			je FloatE;
+					
+		// Drop down here at the end of the digit string and verify
+		// that we've got a valid delimiter character for this number.
+
+			bt( eax, goodNumDelimiters );
+			jnc BadNumber;
+			
+		ValidInt:
+			ClearAttr( ecx );			// Zero out the attribute.
+			mov( edi, esi );
+			getDecConst( esi, tokenECX.attr);
+			jc BadNumber;				// Carry set if overflow occurs.
+			mov( tkn_numConst, eax );	// Okay, we've got a good integer
+			mov( const_tc, ebx );		//  literal constant.
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		BadNumber:
+			HLAerror( "Illegal numeric constant: " );
+			dumpQLexeme();
+			HLAerror2( nl );
+			reSync();
+			jmp LexAgain;
+			
+		
+		// If we get to this point, we've got a string of digits
+		// ending with a period.  So this must be a floating point
+		// constant.  Check for any digits after the decimal point.
+		
+		FloatPeriod:
+			inc( esi );			// Skip the current character.
+			cmp( esi, EOF );	// If at the end of the number,
+			jae ValidFloat;		//  then it's a valid floating point #.
+			
+			mov( [esi], al );	// Check for digits after the '.'
+			cmp( al, '0' );
+			jb CheckDelimiter;	// If < 0, better be the end of the #.
+			cmp( al, '9' );
+			jbe FloatPeriod;
+			
+		// At the end of the digits, we'd best have an "E" or a delimiter:
+		
+		CheckE:
+			cmp( al, 'e' );
+			je FloatE;
+			cmp( al, 'E' );
+			jne CheckDelimiter;
+			
+			
+		// Okay, we had an "E", now we can have an optional sign followed
+		// by one or more digits:
+		
+		FloatE:
+			inc( esi );			// Skip the "E".
+			cmp( esi, EOF );	// Can't end with an "E"!
+			jae BadNumber;
+			mov( [esi], al );
+			cmp( al, '+' );
+			je SkipSign;
+			cmp( al, '-' );
+			jne NoSign;
+		
+		SkipSign:
+			inc( esi );			// Skip the '+' or '-'
+			cmp( esi, EOF );	// Can't end with '+' or '-'
+			jae BadNumber;
+			
+		// Immediately following the "E" and the optional sign we
+		// must have at least one decimal digit.
+		
+		NoSign:
+			mov( [esi], al );
+			cmp( al, '0' );		// First character must be a digit, check this.
+			jb BadNumber;
+			cmp( al, '9' );
+			ja BadNumber;
+
+		// Extract any additional decimal digits after the "E" and the
+		// optional sign:
+		
+		ExpDigits:						
+			inc( esi );			// Skip the digit.
+			cmp( esi, EOF );
+			jae ValidFloat;
+			
+			mov( [esi], al );
+			cmp( al, '0' );
+			jb CheckDelimiter;
+			cmp( al, '9' );
+			jbe ExpDigits;
+			
+		// At the end of the exponent or the end of the digits (if there
+		// was no exponent) we need a valid delimiter.
+		
+		CheckDelimiter:
+			bt( eax, goodNumDelimiters );
+			jnc BadNumber;
+		
+		// Okay, lexically the floating point value looks okay.
+		// Convert it to a real80 value by calling conv.atof on the
+		// sequence of characters.
+			
+		ValidFloat:
+		
+			// Copy the float digits to a buffer so we can convert
+			// them to an FP value via conv.atof.
+			
+			push( esi );
+			push( ecx );
+			push( edi );
+			cld();
+			
+			mov( esi, ecx );
+			sub( edi, ecx );
+			mov( edi, esi );
+			mov( &StringBuf, edi );
+			rep.movsb();
+			mov( 0, (type byte [edi]) );
+			pop( edi );
+			pop( ecx );
+			mov( &StringBuf, esi );
+
+			// Storage for saveESI/EDI
+
+			push( ebp );
+			mov( esp, ebp );
+			sub( 8, esp );
+			try
+			
+				mov( esi, [ebp-4] );
+				mov( edi, [ebp-8] );
+				conv.atof();
+				fstp( tokenECX.attr.real80_vt );
+				mov( Real80_pt, tokenECX.attr.pType );
+				mov( &real80_ste, tokenECX.attr.symType );
+				mov( Constant_ct, tokenECX.attr.symClass );
+				mov( false, tokenECX.isID );
+				mov( 0, tokenECX.attr.numElements );
+				
+				mov( 1, al );				// If no exception, it's valid.
+				
+			  exception( ex.MemoryAllocationFailure )
+
+				raise( ex.MemoryAllocationFailure );
+			
+			  anyexception
+			  
+			  	// An exception can occur if there is massive overflow
+				// or other problems with the number that a lexical scan
+				// doesn't catch.
+				
+				mov( [ebp-4], esi );
+				mov( [ebp-8], edi );
+			  	mov( 0, al );
+				
+			endtry;
+			mov( ebp, esp );
+			pop( ebp );
+			pop( esi );
+			cmp( al, 1 );		// see if the conversion was successful.
+			jne BadFloat;
+
+				mov( tkn_realConst, eax );
+				mov( const_tc, ebx );
+				mov( true, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+
+			BadFloat:
+				
+				HLAerror( "Illegal floating point constant: " );
+				dumpQLexeme();
+				HLAerror2( nl );
+				reSync();
+				jmp LexAgain;			
+		
+		
+
+	// Deal with character constants surrounded by apostrophes here.
+
+	Apost::
+			ClearAttr( ecx );	// Zero out the attribute.
+			inc( esi );			// Skip over leading apostrophie.
+			cmp( esi, EOF );
+			jae	BadCharConst;
+			movzx( (type char [esi]), eax );
+			mov( eax, ebx );
+			bt( eax, LegalCharLiteral );
+			jnc BadCharConst2;
+			if( al = '''' ) then
+			
+				inc( esi );
+				cmp( esi, EOF );
+				jae BadCharConst;
+				mov( [esi], al );
+				cmp( al, '''' );
+				jne BadCharConst;
+				
+			endif;
+			inc( esi );
+			cmp( esi, EOF );
+			jae BadCharConst;
+			cmp( (type char [esi]), '''' );
+			jne BadCharConst;
+			inc( esi );
+
+			mov( bl, tokenECX.attr.char_vt );
+			mov( Char_pt, tokenECX.attr.pType );
+			mov( &char_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );
+
+			mov( tkn_charConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		BadCharConst2:
+			add( 2, esi );
+			HLAerror( "Illegal character in character literal constant" nl );
+			HLAerror2( "(ASCII code = $", al, ")" nl nl );
+			reSync();
+			jmp LexAgain;
+			
+			
+		BadCharConst:
+			HLAerror( "Illegal character constant: " );
+			dumpQLexeme();
+			HLAerror2( nl );
+			reSync();
+			jmp LexAgain;
+		
+			  
+
+	// Deal with string constants surrounded by quotes here.
+
+	Quote::
+			ClearAttr( ecx );		// Zero out the attribute
+			lea( edx, StringBuf );
+			xor( eax, eax );
+			
+			// Construct a zero-terminated string in StringBuf:
+			
+			forever
+			
+				inc( esi );			// Skip over leading quote.
+				cmp( esi, EOF );
+				jae	BadStrConst;
+				
+				mov( [esi], al );
+				bt( eax, LegalCharLiteral );
+				jnc BadStrConst2;
+				if( al = '"' ) then
+				
+					inc( esi );
+					breakif( esi >= EOF );
+					mov( [esi], al );
+					breakif( al <> '"' );
+					
+				endif;
+				mov( al, [edx] );
+				inc( edx );
+				
+			endfor;
+
+			mov( 0, (type byte [edx]));		// Zero terminate the string.
+			lea( eax, StringBuf );
+			str.a_cpyz( eax );				// Convert to an HLA string.
+
+			mov( eax, tokenECX.attr.string_vt );
+			mov( String_pt, tokenECX.attr.pType );
+			mov( &string_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );			
+			
+			mov( tkn_strConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		BadStrConst2:
+			HLAerror( "Illegal character in string literal constant" nl );
+			HLAerror2( "(ASCII code = $", al, ")" nl nl );
+			reSync();
+			jmp LexAgain;
+			
+			
+		BadStrConst:
+			HLAerror( "Illegal string constant: " );
+			dumpQLexeme();
+			HLAerror2( nl );
+			reSync();
+			jmp LexAgain;		
+		
+			  
+
+	
+	// Check for "/", "//", and "/*..*/" here.
+	
+	Slash::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = '/' ) then
+			
+				// We've got "//", ignore everything to the end of the line.
+				
+				EatLine:
+				
+					inc( esi );
+					cmp( esi, EOF );		// If EOF, stop eating stuff.
+					jae UnexpectedEOF;
+					
+					if( (type char [esi]) <> stdio.lf ) then
+					
+						cmp( (type char [esi]), stdio.cr );
+						jne EatLine;
+						
+						// If we got a carriage return, see if it's followed
+						// by a line feed.  If so, eat both characters.
+						
+						inc( esi );
+						cmp( esi, EOF );
+						jae UnexpectedEOF;
+
+						// If no lf after the cr, then back up
+						// a character and treat the <cr> as the
+						// endline sequence.
+							
+						if( (type char [esi]) <> stdio.lf ) then
+						
+							dec( esi );
+							
+						endif;
+						
+					endif;
+					
+					// Skip last EOLN character and then bump up the line
+					// count values.  Then return to the top of the lexer
+					// and grab the next item from the file.
+					
+					inc( esi );
+					inc( lineNumber );
+					inc( totalLineCount );
+					jmp QuickLexAgain; // Don't bump token Queue for comments
+					
+			elseif( al = '*' ) then
+			
+				// Okay, we've got a "/*" sequence, so ignore everything
+				// up to the next "*/" or the EOF, whichever comes first.
+				
+				forever
+				
+					inc( esi );
+					cmp( esi, EOF );
+					jae UnexpectedEOF;
+					
+					mov( [esi], al );
+					if( al = stdio.cr ) then
+					
+						inc( lineNumber );
+						inc( totalLineCount );
+						inc( esi );
+						cmp( esi, EOF );
+						jae UnexpectedEOF;
+						mov( [esi], al );
+						
+					elseif( al = stdio.lf ) then
+
+						inc( lineNumber );
+						inc( totalLineCount );
+						
+					endif;
+					
+					continueif( (type char [esi]) <> '*' );
+					
+					// Okay, we've got a "*", now check for the "/".
+					
+					inc( esi );
+					cmp( esi, EOF );
+					jae UnexpectedEOF;
+					breakif( (type char [esi]) = '/' );
+					
+				endfor;
+				inc( esi );		// Skip over the '/' character.
+				jmp QuickLexAgain; // Don't bump token Queue for comments
+								
+			endif;
+						
+		endif;
+		
+		// Okay, it was just a slash.  Return that down here.
+		
+		mov( '/', eax );    
+		mov( mulOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+	
+		
+
+	// Check for "|" and "||":
+	
+	VertBar::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '|' ) then
+		
+			mov( tkn_orOp, eax );
+			inc( esi );
+						
+		endif;    
+		mov( orOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	// Check for "^":
+	
+	Caret::
+		mov( orOp_tc, ebx );
+		inc( esi );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	
+	// Check for "&" and "&&":
+	
+	Amper::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '&' ) then
+		
+			mov( tkn_andOp, eax );
+			inc( esi );
+						
+		endif;    
+		mov( andOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	
+	// Check for ":", "::", and ":=":
+	
+	Colon::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = ':' ) then
+		
+				mov( tkn_colonColon, eax );
+				inc( esi );
+				
+			elseif( al = '=' ) then
+			
+				mov( tkn_assign, eax );
+				inc( esi );
+				
+			else
+			
+				mov( ':', al );
+				
+			endif;
+						
+		endif;    
+		mov( punct_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	// Check for "." and "..":
+	
+	Period::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '.' ) then
+		
+			mov( tkn_dotDot, eax );
+			inc( esi );
+						
+		endif;    
+		mov( punct_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Check for "=" and "==":
+	
+	Equal::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '=' ) then
+		
+			mov( '=', al );
+			inc( esi );
+						
+		endif;    
+		mov( relOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Check for "!", "!!", and "!=":
+	
+	Exclaim::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			if( (type char [esi]) = '=' ) then
+		
+				mov( tkn_notEqual, eax );
+				inc( esi );
+				mov( relOp_tc, ebx );
+				mov( false, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+
+			endif;
+
+			if( (type char [esi]) = '!' ) then
+
+				mov( tkn_logNot, eax );
+				inc( esi );
+				mov( relOp_tc, ebx );
+				mov( false, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+
+			endif;
+						
+		endif;    
+		mov( notOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Check for ">", ">>", and ">=":
+	
+	Greater::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = '=' ) then
+		
+				mov( tkn_greaterEqual, eax );
+				inc( esi );
+				
+			elseif( al = '>' ) then
+			
+				mov( tkn_shrOp, eax );
+				inc( esi );
+				mov( mulOp_tc, ebx );
+				mov( false, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+				
+			else
+			
+				mov( '>', al );
+				
+			endif;
+						
+		endif;    
+		mov( relOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+
+
+
+	// Check for "<", "<=", "<<", and "<>":
+	
+	Less::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = '=' ) then
+		
+				mov( tkn_lessEqual, eax );
+				inc( esi );
+				
+			elseif( al = '<' ) then
+			
+				mov( tkn_shlOp, eax );
+				inc( esi );
+				mov( mulOp_tc, ebx );
+				mov( false, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+				
+			elseif( al = '>' ) then
+			
+				mov( tkn_notEqual, eax );
+				inc( esi );
+				
+			else
+			
+				mov( '<', al );
+				
+			endif;
+						
+		endif;    
+		mov( relOp_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Check for "}" and "}#":
+	
+	RBrace::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '#' ) then
+		
+			mov( tkn_bracePound, eax );
+			inc( esi );
+						
+		endif;    
+		mov( punct_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Check for ")" and ")#":
+	
+	RParen::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '#' ) then
+		
+			mov( tkn_parenPound, eax );
+			inc( esi );
+						
+		endif;    
+		mov( punct_tc, ebx );
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+
+
+	// Handle identifiers that begin with an underscore here.
+	// Note that the reserved word checking code handles identifiers
+	// that begin with an alphabetic character.
+	
+	Underscore::
+		mov( esi, edi );		// Mark start of identifier.
+		xor( ebx, ebx );		// Init hash value, note that EAX = '_'
+		mov( SpreadTable[eax], al );
+		USIDloop:
+
+			// Hash function is:
+			//
+			//	hash := (hash rol 3) ^ SpreadTable[chr];
+			//
+			//	Note that "hash" is a 16-bit value.
+		
+			rol( 3, bx );
+			add( 1, esi );					// Bump up to next char.
+			xor( al, bl );
+
+			// Quick check for EOF:
+
+			cmp( esi, EOF );
+			jae USIDdone;
+			mov( [esi], al );				// Get the next char.
+			mov( SpreadTable[eax], al );	// Spread bits around.
+			test( al, al );					// Is it a valid ID char?
+			jnz USIDloop;					// Repeat, if valid.
+		
+		USIDdone:
+			mov( ebx, hashValue );
+			jmp processIdentifier;	// Go process this lexeme as an identifier.
+		
+	// Lexemes that begin with a tilde ('~') followed by
+	// alphabetic characters *must* be a reserved word.
+	
+	Tilde::
+		inc( esi );
+		inc( edi );
+		mov( [esi], al );
+		or( $20, al );			// Force U.C. to l.c.
+		if( al in 'a'..'z' ) then
+		
+			CheckRW( esi );
+			if( ebx <> ID_tc ) then	
+			
+				// Must be a reserved word if it wasn't an ID.
+				
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+				
+			endif;
+			
+		endif;
+		HLAerror( "Expected an HLA reserved word after '~'" nl );
+		jmp LexAgain;
+		
+		
+	// Special case for 'U' and 'u'. If they're followed by
+	// a quote or an apostrophe, then we have a unicode
+	// character constant, otherwise treat the result as
+	// though it were an identifier.
+	
+	u::
+		inc( esi );
+		if( esi >= EOF ) then
+
+			dec( esi );
+			jmp Alpha;
+
+		endif;
+		mov( [esi], al );
+		if( al = '''' ) then
+
+			ClearAttr( ecx );	// Zero out the attribute.
+			inc( esi );			// Skip over leading apostrophie.
+			cmp( esi, EOF );
+			jae	BadCharConst;
+			movzx( (type char [esi]), eax );
+			mov( eax, ebx );
+			bt( eax, LegalCharLiteral );
+			jnc BadCharConst2;
+			if( al = '''' ) then
+			
+				inc( esi );
+				cmp( esi, EOF );
+				jae BadCharConst;
+				mov( [esi], al );
+				cmp( al, '''' );
+				jne BadCharConst;
+				
+			endif;
+			inc( esi );
+			cmp( esi, EOF );
+			jae BadCharConst;
+			cmp( (type char [esi]), '''' );
+			jne BadCharConst;
+			inc( esi );
+
+			mov( bl, tokenECX.attr.char_vt );
+			mov( 0, tokenECX.attr.char_vt[1] );
+			mov( Unicode_pt, tokenECX.attr.pType );
+			mov( &unicode_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );
+
+			mov( tkn_charConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+
+		elseif( al = '"' ) then
+
+			ClearAttr( ecx );		// Zero out the attribute
+			lea( edx, StringBuf );
+			xor( eax, eax );
+			
+			// Construct a zero-terminated unicode string in StringBuf:
+			
+			forever
+			
+				inc( esi );			// Skip over leading quote.
+				cmp( esi, EOF );
+				jae	BadStrConst;
+				
+				mov( [esi], al );
+				bt( eax, LegalCharLiteral );
+				jnc BadStrConst2;
+				if( al = '"' ) then
+				
+					inc( esi );
+					breakif( esi >= EOF );
+					mov( [esi], al );
+					breakif( al <> '"' );
+					
+				endif;
+				mov( al, [edx] );
+				inc( edx );
+				
+				// For Unicode, insert an extra zero for the H.O. byte:
+
+				mov( 0, (type char [edx]) );
+				inc( edx );
+				
+			endfor;
+
+			mov( 0, (type byte [edx]));		// Zero terminate the string.
+
+			// Convert to an HLA string (well, sorta, we don't
+			// really like to see embedded zeros, but that's okay).
+
+			sub( &StringBuf, edx );			// Compute length in bytes
+			stralloc( edx );				// Allocate storage
+			mov( edx, (type str.strRec [eax]).length );
+			push( edi );
+			push( esi );
+			push( ecx );
+			pushfd();
+			cld();
+			mov( eax, edi );
+			mov( &StringBuf, esi );
+			lea( ecx, [edx+1] );
+			rep.movsb();
+			popfd();
+			pop( ecx );
+			pop( esi );
+			pop( edi );
+
+			mov( eax, tokenECX.attr.string_vt );
+			mov( UString_pt, tokenECX.attr.pType );
+			mov( &ustring_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );			
+			
+			mov( tkn_strConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+
+		endif;
+
+		dec( esi );	// Fall through to "Alpha" and let it process
+					// the ID or reserved word beginning with "u".
+				
+				
+	// Lexemes that begin with an alphabetic character
+	// could be a reserved word or an identifier.  Deal with that here.
+	
+	Alpha::
+		CheckRW( esi );
+
+		// Note: The first 256 tokens are the ASCII character set
+		// (plus HO bit extensions), they do not appear in the rwIsID array.
+		if( ebx = ID_tc || rwIsID[ eax-256 ] ) then
+		
+			// Note: IDs have an attribute, reserved words do not.
+			// We have to construct the attribute for a reserved word here.
+			//
+			// Entry point from code that handles identifiers beginning 
+			// with an underscore:
+
+processIdentifier:
+			extractID();
+			mov( true, tokenECX.isID );
+			mov( hashValue, tokenECX.hashValue );	// hashValue comes from CheckRW
+			iLookupGlobal
+			( 
+				lcID,
+				hashValue
+			);
+			mov( eax, tokenECX.symNode );
+			if
+			( 
+					eax = NULL 
+				||	str.ne( symEAX.trueName, ID )
+			) then
+
+				// The symbol is undefined.  (or it was defined but
+				// there was a case neutrality mismatch, in which case
+				// we will treat the symbol as undefined). 
+				// Dup the strings on the heap and return them as
+				// the attributes.
+				
+				mov( true, tokenECX.alloc );
+				str.a_cpy( ID );
+				mov( eax, tokenECX.trueName );
+				str.a_cpy( lcID );
+				mov( eax, tokenECX.lcName );
+				mov( NULL, tokenECX.symNode );
+
+				// Because it's undefined, this symbol doesn't have a class:
+
+				mov( None_ct, tokenECX.attr.symClass );
+
+				// Because the symbol was undefined, let's look it
+				// up in the undefined symbols table in case it's
+				// a forward reference we've already encountered:
+
+				undefLookup( hashValue, tokenECX.trueName );
+				mov( eax, tokenECX.undefSym );
+				mov( ebx, tokenECX.linkPtr );
+
+
+				// Notify caller that this was an undefined symbol:
+
+				mov( tkn_undefID, eax );
+				
+				
+			// Okay, we found the symbol in the symbol table and
+			// there was a case match. Before doing anything else,
+			// let's see if this is a macro or a text constant
+			// so we can expand the object, if necessary.
+				
+			elseif
+			(#{
+				mov( tokenECX.symNode, eax );
+				cmp( symEAX.pType, Text_pt );
+				jne false;
+			}#) then
+
+				if( ForceString ) then
+
+					// If we've got a text object, but "ForceString"
+					// is true, then return the corresponding string
+					// value rather than expanding the string (we do this
+					// when encountering a text object inside a string(--)'
+					// function call).
+
+					ClearAttr( ecx );
+					str.a_cpy( symEAX.va.string_vt );
+					mov( eax, tokenECX.attr.string_vt );
+
+					mov( String_pt, tokenECX.attr.pType );
+					mov( &string_ste, tokenECX.attr.symType );
+					mov( Constant_ct, tokenECX.attr.symClass );
+					mov( false, tokenECX.isID );
+					mov( 0, tokenECX.attr.numElements );			
+					
+					mov( tkn_strConst, eax );
+					mov( const_tc, ebx );
+					mov( true, tokenECX.hasAttr );
+					mov( eax, tokenECX.tknValue );
+					mov( ebx, tokenECX.tknClass );
+					mov( esi, tokenECX.endLexeme );
+					mov( edi, tokenECX.lexemeStart );
+					ret();
+
+				endif;
+
+				// Just to be safe, let's make sure that the
+				// text string doesn't expand to itself (which
+				// creates an infinite loop). This won't catch
+				// indirectly recursive expansions, but it does
+				// catch a common case.
+
+				push( eax );
+				assert( symEAX.va.string_vt <> NULL && symEAX.trueName <> NULL );
+				if( str.ne( symEAX.va.string_vt, symEAX.trueName )) then
+					// Okay, we've got a TEXT object.  Expand it
+					// in place:
+					
+					pop( eax );
+					pushBackStr( symEAX.va.string_vt );
+
+				else
+
+					pop( eax );
+					assert( symEAX.trueName <> NULL );
+					HLAerror
+					( 
+						"TEXT string (", 
+						symEAX.trueName, 
+						") expands to itself"
+						nl
+					);
+
+				endif;
+				
+				// Recursively call the lexer to process the first
+				// token in the string we just processed:
+				
+				jmp LexAgain;
+
+				
+			elseif( symEAX.pType = Macro_pt ) then
+
+				// Set things up to begin processing the macro's text:
+
+				pushBackMacro( eax );
+
+				// Mark the include stack entry based on whether this
+				// is a #macro, #keyword, or #terminator:
+
+				assert( includeSP < MaxNestedIncludes );
+				intmul( @size( includeInfo_t ), includeSP, ebx );
+				mov( true,  includeStk.active[ebx] );
+				mov( symEAX.symClass, cl );
+				if( cl = Macro_ct ) then
+
+					mov( irt_macro, includeStk.incRecType[ebx] );
+
+				elseif(	cl = Keyword_ct ) then
+
+					mov( irt_keyword, includeStk.incRecType[ebx] );
+
+				elseif( cl = Terminator_ct ) then 
+
+					mov( irt_terminator, includeStk.incRecType[ebx] );
+
+				endif;
+
+				jmp LexAgain;
+
+			else	
+			
+			
+				// Okay, it wasn't a macro, template, or text object.
+				// Just return the pointers in the symbol table entry
+				// for the trueName and lcName fields of the attribute:
+				
+				mov( tokenECX.symNode, eax  );
+				canAccess( [eax] );
+				mov( symEAX.trueName, ebx );
+				mov( ebx, tokenECX.trueName );
+				 
+				mov( symEAX.lcName, ebx );
+				mov( ebx, tokenECX.lcName );
+
+				mov( false, tokenECX.alloc );
+			 
+				mov( symEAX.symType, ebx );
+				mov( ebx, tokenECX.attr.symType );
+				mov( symEAX.pType, bl );
+				mov( bl, tokenECX.attr.pType );
+				mov( symEAX.symClass, bl );
+				mov( bl, tokenECX.attr.symClass );
+
+				// We have to return the identifier to the parser.
+				// Determine whether the identifier is global or local
+				// by comparing it's lex level against the current lex level.
+				
+				mov( curLexLevel, ebx );
+				if( symEAX.lexLevel = ebx ) then
+				
+					// Lex levels matching isn't quite good enough.
+					// If we're in a namespace, the lex level gets
+					// set to one, we don't want to match symbols
+					// outside the namespace:
+
+					mov( symEAX.owner, ebx );
+					if( ebx = curOwner ) then
+
+						// It really is a local symbol:
+						mov( tkn_localID, eax );
+
+					else
+
+						// Current symbol is in a namespace,
+						// but the symbol we matched is outside the
+						// namespace
+
+						mov( tkn_globalID, eax );
+
+					endif;
+
+				else
+				
+					mov( tkn_globalID, eax );
+
+				endif;
+			
+			endif;
+			mov( ID_tc, ebx );
+			assert( tokenECX.isID );
+
+		endif;
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+
+	// Lexemes that begin with an at-sign character ("@")
+	// have to be a function ID.  Deal with that here.
+
+	Atsign::
+
+		CheckFunc( esi );
+		jc TryBitConst;
+		if( eax = tkn_at_text ) then
+
+			// If we encounter an "@text" keyword, then
+			// expand the text in-place.
+
+			doAtText();
+			jmp LexAgain;
+			
+		elseif( eax = tkn_at_eval ) then
+		
+			// If we encounter an "@eval" keyword,
+			// process the parameter, convert it to
+			// a string, and re-lex the string:
+			
+			ctString( tokenECX.attr );
+			pushBackStr( tokenECX.attr.string_vt );
+			freeTkn( tokenECX );
+			jmp LexAgain;
+
+		endif;
+
+		mov( false, tokenECX.hasAttr );
+		mov( eax, tokenECX.tknValue );
+		mov( ebx, tokenECX.tknClass );
+		mov( esi, tokenECX.endLexeme );
+		mov( edi, tokenECX.lexemeStart );
+		ret();
+
+	TryBitConst:
+		push( edi );		// Save start of lexeme.
+		lex( esi );
+		pop( edx );			// Save start of lexeme here for return.
+		if( eax = '{' ) then
+
+			// If we see "@{" then we've got the start of
+			// a bitset constant.
+
+			getBitSet( esi, tokenECX.attr );
+			if( @c ) then
+			
+				mov( edx, edi );	// Original start of constant.
+				HLAerror( "Illegal bitset constant: " );
+				dumpQLexeme();
+				HLAerror2( nl );
+				reSync();
+				jmp LexAgain;
+				
+			endif;
+			mov( tkn_numConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edx, tokenECX.lexemeStart );
+			ret();
+
+		endif;
+
+		// If it's not "@{..." then
+		// we've got a bad bit constant or bad compile-time identifier:
+
+		reuseLastTkn();
+
+	BadFuncID:
+		HLAerror( "Illegal compile-time function identifier: " );
+		dumpQLexeme();
+		HLAerror2( nl );
+		reSync();
+		jmp LexAgain;
+
+
+   
+   
+   	// Check for "#{", "##", "#(", "#:", and all the compile-time statement
+	// reserved words:
+	
+	Pound::
+		inc( esi );
+		
+		// If we're at the EOF, then we had a "#" by itself and this
+		// isn't legal.
+		
+		cmp( esi, EOF );
+		je NotCTLRW;
+		
+		mov( [esi], al );
+		if( al = '{' ) then
+	
+			mov( tkn_poundBrace, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			mov( false, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		endif;
+		
+		if( al = '(' ) then
+	
+			mov( tkn_poundParen, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			mov( false, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		endif;
+		
+		if( al = '#' ) then
+
+			mov( tkn_poundPound, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			mov( false, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		endif;			
+			
+		if( al = ':' ) then
+
+			mov( tkn_poundColon, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			mov( false, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+			
+		endif;
+		
+		// Check for character constants of the form #xx, #$xx, and #%xx
+		//
+		// Check for "#$xx" here:
+		
+		if( al = '$' ) then
+		
+			ClearAttr( ecx );
+			inc( esi );
+			getHexConst( esi, tokenECX.attr );
+			if( @c ) then
+			
+				HLAerror( "Illegal Hexadecimal constant: " );
+				dumpQLexeme();
+				
+			else
+			
+				if( tokenECX.attr.pType <> Byte_pt ) then
+				
+					HLAerror
+					( 
+						"Hexadecimal character constant out of range: " 
+					);
+					dumpQLexeme();
+					
+				endif;
+				
+			endif;
+
+			mov( Char_pt, tokenECX.attr.pType );
+			mov( &char_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );			
+			
+			mov( tkn_charConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+				
+		endif;
+		
+		// Check for "#%xx" here:
+		
+		if( al = '%' ) then
+		
+			ClearAttr( ecx );
+			inc( esi );
+			getBinConst( esi, tokenECX.attr );
+			if( @c ) then
+			
+				HLAerror( "Illegal Binary constant: " );
+				dumpQLexeme();
+				
+			else
+			
+				if( tokenECX.attr.pType <> Byte_pt ) then
+				
+					HLAerror
+					( 
+						"Binary character constant out of range: " 
+					);
+					dumpQLexeme();
+					
+				endif;
+				
+			endif;
+
+			mov( Char_pt, tokenECX.attr.pType );
+			mov( &char_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );			
+			
+			mov( tkn_charConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+				
+		endif;
+		
+		// Check for "#xx" here:
+		
+		if( al in '0'..'9' ) then
+		
+			ClearAttr( ecx );
+			getDecConst( esi, tokenECX.attr );
+			if( @c ) then
+			
+				HLAerror( "Illegal Decimal constant: " );
+				dumpQLexeme();
+				
+			else
+			
+				if( tokenECX.attr.pType <> Uns8_pt ) then
+				
+					HLAerror
+					( 
+						"Decimal character constant out of range: " 
+					);
+					dumpQLexeme();
+					
+				endif;
+				
+			endif;
+
+			mov( Char_pt, tokenECX.attr.pType );
+			mov( &char_ste, tokenECX.attr.symType );
+			mov( Constant_ct, tokenECX.attr.symClass );
+			mov( false, tokenECX.isID );
+			mov( 0, tokenECX.attr.numElements );			
+			
+			mov( tkn_charConst, eax );
+			mov( const_tc, ebx );
+			mov( true, tokenECX.hasAttr );
+			mov( eax, tokenECX.tknValue );
+			mov( ebx, tokenECX.tknClass );
+			mov( esi, tokenECX.endLexeme );
+			mov( edi, tokenECX.lexemeStart );
+			ret();
+				
+		endif;
+		
+		// Check for special unicode constants here:
+		//
+		// #u$<hex>
+		// #u%<bin>
+		// #u<dec>
+
+		if( al = 'u' || al = 'U' ) then
+
+			inc( esi );
+			
+			// If we're at the EOF, then we had a "#u" by itself and this
+			// isn't legal.
+			
+			cmp( esi, EOF );
+			je NotCTLRW;
+
+			// Now we'd best have a '$', '%', or a decimal digit:
+
+			mov( [esi], al );
+			if( al = '$' ) then
+		
+				ClearAttr( ecx );
+				inc( esi );
+				getHexConst( esi, tokenECX.attr );
+				if( @c ) then
+				
+					HLAerror( "Illegal Hexadecimal constant: " );
+					dumpQLexeme();
+					
+				else
+				
+					if
+					( 
+							tokenECX.attr.pType <> Byte_pt 
+						&&	tokenECX.attr.pType <> Word_pt 
+					) then
+					
+						HLAerror
+						( 
+							"Hexadecimal character constant out of range: " 
+						);
+						dumpQLexeme();
+						
+					endif;
+					
+				endif;
+
+				mov( Unicode_pt, tokenECX.attr.pType );
+				mov( &unicode_ste, tokenECX.attr.symType );
+				mov( Constant_ct, tokenECX.attr.symClass );
+				mov( false, tokenECX.isID );
+				mov( 0, tokenECX.attr.numElements );			
+				
+				mov( tkn_charConst, eax );
+				mov( const_tc, ebx );
+				mov( true, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+					
+
+			elseif( al = '%' ) then
+		
+				ClearAttr( ecx );
+				inc( esi );
+				getBinConst( esi, tokenECX.attr );
+				if( @c ) then
+				
+					HLAerror( "Illegal Binary constant: " );
+					dumpQLexeme();
+					
+				else
+				
+					if
+					( 
+							tokenECX.attr.pType <> Byte_pt 
+						&&	tokenECX.attr.pType <> Word_pt
+					) then
+					
+						HLAerror
+						( 
+							"Binary character constant out of range: " 
+						);
+						dumpQLexeme();
+						
+					endif;
+					
+				endif;
+
+				mov( Unicode_pt, tokenECX.attr.pType );
+				mov( &unicode_ste, tokenECX.attr.symType );
+				mov( Constant_ct, tokenECX.attr.symClass );
+				mov( false, tokenECX.isID );
+				mov( 0, tokenECX.attr.numElements );			
+				
+				mov( tkn_charConst, eax );
+				mov( const_tc, ebx );
+				mov( true, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+					
+			elseif( al in '0'..'9' ) then
+		
+				ClearAttr( ecx );
+				getDecConst( esi, tokenECX.attr );
+				if( @c ) then
+				
+					HLAerror( "Illegal Decimal constant: " );
+					dumpQLexeme();
+					
+				else
+				
+					if
+					( 
+							tokenECX.attr.pType <> Uns8_pt 
+						&&	tokenECX.attr.pType <> Uns16_pt 
+					) then
+					
+						HLAerror
+						( 
+							"Decimal character constant out of range: " 
+						);
+						dumpQLexeme();
+						
+					endif;
+					
+				endif;
+
+				mov( Unicode_pt, tokenECX.attr.pType );
+				mov( &unicode_ste, tokenECX.attr.symType );
+				mov( Constant_ct, tokenECX.attr.symClass );
+				mov( false, tokenECX.isID );
+				mov( 0, tokenECX.attr.numElements );			
+				
+				mov( tkn_charConst, eax );
+				mov( const_tc, ebx );
+				mov( true, tokenECX.hasAttr );
+				mov( eax, tokenECX.tknValue );
+				mov( ebx, tokenECX.tknClass );
+				mov( esi, tokenECX.endLexeme );
+				mov( edi, tokenECX.lexemeStart );
+				ret();
+					
+			endif;
+		
+			// Okay, we saw "#u....", let's handle
+			// it like a reserved word:
+
+			dec( esi );
+
+		endif;
+
+		
+		// Okay, if it's none of the above, we'd best have
+		// a compile-time statement immediately following
+		// the "#".
+		
+		CheckCTL( esi );
+		jc NotCTLRW;
+		switch( eax )
+
+		  case( tkn_pound_if )
+
+			// Okay, we've got the "#IF" reserved word here.
+		
+			doPoundIF();	
+			jmp LexAgain;
+
+		  case( tkn_pound_id )
+
+			// Okay, we've got the "#ID" reserved word here.
+			// Parse the full item ( "#ID( reservedword )" )
+			// and adjust the reserved word table accordingly.
+			
+			lex( esi );
+			if( eax = '(' ) then
+			
+				// We have to skip whitespace and collect the
+				// identifier manually because we can't allow
+				// any text constant expansions here.
+				
+				dec( esi );
+				repeat
+				
+					inc( esi );
+					cmp( esi, EOF );
+					jae UnexpectedEOF;
+					mov( [esi], al );
+				
+				until( al > ' ' );
+				
+				if( al in 'a'..'z' || al in 'A'..'Z' ) then
+				
+					CheckRW( esi );
+					if( ebx <> ID_tc ) then
+					
+						// Okay, we've got a valid HLA reserved
+						// word inside the parens.  Let's mark
+						// that reserved word so that HLA will
+						// treat it as an identifier in the future:
+						
+						mov( true, rwIsID[ eax-256 ] );
+						
+						lex( esi );
+						if( eax <> ')' ) then
+						
+							HLAerror
+							( 
+								"Syntax error, expected '#ID( rw )'" 
+								nl 
+							);
+							
+						endif;
+						jmp LexAgain;
+						
+					endif;
+					
+				endif;
+				HLAerror( "Expected an HLA reserved word within #ID" nl );
+				matchRParen();
+				jmp LexAgain;
+				
+			endif;
+			HLAerror( "Syntax error, expected '#ID( rw )'" nl );
+			jmp LexAgain;
+
+		  
+		  
+		  case( tkn_pound_rw )
+
+				// Okay, we've got the "#RW" reserved word here.
+				// Parse the full item ( "#RW( reservedword )" )
+				// and adjust the reserved word table accordingly.
+				
+				lex( esi );
+				if( eax = '(' ) then
+				
+					// We have to skip whitespace and collect the
+					// identifier manually because we can't allow
+					// any text constant expansions here.
+					
+					dec( esi );
+					repeat
+					
+						inc( esi );
+						cmp( esi, EOF );
+						jae UnexpectedEOF;
+						mov( [esi], al );
+					
+					until( al > ' ' );
+					
+					if( al in 'a'..'z' || al in 'A'..'Z' ) then
+					
+						CheckRW( esi );
+						if( ebx <> ID_tc ) then
+						
+							// Okay, we've got a valid HLA reserved
+							// word inside the parens.  Let's mark
+							// that reserved word so that HLA will
+							// treat it as a reserved word in the future:
+							
+							mov( false, rwIsID[ eax-256 ] );
+							
+							lex( esi );
+							if( eax <> ')' ) then
+							
+								HLAerror
+								( 
+									"Syntax error, expected '#RW( rw )'" 
+									nl 
+								);
+								
+							endif;
+							jmp LexAgain;
+							
+						endif;
+						
+					endif;
+					HLAerror
+					( 
+						"Expected an HLA reserved word within #RW" 
+						nl 
+					);
+					matchRParen();
+					jmp LexAgain;
+					
+				endif;
+				HLAerror( "Syntax error, expected '#RW( rw )'" nl );
+				jmp LexAgain;
+
+
+
+		  case( tkn_pound_for )
+
+				// Okay, we've got the "#FOR" reserved word here...
+
+				doPoundFor();
+				jmp LexAgain;
+
+		  case( tkn_pound_asm )
+
+				doPoundASM();
+				jmp LexAgain;
+
+		  case( tkn_pound_text )
+
+				// Okay, we've got the "#TEXT" reserved word here...
+
+				doPoundText();
+				jmp LexAgain;
+
+		  case( tkn_pound_else )
+
+			// Okay, we've got the "#ELSE" reserved word here...
+				
+				doPoundElse();
+				jmp LexAgain;
+
+		  case( tkn_pound_emit )
+				
+			// Okay, we've got the "#EMIT" reserved word here...
+				
+				doPoundEmit();
+				jmp LexAgain;
+
+		  case( tkn_pound_endif )
+				// Okay, we've got the "#ENDIF" reserved word here...
+
+				doPoundEndIf();
+				jmp LexAgain;
+
+		  case( tkn_pound_error )
+
+				// Okay, we've got the "#ERROR" reserved word here...
+
+				doPoundError();
+				jmp LexAgain;
+
+		  case( tkn_pound_print )
+		  				 
+				// Okay, we've got the "#PRINT" reserved word here...
+
+				doPoundPrint();
+				jmp LexAgain;
+
+		  case( tkn_pound_while )
+				// Okay, we've got the "#WHILE" reserved word here...
+
+				doPoundWhile();
+				jmp LexAgain;
+
+		  case( tkn_pound_macro )
+
+				// Okay, we've got the "#MACRO" reserved word here...
+
+				doPoundMacro();
+				jmp LexAgain;
+
+		  case( tkn_pound_write )
+
+				// Okay, we've got the "#WRITE" reserved word here...
+
+				doPoundWrite();
+				jmp LexAgain;
+
+		  case( tkn_pound_endasm )
+
+				doPoundEndASM();
+				jmp LexAgain;
+
+		  case( tkn_pound_elseif )
+
+				// Okay, we've got the "#ELSEIF" reserved word here...
+
+				doPoundElseIf();
+				jmp LexAgain;
+
+		  case( tkn_pound_endfor )
+
+				// Okay, we've got the "#ENDFOR" reserved word here...
+
+				doPoundEndFor();
+				jmp LexAgain;
+
+		  case( tkn_pound_system )
+
+				// Okay, we've got the "#SYSTEM" reserved word here...
+
+				doPoundSystem();
+				jmp LexAgain;
+
+		  case( tkn_pound_endtext )
+
+				// Okay, we've got the "#ENDTEXT" reserved word here...
+
+				doPoundEndText();
+				jmp LexAgain;
+
+		  case( tkn_pound_include )
+
+				// Okay, we've got the "#INCLUDE" reserved word here...
+				// Parse the whole statement: "#include( string_const )"
+
+				lex( esi );
+				if( eax <> '(' ) then
+				
+					HLAerror( "Syntax error, expected '('" nl  );
+					reSync();
+					jmp LexAgain;
+
+				endif;
+					
+				try
+					constExpr( strResult );
+				  
+				  exception( ex.hlaerr );
+				
+					// If the expression was bad, resync to the end
+					// of the current line.
+
+					reSync();
+					jmp LexAgain;
+					
+				endtry;
+				
+				// Okay, the expression was fine, now let's
+				// check to make sure we've got a trailing ")"
+				
+				lex( esi );
+				if( eax <> ')' ) then
+				
+					// If there was no closing parenthesis, print
+					// an error message and resync to the end of
+					// the current line.
+					
+					HLAerror( "Expected a closing parenthesis" nl );
+					reSync();
+					jmp LexAgain;
+
+				endif;
+					
+					
+				// Okay, now all we've got to do is check to
+				// make sure that the expression was a string
+				// expression.
+					
+				if( strResult.pType <> String_pt ) then
+					
+					HLAerror( "Expected a string expression" nl );
+					freeAttr( &strResult );
+					reSync();
+					jmp LexAgain;
+
+				endif;
+				
+				// Okay, we've got a valid #include statement.
+				// Let's see if we can include the specified
+				// file:
+						
+				
+				mov( strResult.string_vt, ebx );
+				
+				// Check all the files in the file list
+				// to see if we've already included this file.
+				
+				mov( fileList, ecx );
+				while
+				( 
+						ecx <> NULL 
+					&&	str.ine( ebx, fileECX.shortFileName )
+				) do
+
+					mov( (type fileList_t [ecx]).next, ecx );
+
+				endwhile;
+											
+				// If the file was not found on the file list,
+				// then include it here:
+				
+				if( ecx = NULL ) then
+				
+					mapFile( strResult.string_vt );
+					mov( BOF, esi );
+					
+				else
+				
+					// If the file was found on the
+					// include list, don't include
+					// it again because it's already
+					// in memory.  Just adjust all the
+					// pointers to reuse the existing
+					// file in memory.
+
+					pushIncStk();
+					
+					intmul( @size( includeInfo_t ), includeSP, ebx );
+					mov( irt_include, includeStk.incRecType[ebx] );
+					
+					mov( ecx, ebx );
+					mov( fileEBX.BOF, esi );
+					mov( esi, BOF );
+
+					mov( fileEBX.EOF, ecx );
+					mov( ecx, EOF );
+
+					// We're starting at line #1 in the file.
+					
+					mov( 1, lineNumber );
+					
+				endif;
+				jmp LexAgain;
+
+		  case( tkn_pound_keyword )
+
+				// Okay, we've got the "#KEYWORD" reserved word here...
+
+				doPoundKeyword();
+				ret();
+
+		  case( tkn_pound_endwhile )
+
+				// Okay, we've got the "#ENDWHILE" reserved word here...
+
+				doPoundEndWhile();
+				jmp LexAgain;
+
+		  case( tkn_pound_openread )
+
+				// Okay, we've got the "#OPENREAD" reserved word here...
+
+				doPoundOpenRead();
+				jmp LexAgain;
+
+		  case( tkn_pound_endmacro )
+
+				// Okay, we've got the "#ENDMACRO" reserved word here...
+
+				doPoundEndMacro();
+				ret();
+
+		  case( tkn_pound_openwrite )
+
+				// Okay, we've got the "#OPENWRITE" reserved word here...
+				
+				doPoundOpenWrite();
+				jmp LexAgain;
+
+		  case( tkn_pound_closeread )
+
+				// Okay, we've got the "#CLOSEREAD" reserved word here...
+
+				doPoundCloseRead();
+				jmp LexAgain;
+
+		  case( tkn_pound_terminator )
+
+				// Okay, we've got the "#TERMINATOR" reserved word here...
+
+				doPoundTerminator();
+				ret();
+
+		  case( tkn_pound_closewrite )
+			
+				// Okay, we've got the "#CLOSEWRITE" reserved word here...
+
+				doPoundCloseWrite();
+				jmp LexAgain;
+
+		  case( tkn_pound_includeonce )
+
+				// Okay, we've got the "#INCLUDEONCE" reserved word here...
+				//
+				// Now parse the "( string_expr )" following the
+				// #includeonce:
+				
+				lex( esi );
+				if( eax <> '(' ) then
+				
+					HLAerror( "Syntax error, expected '('" nl  );
+					reSync();
+					jmp LexAgain;
+
+				endif;
+			
+				try
+					constExpr( strResult );
+				  exception( ex.hlaerr );
+				  				
+					// If the expression was bad, resync to the end
+					// of the current line.
+
+					reSync();
+					jmp LexAgain;
+					
+				endtry;
+				
+				// Okay, the expression was fine, now let's
+				// check to make sure we've got a trailing ")"
+				
+				lex( esi );
+				if( eax <> ')' ) then
+				
+					// If there was no closing parenthesis, print
+					// an error message and resync to the end of
+					// the current line.
+					
+					HLAerror( "Expected a closing parenthesis" nl );
+					reSync();
+					jmp LexAgain;
+
+				endif;
+					
+					
+				// Okay, now all we've got to do is check to
+				// make sure that the expression was a string
+				// expression.
+					
+				if( strResult.pType <> String_pt ) then
+					
+					HLAerror( "Expected a string expression" nl );
+					freeAttr( &strResult );
+					reSync();
+					jmp LexAgain;
+
+				endif;
+				
+				// Okay, we've got a valid #includeonce statement.
+				// Let's see if the file has already been included
+				// (ignore the #includeonce if it has already been
+				// found.
+						
+				mov( strResult.string_vt, ebx );
+				canAccess( [ebx] );
+				
+				// Check the list of files to see if
+				// we've already found this guy:
+				//
+				// Ignore the #includeonce if the filename
+				// is the same as the current file:
+				
+				if( str.ine( ebx, filename )) then
+				
+					// Check all the files in the file list
+					// to see if we've already included this file.
+					
+					mov( fileList, ecx );
+					while
+					( 
+							ecx <> NULL 
+						&&	str.ine
+							( 
+								ebx, 
+								(type fileList_t [ecx]).shortFileName 
+							)
+					) do
+
+						mov( (type fileList_t [ecx]).next, ecx );
+
+					endwhile;
+					
+					// If the file was not found on the file list,
+					// then include it here:
+					
+					if( ecx = NULL ) then
+					
+						mapFile( strResult.string_vt );
+						mov( BOF, esi );
+						
+					endif;
+					
+				endif;
+				jmp LexAgain;
+
+		endswitch;
+				
+		// Fall down here if we don't match one of the legal compile-time
+		// language reserved words:
+		
+		NotCTLRW:
+			HLAerror( "Illegal compile-time statement: " );
+			dumpQLexeme();
+			jmp LexAgain;
+
+
+end lex;
+
+
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// fastLex-
+//
+//	Fast version of the lexical analyzer procedure.
+// Same as lex except this procedure doesn't compute any attribute values.
+// The main purpose for this version of the lexer is to quickly skip over
+// tokens in the source file when no special processing is needed (e.g., 
+// while processing a false conditional in a #IF or similar statement).
+//
+// Input:
+//
+//	Cursor( in ESI)- pointer to text to begin scanning.
+//
+// Returns:
+//
+//	EAX-	Token value, see "hlacompiler.hhf" & "rwtokens.hhf" for definitions
+//	EBX-	Token Classification.
+//	ECX-	Unused.
+//	ESI-	Points at first character beyond lexeme.
+//	EDI-	Points at start of lexeme.
+//
+// WARNING: this code does not queue up an attribute in the token queue. ECX
+// contains an undefined garbage value upon return. The caller must not assume
+// that ECX points into the token queue.
+
+
+
+procedure fastLex( Cursor:dword in esi );  @noframe;
+const
+	fileEAX	:text := "(type fileList_t [eax])";
+	fileEBX	:text := "(type fileList_t [ebx])";
+	fileECX	:text := "(type fileList_t [ecx])";
+
+static
+	dummyTkn	:token_t;	// Dummy token value for fastLex.		 
+	
+
+
+begin fastLex;
+
+		
+	LexAgain:
+
+		cmp( tknReuse, 0 );
+		jne FetchTknFromQ;
+			
+	TestEOF:
+	QuickLexAgain: 
+	
+		mov( esi, edi );				// Save ptr to start of lexeme.
+		cmp( esi, EOF );
+		jae UnexpectedEOF;
+
+		// Execute a jump table based on the first character of the lexeme:
+		
+		movzx( (type char [esi]), eax );
+		jmp( fastLexJmpTbl[ eax*4 ] );
+		
+		
+		
+	UnexpectedEOF:
+	
+
+		// If we just hit the end of the file, let's check to
+		// see if we've been processing an include file (or
+		// lexing from a string via pushBackStr, a macro, or
+		// a template):
+		
+		if( includeSP > 0 ) then
+		
+
+
+			// Okay, we're processing an include file or
+			// a string.  Pop the include stack and
+			// try again.
+
+			intmul( @size( includeInfo_t ), includeSP, ebx );
+
+			// On EOF, make sure the compile-time statement stack is empty:
+
+			mov( ctSP, eax );
+			if( eax <> includeStk.ctSP[ ebx ] ) then
+
+				// popIncStk seems to handle this condition, so this
+				// code serves mainly as defensive code.
+				intmul( @size( ctStack_t ), eax );
+				mov( ctStack.lineNumber[eax], eax );
+				HLAwarning
+				( 
+					"At EOF, there was an outstanding compile-time "
+					"statement active" nl
+					"The original compile-time statement was at line #", 
+					(type uns32 eax),
+					nl
+				);
+				mov( includeStk.ctSP[ ebx ], eax );
+				mov( eax, ctSP );
+
+			endif;
+			
+
+			// Get important values from the current fileList record
+			// that we have to restore:
+			
+			mov( includeStk.lineNumber[ ebx ], eax );
+			mov( eax, lineNumber );
+			mov( includeStk.cursor[ ebx ], esi );
+
+			// Okay, pop the current record and reset variables
+			// as appropriate from the previous item on the stack:
+			
+			dec( includeSP );
+			sub( @size( incRecType_t ), ebx );			
+			mov( includeStk.fullFileName[ ebx ], eax );
+			mov( eax, fullFileName );
+			mov( includeStk.shortFileName[ ebx ], eax );
+			mov( eax, filename );
+			mov( includeStk.fileMapHandle[ ebx ], eax );
+			mov( eax, fileMapHandle );
+			mov( includeStk.BOF[ ebx ], eax );
+			mov( eax, BOF );
+			mov( includeStk.EOF[ ebx ], eax );
+			mov( eax, EOF );
+
+			jmp LexAgain;			
+			
+			
+		else
+		
+			// On EOF, make sure the compile-time statement stack is empty:
+
+			mov( ctSP, eax );
+			if( eax <> -1 ) then
+
+				// This is mainly defensive code. popIncStk
+				// seems to handle this condition elsewhere.
+				intmul( @size( ctStack_t ), eax );
+				mov( ctStack.lineNumber[eax], eax );
+				HLAwarning
+				( 
+					"At EOF, there was an outstanding compile-time "
+					"statement active" nl
+					"The original compile-time statement was at line #", 
+					(type uns32 eax),
+					nl
+				);
+
+			endif;
+
+			// We've really hit the EOF.  Return
+			// the EOF token.
+			
+			mov( tkn_EOF, eax );
+			mov( EOF_tc, ebx );
+			mov( esi, edi );
+			ret();
+			
+		endif;
+		
+		
+	// If we get down here, someone has decided to push a token
+	// onto the token queue for re-use.  Grab the token pointed
+	// at by tknHead.
+	
+	FetchTknFromQ:
+
+		dec( tknReuse );
+		if( tknReuse = 0 && pendingReset ) then
+		
+			// Fake a "resetTknQ" here.  We need to
+			// preserve the last token just in case
+			// someone decides to call "reuseLastTkn"
+			// upon our return (yes, it happens, and this
+			// is by design).
+			
+			mov( false, pendingReset );
+			mov( tknHead, esi );
+			mov( &tknQ, edi );
+			if( esi <> edi ) then
+			
+				mov( (@size( token_t ) + 3) div 4, ecx );
+				rep.movsd();
+				mov( &tknQ, tknHead );
+				mov( &tknQ+@size( token_t ), tknTail );
+				mov( 1, tknCnt );
+				
+			endif;
+		
+		endif;
+		
+		mov( tknHead, ecx );
+		add( @size( token_t ), tknHead );
+		mov( tokenECX.tknValue, eax );
+		mov( tokenECX.tknClass, ebx );
+		mov( tokenECX.endLexeme, esi );
+		mov( tokenECX.lexemeStart, edi );
+		ret();
+
+	
+	// Handle illegal characters here:
+	//
+	// Question: In fastLex shouldn't we just return these chars?
+		
+	f_BackSlash::
+	f_GraveAccent::
+	f_Del::
+	y::
+		HLAerror( "Illegal character in source file: $", al, nl nl );
+		
+		
+	// Handle whitespace characters here:
+	
+	f_ws::
+		inc( esi );
+		cmp( esi, EOF );
+		jae UnexpectedEOF;
+		
+		mov( [esi], al );
+		cmp( al, ' ' );
+		je f_ws;
+		cmp( al, stdio.tab );
+		je f_ws;
+		jmp QuickLexAgain;
+		
+		
+	// Handle newlines here.
+	
+	f_IsCR::	// Return
+	
+		// If <CR><LF> sequence, skip the LF too.
+		
+		inc( esi );
+		cmp( esi, EOF );
+		jae UnexpectedEOF;
+		
+		mov( [esi], al );
+		cmp( al, stdio.lf );
+		je f_IsLF;
+		dec( esi );
+		
+	
+	f_IsLF::	// LineFeed
+	
+		inc( lineNumber );
+		inc( totalLineCount );
+		inc( esi );
+		jmp QuickLexAgain;
+
+
+		
+
+
+	// Handle the '-' and '->' operators here:
+	
+	f_Minus::
+		inc( esi );
+		cmp( esi, EOF );
+		jae doAddOp;
+		cmp( (type char [esi]), '>' );
+		jne doAddOp;
+
+		mov( mulOp_tc, ebx );
+		inc( esi );
+		mov( tkn_aShrOp, eax );
+		ret();
+		
+		
+	// Handle the '-' and '+' operators down here.
+	
+	doAddOp:
+		dec( esi );   
+	f_Plus:: 	  
+		mov( addOp_tc, ebx );
+		inc( esi );
+		ret();
+		
+	// Deal with the "*" operator.
+	
+	f_Asterisk::
+		mov( mulOp_tc, ebx );
+		inc( esi );
+		ret();
+
+	// Handle the single character punctuation symbols here.
+	
+	f_Question::
+	f_LParen::  
+	f_Semicolon::
+	f_LBracket::
+	f_RBracket::
+	f_LBrace::
+	f_Comma::   
+		mov( punct_tc, ebx );
+		inc( esi );
+		ret();
+
+
+
+
+	// Deal with hexadecimal literal constants here.
+	
+	f_Dollar::  
+		repeat
+
+			inc( esi );
+			movzx( (type char [esi]), eax );
+			bt( eax, _HexDigits );
+
+		until( @nc );
+		mov( tkn_numConst, eax );
+		mov( const_tc, ebx );
+		ret();
+
+
+		
+		
+	// f_Digit- Handle numeric constants.
+	// f_Percent- Handle binary constants.
+	//
+	//	This code is somewhat complicated by the fact that
+	// both integer and floating point values can start with
+	// a numeric digit.  This code has to figure out whether this
+	// is an integer or a real constant.
+	//
+	//	Note that integer constants are always treated as UNS values
+	//	(the size, i.e., uns8..uns128, is determined by the H.O. set bit).
+	//	Real values are always treated as REAL80 values.
+	
+	f_Percent::  
+	f_Digit::
+		xor( eax, eax );
+		DigitLoop:
+		
+			inc( esi );				// Skip current digit.
+			cmp( esi, EOF );
+			jae ValidInt;
+			
+			mov( [esi], al );
+			cmp( al, '_' );
+			je DigitLoop;
+			cmp( al, '0' );
+			jb CheckFloat;
+			cmp( al, '9' );
+			jbe DigitLoop;
+		
+		// If we drop down here, check for a floating point constant.
+		// We've got a float value if we encounter a period or an "e".
+			
+		CheckFloat:
+			cmp( al, '.' );
+			je FloatPeriod;
+			or( $20, al );		// UC -> lc conversion.
+			cmp( al, 'e' );
+			je FloatE;
+					
+			
+		ValidInt:
+			mov( tkn_numConst, eax );	// Okay, we've got a good integer
+			mov( const_tc, ebx );		//  literal constant.
+			ret();
+			
+		
+		// If we get to this point, we've got a string of digits
+		// ending with a period.  So this must be a floating point
+		// constant.  Check for any digits after the decimal point.
+		
+		FloatPeriod:
+			inc( esi );			// Skip the current character.
+			cmp( esi, EOF );	// If at the end of the number,
+			jae ValidFloat;		//  then it's a valid floating point #.
+			
+			mov( [esi], al );	// Check for digits after the '.'
+			cmp( al, '0' );
+			jb ValidFloat;	// If < 0, better be the end of the #.
+			cmp( al, '9' );
+			jbe FloatPeriod;
+			
+		// At the end of the digits, we'd best have an "E" or a delimiter:
+		
+		CheckE:
+			or( $20, al );		// UC->lc conversion.
+			cmp( al, 'e' );
+			jne ValidFloat;
+			
+			
+		// Okay, we had an "E", now we can have an optional sign followed
+		// by one or more digits:
+		
+		FloatE:
+			inc( esi );			// Skip the "E".
+			cmp( esi, EOF );
+			jae ValidFloat;
+			mov( [esi], al );
+			cmp( al, '+' );
+			je SkipSign;
+			cmp( al, '-' );
+			jne ExpDigits;
+		
+		SkipSign:
+			inc( esi );			// Skip the '+' or '-'
+			cmp( esi, EOF );
+			jae ValidFloat;
+			
+
+		// Extract any  decimal digits after the "E" and the
+		// optional sign:
+		
+		ExpDigits:						
+			inc( esi );			// Skip the digit.
+			cmp( esi, EOF );
+			jae ValidFloat;
+			
+			mov( [esi], al );
+			cmp( al, '0' );
+			jb ValidFloat;
+			cmp( al, '9' );
+			jbe ExpDigits;
+			
+		
+		// Okay, lexically the floating point value looks okay (well,
+		// good enough for the fast lexer, anyway).
+			
+		ValidFloat:
+				mov( tkn_realConst, eax );
+				mov( const_tc, ebx );
+				ret();
+
+
+	// Deal with character constants surrounded by apostrophes here.
+
+	f_Apost::
+			inc( esi );			// Skip over leading apostrophie.
+			cmp( esi, EOF );
+			jae	BadCharConst;
+			movzx( (type char [esi]), eax );
+			mov( eax, ebx );
+			bt( eax, LegalCharLiteral );
+			jnc BadCharConst2;
+			if( al = '''' ) then
+			
+				inc( esi );
+				cmp( esi, EOF );
+				jae BadCharConst;
+				mov( [esi], al );
+				cmp( al, '''' );
+				jne BadCharConst;
+				
+			endif;
+			inc( esi );
+			cmp( esi, EOF );
+			jae BadCharConst;
+			cmp( (type char [esi]), '''' );
+			jne BadCharConst;
+			inc( esi );
+
+			mov( tkn_charConst, eax );
+			mov( const_tc, ebx );
+			ret();
+			
+		BadCharConst2:
+			add( 2, esi );
+			HLAerror( "Illegal character in character literal constant" nl );
+			HLAerror2( "(ASCII code = $", al, ")" nl nl );
+			jmp LexAgain;
+			
+			
+		BadCharConst:
+			HLAerror( "Illegal character constant: " );
+			dumpQLexeme();
+			jmp LexAgain;
+
+
+	// Deal with string constants surrounded by quotes here.
+
+	f_Quote::
+			lea( edx, StringBuf );
+			xor( eax, eax );
+			
+			// Construct a zero-terminated string in StringBuf:
+			
+			forever
+			
+				inc( esi );			// Skip over leading quote.
+				cmp( esi, EOF );
+				jae	BadStrConst;
+				
+				mov( [esi], al );
+				bt( eax, LegalCharLiteral );
+				jnc BadStrConst2;
+				if( al = '"' ) then
+				
+					inc( esi );
+					breakif( esi >= EOF );
+					mov( [esi], al );
+					breakif( al <> '"' );
+					
+				endif;
+				mov( al, [edx] );
+				inc( edx );
+				
+			endfor;
+
+			
+			mov( tkn_strConst, eax );
+			mov( const_tc, ebx );
+			ret();
+			
+		BadStrConst2:
+			HLAerror( "Illegal character in string literal constant" nl );
+			HLAerror2( "(ASCII code = $", al, ")" nl nl );
+			jmp LexAgain;
+			
+			
+		BadStrConst:
+			HLAerror( "Illegal string constant: " );
+			dumpQLexeme();
+			jmp LexAgain;		
+		
+	
+	
+	// Check for "/", "//", and "/*..*/" here.
+	
+	f_Slash::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = '/' ) then
+			
+				// We've got "//", ignore everything to the end of the line.
+				
+				EatLine:
+				
+					inc( esi );
+					cmp( esi, EOF );		// If EOF, stop eating stuff.
+					jae UnexpectedEOF;
+					
+					if( (type char [esi]) <> stdio.lf ) then
+					
+						cmp( (type char [esi]), stdio.cr );
+						jne EatLine;
+						
+						// If we got a carriage return, see if it's followed
+						// by a line feed.  If so, eat both characters.
+						
+						inc( esi );
+						cmp( esi, EOF );
+						jae UnexpectedEOF;
+
+						// If no lf after the cr, then back up
+						// a character and treat the <cr> as the
+						// endline sequence.
+							
+						if( (type char [esi]) <> stdio.lf ) then
+						
+							dec( esi );
+							
+						endif;
+						
+					endif;
+					
+					// Skip last EOLN character and then bump up the line
+					// count values.  Then return to the top of the lexer
+					// and grab the next item from the file.
+					
+					inc( esi );
+					inc( lineNumber );
+					inc( totalLineCount );
+					jmp QuickLexAgain;
+					
+			elseif( al = '*' ) then
+			
+				// Okay, we've got a "/*" sequence, so ignore everything
+				// up to the next "*/" or the EOF, whichever comes first.
+				
+				forever
+				
+					inc( esi );
+					cmp( esi, EOF );
+					jae UnexpectedEOF;
+					
+					mov( [esi], al );
+					if( al = stdio.cr ) then
+					
+						inc( lineNumber );
+						inc( totalLineCount );
+						inc( esi );
+						cmp( esi, EOF );
+						jae UnexpectedEOF;
+						mov( [esi], al );
+						
+					elseif( al = stdio.lf ) then
+
+						inc( lineNumber );
+						inc( totalLineCount );
+						
+					endif;
+					
+					continueif( (type char [esi]) <> '*' );
+					
+					// Okay, we've got a "*", now check for the "/".
+					
+					inc( esi );
+					cmp( esi, EOF );
+					jae UnexpectedEOF;
+					breakif( (type char [esi]) = '/' );
+					
+				endfor;
+				inc( esi );		// Skip over the '/' character.
+				jmp QuickLexAgain;	// Go get the next token.
+								
+			endif;
+						
+		endif;
+		
+		// Okay, it was just a slash.  Return that down here.
+		
+		mov( '/', eax );    
+		mov( mulOp_tc, ebx );
+		ret();
+
+	
+	// Check for "|" and "||":
+	
+	f_VertBar::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '|' ) then
+		
+			mov( tkn_orOp, eax );
+			inc( esi );
+						
+		endif;    
+		mov( orOp_tc, ebx );
+		ret();
+
+	// Check for "^":
+	
+	f_Caret::
+		mov( orOp_tc, ebx );
+		inc( esi );
+		ret();
+
+	
+	// Check for "&" and "&&":
+	
+	f_Amper::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '&' ) then
+		
+			mov( tkn_andOp, eax );
+			inc( esi );
+						
+		endif;    
+		mov( andOp_tc, ebx );
+		ret();
+
+	
+	// Check for ":", "::", and ":=":
+	
+	f_Colon::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = ':' ) then
+		
+				mov( tkn_colonColon, eax );
+				inc( esi );
+				
+			elseif( al = '=' ) then
+			
+				mov( tkn_assign, eax );
+				inc( esi );
+				
+			else
+			
+				mov( ':', al );
+				
+			endif;
+						
+		endif;    
+		mov( punct_tc, ebx );
+		ret();
+
+	// Check for "." and "..":
+	
+	f_Period::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '.' ) then
+		
+			mov( tkn_dotDot, eax );
+			inc( esi );
+						
+		endif;    
+		mov( punct_tc, ebx );
+		ret();
+
+
+	// Check for "=" and "==":
+	
+	f_Equal::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '=' ) then
+		
+			mov( '=', al );
+			inc( esi );
+						
+		endif;    
+		mov( relOp_tc, ebx );
+		ret();
+
+
+	// Check for "!" and "!=":
+	
+	f_Exclaim::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '=' ) then
+		
+			mov( tkn_notEqual, eax );
+			inc( esi );
+			mov( relOp_tc, ebx );
+			ret();
+						
+		endif;    
+		mov( notOp_tc, ebx );
+		ret();
+
+
+	// Check for ">" and ">=":
+	
+	f_Greater::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = '=' ) then
+		
+				mov( tkn_greaterEqual, eax );
+				inc( esi );
+				
+			elseif( al = '>' ) then
+			
+				mov( tkn_shrOp, eax );
+				inc( esi );
+				mov( mulOp_tc, ebx );
+				ret();
+				
+			else
+			
+				mov( '>', al );
+				
+			endif;
+						
+		endif;    
+		mov( relOp_tc, ebx );
+		ret();
+
+
+
+
+
+	// Check for "<", "<=", "<<", and "<>":
+	
+	f_Less::
+		inc( esi );
+		if( esi < EOF ) then
+		
+			mov( [esi], al );
+			if( al = '=' ) then
+		
+				mov( tkn_lessEqual, eax );
+				inc( esi );
+				
+			elseif( al = '<' ) then
+			
+				mov( tkn_shlOp, eax );
+				inc( esi );
+				mov( mulOp_tc, ebx );
+				ret();
+				
+			elseif( al = '>' ) then
+			
+				mov( tkn_notEqual, eax );
+				inc( esi );
+				
+			else
+			
+				mov( '<', al );
+				
+			endif;
+						
+		endif;    
+		mov( relOp_tc, ebx );
+		ret();
+
+
+	// Check for "}" and "}#":
+	
+	f_RBrace::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '#' ) then
+		
+			mov( tkn_bracePound, eax );
+			inc( esi );
+						
+		endif;    
+		mov( punct_tc, ebx );
+		ret();
+
+
+	// Check for ")" and ")#":
+	
+	f_RParen::
+		inc( esi );
+		if( esi < EOF && (type char [esi]) = '#' ) then
+		
+			mov( tkn_parenPound, eax );
+			inc( esi );
+						
+		endif;    
+		mov( punct_tc, ebx );
+		ret();
+
+
+
+		
+	// Special case for 'U' and 'u'. If they're followed by
+	// a quote or an apostrophe, then we have a unicode
+	// character constant, otherwise treat the result as
+	// though it were an identifier.
+	
+	f_u::
+		inc( esi );
+		if( esi >= EOF ) then
+
+			dec( esi );
+			jmp Alpha;
+
+		endif;
+		mov( [esi], al );
+		cmp( al, '''' );
+		je f_Apost;
+		cmp( al, '"' );
+		je f_Quote;
+
+		dec( esi );	// Fall through to "f_Alpha" and let it process
+					// the ID or reserved word beginning with "u".
+				
+				
+
+
+	// Handle identifiers here.
+	//
+	// Lexemes that begin with a tilde ('~') followed by
+	// alphabetic characters are reserved words.
+	// However, for fastLex purposes, we'll treat them just
+	// like undefined IDs.
+	// Likewise, lexemes that begin with an at sign ("@") are
+	// function names, but we'll treat them like IDs.
+	
+	f_Tilde::
+	f_Alpha::
+	f_Underscore::
+	f_Atsign::
+
+		mov( esi, edi );	// Mark start of identifier.
+		repeat
+		
+			inc( esi );
+			breakif( esi >= EOF );
+			mov( [esi], al );
+			bt( eax, GoodID );
+			
+		until( @nc );
+		
+		
+		mov( tkn_undefID, eax );	
+		mov( ID_tc, ebx );
+		ret();
+
+
+   	// Check for "#{", "##", "#(", "#:", and all the compile-time statement
+	// reserved words:
+	
+	f_Pound::
+
+		inc( esi );
+		
+		// If we're at the EOF, then we had a "#" by itself and this
+		// isn't legal.
+		
+		cmp( esi, EOF );
+		je NotCTLRW;
+		
+		mov( [esi], al );
+		if( al = '{' ) then
+	
+			mov( tkn_poundBrace, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			ret();
+			
+		endif;
+		
+		if( al = '(' ) then
+	
+			mov( tkn_poundParen, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			ret();
+			
+		endif;
+		
+		if( al = '#' ) then
+
+			mov( tkn_poundPound, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			ret();
+			
+		endif;			
+			
+		if( al = ':' ) then
+
+			mov( tkn_poundColon, eax );
+			inc( esi );
+			mov( punct_tc, ebx );
+			ret();
+			
+		endif;
+		
+
+		mov( 0, ah );
+		if( al = 'u' ) then
+
+			inc( esi );
+			cmp( esi, EOF );
+			je NotCTLRW;
+			mov( al, ah );
+			mov( [esi], al );
+
+		endif;
+
+		// Check for character constants of the form #xx, #$xx, and #%xx
+		//
+		// Check for "#$xx" here:
+		
+		cmp( al, '$' );
+		je f_Dollar;
+		
+		// Check for "#%xx" here:
+
+		cmp( al, '%' );
+		je f_Percent;
+		
+	
+		// Check for "#xx" here:
+		
+		cmp( al, '0' );
+		if( @nb ) then
+
+			cmp( al, '9' );
+			jbe f_Digit;
+				
+		endif;
+
+		// If we had a 'u', put it back.
+
+		if( ah = 'u' ) then
+		
+			dec( esi );
+			
+		endif;
+				
+		// Okay, if it's none of the above, we'd best have
+		// a compile-time statement immediately following
+		// the "#".
+		
+		CheckCTL( esi );
+		jc NotCTLRW;
+		mov( ctStmt_tc, ebx );
+		ret();
+		
+		// Fall down here if we don't match one of the legal compile-time
+		// language reserved words:
+		
+		NotCTLRW:
+			HLAerror( "Illegal compile-time statement: " );
+			dumpQLexeme();
+			jmp LexAgain;
+
+		
+end fastLex;
+
+
+
+
+end HLALexer;

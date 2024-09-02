@@ -1,0 +1,7159 @@
+// cmpCode.hla (include file to scan HLA v2.x reserved words)
+
+// Note: The following code is emitted by machine. 
+//       Do not modify this code by hand.  Instead, see the
+//       documentation for the "rw" (reserved words) program
+//       that accompanies the HLA v2.x source code to determine
+//       how to add new reserved words to the HLA language.
+
+Len2_Hash0_0:
+	cmp( ax, rwstr( "in", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_in, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash6_0:
+	cmp( ax, rwstr( "at", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_at, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash20_0:
+	cmp( ax, rwstr( "jl", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash30_0:
+	cmp( ax, rwstr( "or", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_or, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash51_0:
+	cmp( ax, rwstr( "to", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_to, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash59_0:
+	cmp( ax, rwstr( "do", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_do, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash78_0:
+	cmp( ax, rwstr( "je", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_je, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash81_0:
+	cmp( ax, rwstr( "dx", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_dx, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash82_0:
+	cmp( ax, rwstr( "bx", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_bx, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash83_0:
+	cmp( ax, rwstr( "cx", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_cx, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash92_0:
+	cmp( ax, rwstr( "cl", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_cl, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash93_0:
+	cmp( ax, rwstr( "bl", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_bl, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash94_0:
+	cmp( ax, rwstr( "dl", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_dl, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash113_0:
+	cmp( ax, rwstr( "jo", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jo, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash118_0:
+	cmp( ax, rwstr( "ah", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_ah, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash129_0:
+	cmp( ax, rwstr( "sp", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_sp, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash134_0:
+	cmp( ax, rwstr( "bt", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_bt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash141_0:
+	cmp( ax, rwstr( "js", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_js, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash142_0:
+	cmp( ax, rwstr( "jc", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash152_0:
+	cmp( ax, rwstr( "bp", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_bp, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash174_0:
+	cmp( ax, rwstr( "jb", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash183_0:
+	cmp( ax, rwstr( "jf", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jf, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash189_0:
+	cmp( ax, rwstr( "jg", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash190_0:
+	cmp( ax, rwstr( "ja", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_ja, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash195_0:
+	cmp( ax, rwstr( "r8", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_r8, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash199_0:
+	cmp( ax, rwstr( "r9", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_r9, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash207_0:
+	cmp( ax, rwstr( "jt", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash209_0:
+	cmp( ax, rwstr( "jp", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash210_0:
+	cmp( ax, rwstr( "ax", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_ax, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash221_0:
+	cmp( ax, rwstr( "al", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_al, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash229_0:
+	cmp( ax, rwstr( "di", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_di, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash245_0:
+	cmp( ax, rwstr( "dh", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_dh, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash246_0:
+	cmp( ax, rwstr( "if", 0, 2 ));
+	jne Len2_Hash246_1;
+	mov( tkn_if, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash246_1:
+	cmp( ax, rwstr( "bh", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_bh, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash247_0:
+	cmp( ax, rwstr( "ch", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_ch, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash252_0:
+	cmp( ax, rwstr( "jz", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_jz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len2_Hash255_0:
+	cmp( ax, rwstr( "si", 0, 2 ));
+	jne IsAnID;
+	mov( tkn_si, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash0_0:
+	cmp( ax, rwstr( "esi", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "esi", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_esi, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash1_0:
+	cmp( ax, rwstr( "r8b", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r8b", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r8b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash4_0:
+	cmp( ax, rwstr( "mm6", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm6", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm6, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash5_0:
+	cmp( ax, rwstr( "jna", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jna", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jna, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash6_0:
+	cmp( ax, rwstr( "jng", 0, 2 ));
+	jne Len3_Hash6_1;
+	cmp( bl, rwstr( "jng", 2, 1 ));
+	jne Len3_Hash6_1;
+	mov( tkn_jng, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash6_1:
+	cmp( ax, rwstr( "por", 0, 2 ));
+	jne Len3_Hash6_2;
+	cmp( bl, rwstr( "por", 2, 1 ));
+	jne Len3_Hash6_2;
+	mov( tkn_por, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash6_2:
+	cmp( ax, rwstr( "r14", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r14", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r14, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash7_0:
+	cmp( ax, rwstr( "adc", 0, 2 ));
+	jne Len3_Hash7_1;
+	cmp( bl, rwstr( "adc", 2, 1 ));
+	jne Len3_Hash7_1;
+	mov( tkn_adc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash7_1:
+	cmp( ax, rwstr( "end", 0, 2 ));
+	jne Len3_Hash7_2;
+	cmp( bl, rwstr( "end", 2, 1 ));
+	jne Len3_Hash7_2;
+	mov( tkn_end, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash7_2:
+	cmp( ax, rwstr( "cr3", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr3", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr3, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash8_0:
+	cmp( ax, rwstr( "bts", 0, 2 ));
+	jne Len3_Hash8_1;
+	cmp( bl, rwstr( "bts", 2, 1 ));
+	jne Len3_Hash8_1;
+	mov( tkn_bts, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash8_1:
+	cmp( ax, rwstr( "cr9", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr9", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr9, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash9_0:
+	cmp( ax, rwstr( "lar", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "lar", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_lar, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash10_0:
+	cmp( ax, rwstr( "jae", 0, 2 ));
+	jne Len3_Hash10_1;
+	cmp( bl, rwstr( "jae", 2, 1 ));
+	jne Len3_Hash10_1;
+	mov( tkn_jae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash10_1:
+	cmp( ax, rwstr( "try", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "try", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_try, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash11_0:
+	cmp( ax, rwstr( "btc", 0, 2 ));
+	jne Len3_Hash11_1;
+	cmp( bl, rwstr( "btc", 2, 1 ));
+	jne Len3_Hash11_1;
+	mov( tkn_btc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash11_1:
+	cmp( ax, rwstr( "cr2", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr2", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr2, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash12_0:
+	cmp( ax, rwstr( "cr8", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr8", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr8, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash13_0:
+	cmp( ax, rwstr( "cr1", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr1", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr1, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash14_0:
+	cmp( ax, rwstr( "cr0", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr0", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr0, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash15_0:
+	cmp( ax, rwstr( "dr4", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr4", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr4, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash18_0:
+	cmp( ax, rwstr( "jge", 0, 2 ));
+	jne Len3_Hash18_1;
+	cmp( bl, rwstr( "jge", 2, 1 ));
+	jne Len3_Hash18_1;
+	mov( tkn_jge, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash18_1:
+	cmp( ax, rwstr( "mul", 0, 2 ));
+	jne Len3_Hash18_2;
+	cmp( bl, rwstr( "mul", 2, 1 ));
+	jne Len3_Hash18_2;
+	mov( tkn_mul, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash18_2:
+	cmp( ax, rwstr( "r12", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r12", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r12, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash19_0:
+	cmp( ax, rwstr( "spb", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "spb", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_spb, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash20_0:
+	cmp( ax, rwstr( "r11", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r11", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r11, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash21_0:
+	cmp( ax, rwstr( "jnb", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jnb", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jnb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash23_0:
+	cmp( ax, rwstr( "r10", 0, 2 ));
+	jne Len3_Hash23_1;
+	cmp( bl, rwstr( "r10", 2, 1 ));
+	jne Len3_Hash23_1;
+	mov( tkn_r10, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash23_1:
+	cmp( ax, rwstr( "dr3", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr3", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr3, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash24_0:
+	cmp( ax, rwstr( "ror", 0, 2 ));
+	jne Len3_Hash24_1;
+	cmp( bl, rwstr( "ror", 2, 1 ));
+	jne Len3_Hash24_1;
+	mov( tkn_ror, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash24_1:
+	cmp( ax, rwstr( "dr9", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr9", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr9, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash26_0:
+	cmp( ax, rwstr( "edi", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "edi", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_edi, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash27_0:
+	cmp( ax, rwstr( "dr2", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr2", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr2, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash28_0:
+	cmp( ax, rwstr( "dr8", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr8", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr8, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash29_0:
+	cmp( ax, rwstr( "dr1", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr1", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr1, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash30_0:
+	cmp( ax, rwstr( "fst", 0, 2 ));
+	jne Len3_Hash30_1;
+	cmp( bl, rwstr( "fst", 2, 1 ));
+	jne Len3_Hash30_1;
+	mov( tkn_fst, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash30_1:
+	cmp( ax, rwstr( "r13", 0, 2 ));
+	jne Len3_Hash30_2;
+	cmp( bl, rwstr( "r13", 2, 1 ));
+	jne Len3_Hash30_2;
+	mov( tkn_r13, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash30_2:
+	cmp( ax, rwstr( "dr0", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr0", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr0, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash31_0:
+	cmp( ax, rwstr( "dec", 0, 2 ));
+	jne Len3_Hash31_1;
+	cmp( bl, rwstr( "dec", 2, 1 ));
+	jne Len3_Hash31_1;
+	mov( tkn_dec, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash31_1:
+	cmp( ax, rwstr( "cr4", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr4", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr4, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash32_0:
+	cmp( ax, rwstr( "bsf", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "bsf", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_bsf, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash33_0:
+	cmp( ax, rwstr( "r9b", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r9b", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r9b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash34_0:
+	cmp( ax, rwstr( "cmc", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmc", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cmc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash44_0:
+	cmp( ax, rwstr( "btr", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "btr", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_btr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash45_0:
+	cmp( ax, rwstr( "lsl", 0, 2 ));
+	jne Len3_Hash45_1;
+	cmp( bl, rwstr( "lsl", 2, 1 ));
+	jne Len3_Hash45_1;
+	mov( tkn_lsl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash45_1:
+	cmp( ax, rwstr( "eax", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "eax", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_eax, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash47_0:
+	cmp( ax, rwstr( "cr5", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr5", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr5, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash48_0:
+	cmp( ax, rwstr( "dib", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dib", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dib, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash49_0:
+	cmp( ax, rwstr( "sub", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "sub", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_sub, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash53_0:
+	cmp( ax, rwstr( "jnc", 0, 2 ));
+	jne Len3_Hash53_1;
+	cmp( bl, rwstr( "jnc", 2, 1 ));
+	jne Len3_Hash53_1;
+	mov( tkn_jnc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash53_1:
+	cmp( ax, rwstr( "lgs", 0, 2 ));
+	jne Len3_Hash53_2;
+	cmp( bl, rwstr( "lgs", 2, 1 ));
+	jne Len3_Hash53_2;
+	mov( tkn_lgs, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash53_2:
+	cmp( ax, rwstr( "vmt", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "vmt", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_vmt, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash54_0:
+	cmp( ax, rwstr( "jns", 0, 2 ));
+	jne Len3_Hash54_1;
+	cmp( bl, rwstr( "jns", 2, 1 ));
+	jne Len3_Hash54_1;
+	mov( tkn_jns, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash54_1:
+	cmp( ax, rwstr( "r15", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r15", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r15, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash59_0:
+	cmp( ax, rwstr( "and", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "and", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_and, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash62_0:
+	cmp( ax, rwstr( "bsr", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "bsr", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_bsr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash63_0:
+	cmp( ax, rwstr( "inc", 0, 2 ));
+	jne Len3_Hash63_1;
+	cmp( bl, rwstr( "inc", 2, 1 ));
+	jne Len3_Hash63_1;
+	mov( tkn_inc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash63_1:
+	cmp( ax, rwstr( "jmp", 0, 2 ));
+	jne Len3_Hash63_2;
+	cmp( bl, rwstr( "jmp", 2, 1 ));
+	jne Len3_Hash63_2;
+	mov( tkn_jmp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash63_2:
+	cmp( ax, rwstr( "dr5", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr5", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr5, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash64_0:
+	cmp( ax, rwstr( "mm2", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm2", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm2, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash65_0:
+	cmp( ax, rwstr( "r9d", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r9d", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r9d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash68_0:
+	cmp( ax, rwstr( "cdq", 0, 2 ));
+	jne Len3_Hash68_1;
+	cmp( bl, rwstr( "cdq", 2, 1 ));
+	jne Len3_Hash68_1;
+	mov( tkn_cdq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash68_1:
+	cmp( ax, rwstr( "not", 0, 2 ));
+	jne Len3_Hash68_2;
+	cmp( bl, rwstr( "not", 2, 1 ));
+	jne Len3_Hash68_2;
+	mov( tkn_not, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash68_2:
+	cmp( ax, rwstr( "val", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "val", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_val, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash69_0:
+	cmp( ax, rwstr( "mm0", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm0", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm0, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash70_0:
+	cmp( ax, rwstr( "mm1", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm1", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm1, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash71_0:
+	cmp( ax, rwstr( "add", 0, 2 ));
+	jne Len3_Hash71_1;
+	cmp( bl, rwstr( "add", 2, 1 ));
+	jne Len3_Hash71_1;
+	mov( tkn_add, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash71_1:
+	cmp( ax, rwstr( "jnz", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jnz", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jnz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash73_0:
+	cmp( ax, rwstr( "div", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "div", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_div, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash76_0:
+	cmp( ax, rwstr( "mm3", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm3", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm3, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash78_0:
+	cmp( ax, rwstr( "jpo", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jpo", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jpo, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash79_0:
+	cmp( ax, rwstr( "cr6", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr6", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr6, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash84_0:
+	cmp( ax, rwstr( "rbx", 0, 2 ));
+	jne Len3_Hash84_1;
+	cmp( bl, rwstr( "rbx", 2, 1 ));
+	jne Len3_Hash84_1;
+	mov( tkn_rbx, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash84_1:
+	cmp( ax, rwstr( "mm4", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm4", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm4, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash85_0:
+	cmp( ax, rwstr( "rcx", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rcx", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rcx, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash87_0:
+	cmp( ax, rwstr( "rdx", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rdx", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rdx, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash90_0:
+	cmp( ax, rwstr( "nop", 0, 2 ));
+	jne Len3_Hash90_1;
+	cmp( bl, rwstr( "nop", 2, 1 ));
+	jne Len3_Hash90_1;
+	mov( tkn_nop, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash90_1:
+	cmp( ax, rwstr( "rcl", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rcl", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rcl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash95_0:
+	cmp( ax, rwstr( "jle", 0, 2 ));
+	jne Len3_Hash95_1;
+	cmp( bl, rwstr( "jle", 2, 1 ));
+	jne Len3_Hash95_1;
+	mov( tkn_jle, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash95_1:
+	cmp( ax, rwstr( "dr6", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr6", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr6, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash97_0:
+	cmp( ax, rwstr( "r8d", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r8d", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r8d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash100_0:
+	cmp( ax, rwstr( "mm5", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm5", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm5, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash101_0:
+	cmp( ax, rwstr( "lfs", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "lfs", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_lfs, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash103_0:
+	cmp( ax, rwstr( "shr", 0, 2 ));
+	jne Len3_Hash103_1;
+	cmp( bl, rwstr( "shr", 2, 1 ));
+	jne Len3_Hash103_1;
+	mov( tkn_shr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash103_1:
+	cmp( ax, rwstr( "ebp", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "ebp", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_ebp, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash106_0:
+	cmp( ax, rwstr( "jnp", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jnp", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jnp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash111_0:
+	cmp( ax, rwstr( "out", 0, 2 ));
+	jne Len3_Hash111_1;
+	cmp( bl, rwstr( "out", 2, 1 ));
+	jne Len3_Hash111_1;
+	mov( tkn_out, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash111_1:
+	cmp( ax, rwstr( "sar", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "sar", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_sar, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash113_0:
+	cmp( ax, rwstr( "jpe", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jpe", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jpe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash124_0:
+	cmp( ax, rwstr( "st7", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st7", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st7, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash125_0:
+	cmp( ax, rwstr( "cmp", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmp", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cmp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash126_0:
+	cmp( ax, rwstr( "int", 0, 2 ));
+	jne Len3_Hash126_1;
+	cmp( bl, rwstr( "int", 2, 1 ));
+	jne Len3_Hash126_1;
+	mov( tkn_int, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash126_1:
+	cmp( ax, rwstr( "pop", 0, 2 ));
+	jne Len3_Hash126_2;
+	cmp( bl, rwstr( "pop", 2, 1 ));
+	jne Len3_Hash126_2;
+	mov( tkn_pop, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash126_2:
+	cmp( ax, rwstr( "esp", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "esp", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_esp, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash131_0:
+	cmp( ax, rwstr( "std", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "std", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_std, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash135_0:
+	cmp( ax, rwstr( "aas", 0, 2 ));
+	jne Len3_Hash135_1;
+	cmp( bl, rwstr( "aas", 2, 1 ));
+	jne Len3_Hash135_1;
+	mov( tkn_aas, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash135_1:
+	cmp( ax, rwstr( "ret", 0, 2 ));
+	jne Len3_Hash135_2;
+	cmp( bl, rwstr( "ret", 2, 1 ));
+	jne Len3_Hash135_2;
+	mov( tkn_ret, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash135_2:
+	cmp( ax, rwstr( "rsp", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rsp", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rsp, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash138_0:
+	cmp( ax, rwstr( "jbe", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jbe", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash143_0:
+	cmp( ax, rwstr( "cr7", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cr7", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cr7, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash150_0:
+	cmp( ax, rwstr( "rip", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rip", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rip, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash153_0:
+	cmp( ax, rwstr( "lea", 0, 2 ));
+	jne Len3_Hash153_1;
+	cmp( bl, rwstr( "lea", 2, 1 ));
+	jne Len3_Hash153_1;
+	mov( tkn_lea, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash153_1:
+	cmp( ax, rwstr( "rep", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rep", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rep, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash155_0:
+	cmp( ax, rwstr( "das", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "das", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_das, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash157_0:
+	cmp( ax, rwstr( "cld", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cld", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cld, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash158_0:
+	cmp( ax, rwstr( "dup", 0, 2 ));
+	jne Len3_Hash158_1;
+	cmp( bl, rwstr( "dup", 2, 1 ));
+	jne Len3_Hash158_1;
+	mov( tkn_dup, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash158_1:
+	cmp( ax, rwstr( "rbp", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rbp", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rbp, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash159_0:
+	cmp( ax, rwstr( "for", 0, 2 ));
+	jne Len3_Hash159_1;
+	cmp( bl, rwstr( "for", 2, 1 ));
+	jne Len3_Hash159_1;
+	mov( tkn_for, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash159_1:
+	cmp( ax, rwstr( "r8w", 0, 2 ));
+	jne Len3_Hash159_2;
+	cmp( bl, rwstr( "r8w", 2, 1 ));
+	jne Len3_Hash159_2;
+	mov( tkn_r8w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash159_2:
+	cmp( ax, rwstr( "dr7", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dr7", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_dr7, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash165_0:
+	cmp( ax, rwstr( "rol", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rol", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rol, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash168_0:
+	cmp( ax, rwstr( "daa", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "daa", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_daa, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash170_0:
+	cmp( ax, rwstr( "les", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "les", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_les, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash172_0:
+	cmp( ax, rwstr( "ecx", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "ecx", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_ecx, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash173_0:
+	cmp( ax, rwstr( "ebx", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "ebx", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_ebx, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash174_0:
+	cmp( ax, rwstr( "lds", 0, 2 ));
+	jne Len3_Hash174_1;
+	cmp( bl, rwstr( "lds", 2, 1 ));
+	jne Len3_Hash174_1;
+	mov( tkn_lds, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash174_1:
+	cmp( ax, rwstr( "edx", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "edx", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_edx, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash175_0:
+	cmp( ax, rwstr( "jnl", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jnl", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jnl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash180_0:
+	cmp( ax, rwstr( "aaa", 0, 2 ));
+	jne Len3_Hash180_1;
+	cmp( bl, rwstr( "aaa", 2, 1 ));
+	jne Len3_Hash180_1;
+	mov( tkn_aaa, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash180_1:
+	cmp( ax, rwstr( "lss", 0, 2 ));
+	jne Len3_Hash180_2;
+	cmp( bl, rwstr( "lss", 2, 1 ));
+	jne Len3_Hash180_2;
+	mov( tkn_lss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash180_2:
+	cmp( ax, rwstr( "xor", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xor", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_xor, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash182_0:
+	cmp( ax, rwstr( "cbw", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cbw", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cbw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash188_0:
+	cmp( ax, rwstr( "cwd", 0, 2 ));
+	jne Len3_Hash188_1;
+	cmp( bl, rwstr( "cwd", 2, 1 ));
+	jne Len3_Hash188_1;
+	mov( tkn_cwd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash188_1:
+	cmp( ax, rwstr( "st6", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st6", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st6, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash189_0:
+	cmp( ax, rwstr( "rsm", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rsm", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rsm, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash191_0:
+	cmp( ax, rwstr( "r9w", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "r9w", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_r9w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash195_0:
+	cmp( ax, rwstr( "stc", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "stc", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_stc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash196_0:
+	cmp( ax, rwstr( "aad", 0, 2 ));
+	jne Len3_Hash196_1;
+	cmp( bl, rwstr( "aad", 2, 1 ));
+	jne Len3_Hash196_1;
+	mov( tkn_aad, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash196_1:
+	cmp( ax, rwstr( "mm7", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mm7", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mm7, eax );
+	mov( regmmx_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash202_0:
+	cmp( ax, rwstr( "jno", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jno", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jno, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash207_0:
+	cmp( ax, rwstr( "neg", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "neg", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_neg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash208_0:
+	cmp( ax, rwstr( "hlt", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "hlt", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_hlt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash210_0:
+	cmp( ax, rwstr( "sal", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "sal", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_sal, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash211_0:
+	cmp( ax, rwstr( "fld", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fld", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_fld, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash212_0:
+	cmp( ax, rwstr( "rax", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rax", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rax, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash218_0:
+	cmp( ax, rwstr( "shl", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "shl", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_shl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash219_0:
+	cmp( ax, rwstr( "bpb", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "bpb", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_bpb, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash220_0:
+	cmp( ax, rwstr( "st5", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st5", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st5, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash221_0:
+	cmp( ax, rwstr( "clc", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "clc", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_clc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash224_0:
+	cmp( ax, rwstr( "sib", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "sib", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_sib, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash225_0:
+	cmp( ax, rwstr( "aam", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "aam", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_aam, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash226_0:
+	cmp( ax, rwstr( "sti", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "sti", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_sti, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash227_0:
+	cmp( ax, rwstr( "rdi", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rdi", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rdi, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash231_0:
+	cmp( ax, rwstr( "rcr", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rcr", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rcr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash232_0:
+	cmp( ax, rwstr( "sbb", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "sbb", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_sbb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash236_0:
+	cmp( ax, rwstr( "st4", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st4", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st4, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash239_0:
+	cmp( ax, rwstr( "mod", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mod", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_mod, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash244_0:
+	cmp( ax, rwstr( "st3", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st3", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st3, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash245_0:
+	cmp( ax, rwstr( "jne", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jne", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_jne, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash246_0:
+	cmp( ax, rwstr( "mov", 0, 2 ));
+	jne Len3_Hash246_1;
+	cmp( bl, rwstr( "mov", 2, 1 ));
+	jne Len3_Hash246_1;
+	mov( tkn_mov, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash246_1:
+	cmp( ax, rwstr( "ud2", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "ud2", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_ud2, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash248_0:
+	cmp( ax, rwstr( "st2", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st2", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st2, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash249_0:
+	cmp( ax, rwstr( "var", 0, 2 ));
+	jne Len3_Hash249_1;
+	cmp( bl, rwstr( "var", 2, 1 ));
+	jne Len3_Hash249_1;
+	mov( tkn_var, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash249_1:
+	cmp( ax, rwstr( "rsi", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rsi", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_rsi, eax );
+	mov( reg64_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash252_0:
+	cmp( ax, rwstr( "cli", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cli", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_cli, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash253_0:
+	cmp( ax, rwstr( "st0", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st0", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st0, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len3_Hash254_0:
+	cmp( ax, rwstr( "st1", 0, 2 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "st1", 2, 1 ));
+	jne IsAnID;
+	mov( tkn_st1, eax );
+	mov( regfpu_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash1_0:
+	cmp( eax, rwstr( "xmm4", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm4, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash2_0:
+	cmp( eax, rwstr( "dseg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dseg, eax );
+	mov( regseg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash3_0:
+	cmp( eax, rwstr( "fsin", 0, 4 ));
+	jne Len4_Hash3_1;
+	mov( tkn_fsin, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash3_1:
+	cmp( eax, rwstr( "eseg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_eseg, eax );
+	mov( regseg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash11_0:
+	cmp( eax, rwstr( "fabs", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fabs, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash12_0:
+	cmp( eax, rwstr( "ftst", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_ftst, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash15_0:
+	cmp( eax, rwstr( "name", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_name, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash16_0:
+	cmp( eax, rwstr( "xmm0", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm0, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash17_0:
+	cmp( eax, rwstr( "r12w", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r12w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash18_0:
+	cmp( eax, rwstr( "xadd", 0, 4 ));
+	jne Len4_Hash18_1;
+	mov( tkn_xadd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash18_1:
+	cmp( eax, rwstr( "xmm8", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm8, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash19_0:
+	cmp( eax, rwstr( "xmm1", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm1, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash20_0:
+	cmp( eax, rwstr( "fist", 0, 4 ));
+	jne Len4_Hash20_1;
+	mov( tkn_fist, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash20_1:
+	cmp( eax, rwstr( "setp", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_setp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash21_0:
+	cmp( eax, rwstr( "xmm2", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm2, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash22_0:
+	cmp( eax, rwstr( "xmm9", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm9, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash25_0:
+	cmp( eax, rwstr( "xmm3", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm3, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash26_0:
+	cmp( eax, rwstr( "cwde", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cwde, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash29_0:
+	cmp( eax, rwstr( "loop", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_loop, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash30_0:
+	cmp( eax, rwstr( "fmul", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fmul, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash33_0:
+	cmp( eax, rwstr( "r11w", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r11w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash38_0:
+	cmp( eax, rwstr( "push", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_push, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash40_0:
+	cmp( eax, rwstr( "text", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_text, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash46_0:
+	cmp( eax, rwstr( "imul", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_imul, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash47_0:
+	cmp( eax, rwstr( "r14b", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r14b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash48_0:
+	cmp( eax, rwstr( "r15w", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r15w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash49_0:
+	cmp( eax, rwstr( "xmm5", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm5, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash51_0:
+	cmp( eax, rwstr( "into", 0, 4 ));
+	jne Len4_Hash51_1;
+	mov( tkn_into, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash51_1:
+	cmp( eax, rwstr( "repe", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_repe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash53_0:
+	cmp( eax, rwstr( "call", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_call, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash57_0:
+	cmp( eax, rwstr( "setz", 0, 4 ));
+	jne Len4_Hash57_1;
+	mov( tkn_setz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash57_1:
+	cmp( eax, rwstr( "r10w", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r10w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash58_0:
+	cmp( eax, rwstr( "xlat", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xlat, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash61_0:
+	cmp( eax, rwstr( "fsub", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fsub, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash65_0:
+	cmp( eax, rwstr( "lock", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_lock, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash68_0:
+	cmp( eax, rwstr( "shrd", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_shrd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash69_0:
+	cmp( eax, rwstr( "fdiv", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fdiv, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash72_0:
+	cmp( eax, rwstr( "sets", 0, 4 ));
+	jne Len4_Hash72_1;
+	mov( tkn_sets, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash72_1:
+	cmp( eax, rwstr( "cr15", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cr15, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash73_0:
+	cmp( eax, rwstr( "lidt", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_lidt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash75_0:
+	cmp( eax, rwstr( "fadd", 0, 4 ));
+	jne Len4_Hash75_1;
+	mov( tkn_fadd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash75_1:
+	cmp( eax, rwstr( "setc", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_setc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash76_0:
+	cmp( eax, rwstr( "invd", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_invd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash78_0:
+	cmp( eax, rwstr( "wait", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_wait, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash79_0:
+	cmp( eax, rwstr( "r14d", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r14d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash81_0:
+	cmp( eax, rwstr( "fxch", 0, 4 ));
+	jne Len4_Hash81_1;
+	mov( tkn_fxch, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash81_1:
+	cmp( eax, rwstr( "xmm6", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm6, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash85_0:
+	cmp( eax, rwstr( "type", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_type, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash86_0:
+	cmp( eax, rwstr( "fnop", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fnop, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash87_0:
+	cmp( eax, rwstr( "jnbe", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_jnbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash96_0:
+	cmp( eax, rwstr( "insw", 0, 4 ));
+	jne Len4_Hash96_1;
+	mov( tkn_insw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash96_1:
+	cmp( eax, rwstr( "null", 0, 4 ));
+	jne Len4_Hash96_2;
+	mov( tkn_null, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash96_2:
+	cmp( eax, rwstr( "cr13", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cr13, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash103_0:
+	cmp( eax, rwstr( "byte", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_byte, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash105_0:
+	cmp( eax, rwstr( "cr10", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cr10, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash106_0:
+	cmp( eax, rwstr( "cr11", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cr11, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash107_0:
+	cmp( eax, rwstr( "setb", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_setb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash108_0:
+	cmp( eax, rwstr( "cr12", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cr12, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash112_0:
+	cmp( eax, rwstr( "then", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_then, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash113_0:
+	cmp( eax, rwstr( "r13w", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r13w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash114_0:
+	cmp( eax, rwstr( "verw", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_verw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash116_0:
+	cmp( eax, rwstr( "pxor", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_pxor, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash117_0:
+	cmp( eax, rwstr( "idiv", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_idiv, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash120_0:
+	cmp( eax, rwstr( "setg", 0, 4 ));
+	jne Len4_Hash120_1;
+	mov( tkn_setg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash120_1:
+	cmp( eax, rwstr( "cr14", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cr14, eax );
+	mov( regctrl_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash122_0:
+	cmp( eax, rwstr( "sidt", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_sidt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash123_0:
+	cmp( eax, rwstr( "seta", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_seta, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash126_0:
+	cmp( eax, rwstr( "near", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_near, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash129_0:
+	cmp( eax, rwstr( "repz", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_repz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash130_0:
+	cmp( eax, rwstr( "jnle", 0, 4 ));
+	jne Len4_Hash130_1;
+	mov( tkn_jnle, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash130_1:
+	cmp( eax, rwstr( "cseg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_cseg, eax );
+	mov( regseg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash132_0:
+	cmp( eax, rwstr( "fxam", 0, 4 ));
+	jne Len4_Hash132_1;
+	mov( tkn_fxam, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash132_1:
+	cmp( eax, rwstr( "sseg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_sseg, eax );
+	mov( regseg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash135_0:
+	cmp( eax, rwstr( "emms", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_emms, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash136_0:
+	cmp( eax, rwstr( "else", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_else, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash139_0:
+	cmp( eax, rwstr( "sete", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_sete, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash140_0:
+	cmp( eax, rwstr( "word", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_word, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash142_0:
+	cmp( eax, rwstr( "smsw", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_smsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash143_0:
+	cmp( eax, rwstr( "fchs", 0, 4 ));
+	jne Len4_Hash143_1;
+	mov( tkn_fchs, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash143_1:
+	cmp( eax, rwstr( "r12b", 0, 4 ));
+	jne Len4_Hash143_2;
+	mov( tkn_r12b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash143_2:
+	cmp( eax, rwstr( "r13d", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r13d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash144_0:
+	cmp( eax, rwstr( "fstp", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fstp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash145_0:
+	cmp( eax, rwstr( "xmm7", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xmm7, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash148_0:
+	cmp( eax, rwstr( "sldt", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_sldt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash150_0:
+	cmp( eax, rwstr( "uns8", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_uns8, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash153_0:
+	cmp( eax, rwstr( "fbld", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fbld, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash156_0:
+	cmp( eax, rwstr( "fld1", 0, 4 ));
+	jne Len4_Hash156_1;
+	mov( tkn_fld1, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash156_1:
+	cmp( eax, rwstr( "test", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_test, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash157_0:
+	cmp( eax, rwstr( "char", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_char, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash158_0:
+	cmp( eax, rwstr( "insd", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_insd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash159_0:
+	cmp( eax, rwstr( "fcom", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fcom, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash163_0:
+	cmp( eax, rwstr( "case", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_case, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash167_0:
+	cmp( eax, rwstr( "lldt", 0, 4 ));
+	jne Len4_Hash167_1;
+	mov( tkn_lldt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash167_1:
+	cmp( eax, rwstr( "r10b", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r10b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash169_0:
+	cmp( eax, rwstr( "shld", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_shld, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash174_0:
+	cmp( eax, rwstr( "r15b", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r15b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash177_0:
+	cmp( eax, rwstr( "r14w", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r14w, eax );
+	mov( reg16_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash179_0:
+	cmp( eax, rwstr( "this", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_this, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash180_0:
+	cmp( eax, rwstr( "seto", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_seto, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash183_0:
+	cmp( eax, rwstr( "lazy", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_lazy, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash184_0:
+	cmp( eax, rwstr( "orps", 0, 4 ));
+	jne Len4_Hash184_1;
+	mov( tkn_orps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash184_1:
+	cmp( eax, rwstr( "enum", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_enum, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash187_0:
+	cmp( eax, rwstr( "iret", 0, 4 ));
+	jne Len4_Hash187_1;
+	mov( tkn_iret, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash187_1:
+	cmp( eax, rwstr( "jcxz", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_jcxz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash189_0:
+	cmp( eax, rwstr( "lmsw", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_lmsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash190_0:
+	cmp( eax, rwstr( "arpl", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_arpl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash191_0:
+	cmp( eax, rwstr( "r11b", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r11b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash199_0:
+	cmp( eax, rwstr( "movq", 0, 4 ));
+	jne Len4_Hash199_1;
+	mov( tkn_movq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash199_1:
+	cmp( eax, rwstr( "r10d", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r10d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash200_0:
+	cmp( eax, rwstr( "movd", 0, 4 ));
+	jne Len4_Hash200_1;
+	mov( tkn_movd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash200_1:
+	cmp( eax, rwstr( "dr15", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dr15, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash205_0:
+	cmp( eax, rwstr( "lgdt", 0, 4 ));
+	jne Len4_Hash205_1;
+	mov( tkn_lgdt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash205_1:
+	cmp( eax, rwstr( "sahf", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_sahf, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash206_0:
+	cmp( eax, rwstr( "r15d", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r15d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash207_0:
+	cmp( eax, rwstr( "jnge", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_jnge, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash209_0:
+	cmp( eax, rwstr( "setl", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_setl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash211_0:
+	cmp( eax, rwstr( "fldz", 0, 4 ));
+	jne Len4_Hash211_1;
+	mov( tkn_fldz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash211_1:
+	cmp( eax, rwstr( "imod", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_imod, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash215_0:
+	cmp( eax, rwstr( "jnae", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_jnae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash216_0:
+	cmp( eax, rwstr( "clts", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_clts, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash217_0:
+	cmp( eax, rwstr( "fild", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fild, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash219_0:
+	cmp( eax, rwstr( "exit", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_exit, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash223_0:
+	cmp( eax, rwstr( "r11d", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r11d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash224_0:
+	cmp( eax, rwstr( "dr13", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dr13, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash228_0:
+	cmp( eax, rwstr( "utf8", 0, 4 ));
+	jne Len4_Hash228_1;
+	mov( tkn_utf8, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash228_1:
+	cmp( eax, rwstr( "gseg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_gseg, eax );
+	mov( regseg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash230_0:
+	cmp( eax, rwstr( "xchg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_xchg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash233_0:
+	cmp( eax, rwstr( "dr10", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dr10, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash234_0:
+	cmp( eax, rwstr( "dr11", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dr11, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash235_0:
+	cmp( eax, rwstr( "verr", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_verr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash236_0:
+	cmp( eax, rwstr( "dr12", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dr12, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash239_0:
+	cmp( eax, rwstr( "r13b", 0, 4 ));
+	jne Len4_Hash239_1;
+	mov( tkn_r13b, eax );
+	mov( reg8_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash239_1:
+	cmp( eax, rwstr( "r12d", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_r12d, eax );
+	mov( reg32_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash240_0:
+	cmp( eax, rwstr( "cset", 0, 4 ));
+	jne Len4_Hash240_1;
+	mov( tkn_cset, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash240_1:
+	cmp( eax, rwstr( "int8", 0, 4 ));
+	jne Len4_Hash240_2;
+	mov( tkn_int8, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash240_2:
+	cmp( eax, rwstr( "fseg", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fseg, eax );
+	mov( regseg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash245_0:
+	cmp( eax, rwstr( "popf", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_popf, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash248_0:
+	cmp( eax, rwstr( "dr14", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_dr14, eax );
+	mov( regdbg_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash249_0:
+	cmp( eax, rwstr( "fcos", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_fcos, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash250_0:
+	cmp( eax, rwstr( "unit", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_unit, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash251_0:
+	cmp( eax, rwstr( "orpd", 0, 4 ));
+	jne Len4_Hash251_1;
+	mov( tkn_orpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash251_1:
+	cmp( eax, rwstr( "pand", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_pand, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash252_0:
+	cmp( eax, rwstr( "popa", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_popa, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash254_0:
+	cmp( eax, rwstr( "insb", 0, 4 ));
+	jne Len4_Hash254_1;
+	mov( tkn_insb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash254_1:
+	cmp( eax, rwstr( "lahf", 0, 4 ));
+	jne Len4_Hash254_2;
+	mov( tkn_lahf, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len4_Hash254_2:
+	cmp( eax, rwstr( "sgdt", 0, 4 ));
+	jne IsAnID;
+	mov( tkn_sgdt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash3_0:
+	cmp( eax, rwstr( "fprem", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fprem", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fprem, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash6_0:
+	cmp( eax, rwstr( "raise", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "raise", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_raise, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash9_0:
+	cmp( eax, rwstr( "cmovz", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmovz", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash12_0:
+	cmp( eax, rwstr( "addss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "addss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_addss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash13_0:
+	cmp( eax, rwstr( "begin", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "begin", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_begin, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash14_0:
+	cmp( eax, rwstr( "psubw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psubw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psubw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash15_0:
+	cmp( eax, rwstr( "pause", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "pause", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_pause, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash16_0:
+	cmp( eax, rwstr( "rdmsr", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rdmsr", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_rdmsr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash18_0:
+	cmp( eax, rwstr( "f2xm1", 0, 4 ));
+	jne Len5_Hash18_1;
+	cmp( bl, rwstr( "f2xm1", 4, 1 ));
+	jne Len5_Hash18_1;
+	mov( tkn_f2xm1, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash18_1:
+	cmp( eax, rwstr( "xorps", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xorps", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xorps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash21_0:
+	cmp( eax, rwstr( "fidiv", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fidiv", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fidiv, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash23_0:
+	cmp( eax, rwstr( "fsave", 0, 4 ));
+	jne Len5_Hash23_1;
+	cmp( bl, rwstr( "fsave", 4, 1 ));
+	jne Len5_Hash23_1;
+	mov( tkn_fsave, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash23_1:
+	cmp( eax, rwstr( "loope", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "loope", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_loope, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash24_0:
+	cmp( eax, rwstr( "setns", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setns", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setns, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash26_0:
+	cmp( eax, rwstr( "mulsd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mulsd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_mulsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash27_0:
+	cmp( eax, rwstr( "fiadd", 0, 4 ));
+	jne Len5_Hash27_1;
+	cmp( bl, rwstr( "fiadd", 4, 1 ));
+	jne Len5_Hash27_1;
+	mov( tkn_fiadd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash27_1:
+	cmp( eax, rwstr( "setnc", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setnc", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setnc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash30_0:
+	cmp( eax, rwstr( "repne", 0, 4 ));
+	jne Len5_Hash30_1;
+	cmp( bl, rwstr( "repne", 4, 1 ));
+	jne Len5_Hash30_1;
+	mov( tkn_repne, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash30_1:
+	cmp( eax, rwstr( "scasw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "scasw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_scasw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash34_0:
+	cmp( eax, rwstr( "fclex", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fclex", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fclex, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash35_0:
+	cmp( eax, rwstr( "cmppd", 0, 4 ));
+	jne Len5_Hash35_1;
+	cmp( bl, rwstr( "cmppd", 4, 1 ));
+	jne Len5_Hash35_1;
+	mov( tkn_cmppd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash35_1:
+	cmp( eax, rwstr( "movsd", 0, 4 ));
+	jne Len5_Hash35_2;
+	cmp( bl, rwstr( "movsd", 4, 1 ));
+	jne Len5_Hash35_2;
+	mov( tkn_movsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash35_2:
+	cmp( eax, rwstr( "paddb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "paddb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_paddb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash36_0:
+	cmp( eax, rwstr( "cmovp", 0, 4 ));
+	jne Len5_Hash36_1;
+	cmp( bl, rwstr( "cmovp", 4, 1 ));
+	jne Len5_Hash36_1;
+	mov( tkn_cmovp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash36_1:
+	cmp( eax, rwstr( "setae", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setae", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash37_0:
+	cmp( eax, rwstr( "outsb", 0, 4 ));
+	jne Len5_Hash37_1;
+	cmp( bl, rwstr( "outsb", 4, 1 ));
+	jne Len5_Hash37_1;
+	mov( tkn_outsb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash37_1:
+	cmp( eax, rwstr( "psrlq", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psrlq", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psrlq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash40_0:
+	cmp( eax, rwstr( "setng", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setng", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setng, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash41_0:
+	cmp( eax, rwstr( "fyl2x", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fyl2x", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fyl2x, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash42_0:
+	cmp( eax, rwstr( "psrld", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psrld", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psrld, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash43_0:
+	cmp( eax, rwstr( "setna", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setna", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setna, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash46_0:
+	cmp( eax, rwstr( "divpd", 0, 4 ));
+	jne Len5_Hash46_1;
+	cmp( bl, rwstr( "divpd", 4, 1 ));
+	jne Len5_Hash46_1;
+	mov( tkn_divpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash46_1:
+	cmp( eax, rwstr( "fwait", 0, 4 ));
+	jne Len5_Hash46_2;
+	cmp( bl, rwstr( "fwait", 4, 1 ));
+	jne Len5_Hash46_2;
+	mov( tkn_fwait, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash46_2:
+	cmp( eax, rwstr( "maxps", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "maxps", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_maxps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash47_0:
+	cmp( eax, rwstr( "pandn", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "pandn", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_pandn, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash48_0:
+	cmp( eax, rwstr( "subpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "subpd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_subpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash50_0:
+	cmp( eax, rwstr( "fdivr", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fdivr", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fdivr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash55_0:
+	cmp( eax, rwstr( "pushf", 0, 4 ));
+	jne Len5_Hash55_1;
+	cmp( bl, rwstr( "pushf", 4, 1 ));
+	jne Len5_Hash55_1;
+	mov( tkn_pushf, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash55_1:
+	cmp( eax, rwstr( "endif", 0, 4 ));
+	jne Len5_Hash55_2;
+	cmp( bl, rwstr( "endif", 4, 1 ));
+	jne Len5_Hash55_2;
+	mov( tkn_endif, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash55_2:
+	cmp( eax, rwstr( "xchar", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xchar", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xchar, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash58_0:
+	cmp( eax, rwstr( "faddp", 0, 4 ));
+	jne Len5_Hash58_1;
+	cmp( bl, rwstr( "faddp", 4, 1 ));
+	jne Len5_Hash58_1;
+	mov( tkn_faddp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash58_1:
+	cmp( eax, rwstr( "rcpss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rcpss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_rcpss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash59_0:
+	cmp( eax, rwstr( "minsd", 0, 4 ));
+	jne Len5_Hash59_1;
+	cmp( bl, rwstr( "minsd", 4, 1 ));
+	jne Len5_Hash59_1;
+	mov( tkn_minsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash59_1:
+	cmp( eax, rwstr( "setnb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setnb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setnb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash60_0:
+	cmp( eax, rwstr( "setge", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setge", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setge, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash62_0:
+	cmp( eax, rwstr( "pusha", 0, 4 ));
+	jne Len5_Hash62_1;
+	cmp( bl, rwstr( "pusha", 4, 1 ));
+	jne Len5_Hash62_1;
+	mov( tkn_pusha, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash62_1:
+	cmp( eax, rwstr( "rdtsc", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rdtsc", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_rdtsc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash63_0:
+	cmp( eax, rwstr( "cmpsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmpsw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash67_0:
+	cmp( eax, rwstr( "movsb", 0, 4 ));
+	jne Len5_Hash67_1;
+	cmp( bl, rwstr( "movsb", 4, 1 ));
+	jne Len5_Hash67_1;
+	mov( tkn_movsb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash67_1:
+	cmp( eax, rwstr( "paddd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "paddd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_paddd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash68_0:
+	cmp( eax, rwstr( "setnp", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setnp", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setnp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash69_0:
+	cmp( eax, rwstr( "outsd", 0, 4 ));
+	jne Len5_Hash69_1;
+	cmp( bl, rwstr( "outsd", 4, 1 ));
+	jne Len5_Hash69_1;
+	mov( tkn_outsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash69_1:
+	cmp( eax, rwstr( "pslld", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "pslld", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_pslld, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash72_0:
+	cmp( eax, rwstr( "cmovg", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmovg", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash74_0:
+	cmp( eax, rwstr( "fdivp", 0, 4 ));
+	jne Len5_Hash74_1;
+	cmp( bl, rwstr( "fdivp", 4, 1 ));
+	jne Len5_Hash74_1;
+	mov( tkn_fdivp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash74_1:
+	cmp( eax, rwstr( "psllq", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psllq", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psllq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash75_0:
+	cmp( eax, rwstr( "cmova", 0, 4 ));
+	jne Len5_Hash75_1;
+	cmp( bl, rwstr( "cmova", 4, 1 ));
+	jne Len5_Hash75_1;
+	mov( tkn_cmova, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash75_1:
+	cmp( eax, rwstr( "jecxz", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "jecxz", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_jecxz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash76_0:
+	cmp( eax, rwstr( "paddq", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "paddq", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_paddq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash78_0:
+	cmp( eax, rwstr( "fimul", 0, 4 ));
+	jne Len5_Hash78_1;
+	cmp( bl, rwstr( "fimul", 4, 1 ));
+	jne Len5_Hash78_1;
+	mov( tkn_fimul, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash78_1:
+	cmp( eax, rwstr( "pushd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "pushd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_pushd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash81_0:
+	cmp( eax, rwstr( "xorpd", 0, 4 ));
+	jne Len5_Hash81_1;
+	cmp( bl, rwstr( "xorpd", 4, 1 ));
+	jne Len5_Hash81_1;
+	mov( tkn_xorpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash81_1:
+	cmp( eax, rwstr( "while", 0, 4 ));
+	jne Len5_Hash81_2;
+	cmp( bl, rwstr( "while", 4, 1 ));
+	jne Len5_Hash81_2;
+	mov( tkn_while, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash81_2:
+	cmp( eax, rwstr( "short", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "short", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_short, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash83_0:
+	cmp( eax, rwstr( "ltreg", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "ltreg", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_ltreg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash89_0:
+	cmp( eax, rwstr( "mulss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mulss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_mulss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash90_0:
+	cmp( eax, rwstr( "xcset", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xcset", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xcset, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash91_0:
+	cmp( eax, rwstr( "cmovb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmovb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash95_0:
+	cmp( eax, rwstr( "setpe", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setpe", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setpe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash96_0:
+	cmp( eax, rwstr( "cmpps", 0, 4 ));
+	jne Len5_Hash96_1;
+	cmp( bl, rwstr( "cmpps", 4, 1 ));
+	jne Len5_Hash96_1;
+	mov( tkn_cmpps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash96_1:
+	cmp( eax, rwstr( "movss", 0, 4 ));
+	jne Len5_Hash96_2;
+	cmp( bl, rwstr( "movss", 4, 1 ));
+	jne Len5_Hash96_2;
+	mov( tkn_movss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash96_2:
+	cmp( eax, rwstr( "pavgw", 0, 4 ));
+	jne Len5_Hash96_3;
+	cmp( bl, rwstr( "pavgw", 4, 1 ));
+	jne Len5_Hash96_3;
+	mov( tkn_pavgw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash96_3:
+	cmp( eax, rwstr( "setpo", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setpo", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setpo, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash100_0:
+	cmp( eax, rwstr( "lodsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "lodsw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_lodsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash102_0:
+	cmp( eax, rwstr( "enter", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "enter", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_enter, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash105_0:
+	cmp( eax, rwstr( "setnz", 0, 4 ));
+	jne Len5_Hash105_1;
+	cmp( bl, rwstr( "setnz", 4, 1 ));
+	jne Len5_Hash105_1;
+	mov( tkn_setnz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash105_1:
+	cmp( eax, rwstr( "until", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "until", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_until, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash106_0:
+	cmp( eax, rwstr( "ffree", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "ffree", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_ffree, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash109_0:
+	cmp( eax, rwstr( "divps", 0, 4 ));
+	jne Len5_Hash109_1;
+	cmp( bl, rwstr( "divps", 4, 1 ));
+	jne Len5_Hash109_1;
+	mov( tkn_divps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash109_1:
+	cmp( eax, rwstr( "fisub", 0, 4 ));
+	jne Len5_Hash109_2;
+	cmp( bl, rwstr( "fisub", 4, 1 ));
+	jne Len5_Hash109_2;
+	mov( tkn_fisub, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash109_2:
+	cmp( eax, rwstr( "maxpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "maxpd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_maxpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash111_0:
+	cmp( eax, rwstr( "stosw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "stosw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_stosw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash113_0:
+	cmp( eax, rwstr( "setle", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setle", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setle, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash115_0:
+	cmp( eax, rwstr( "subps", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "subps", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_subps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash120_0:
+	cmp( eax, rwstr( "cmovs", 0, 4 ));
+	jne Len5_Hash120_1;
+	cmp( bl, rwstr( "cmovs", 4, 1 ));
+	jne Len5_Hash120_1;
+	mov( tkn_cmovs, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash120_1:
+	cmp( eax, rwstr( "minss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "minss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_minss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash123_0:
+	cmp( eax, rwstr( "cmovc", 0, 4 ));
+	jne Len5_Hash123_1;
+	cmp( bl, rwstr( "cmovc", 4, 1 ));
+	jne Len5_Hash123_1;
+	mov( tkn_cmovc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash123_1:
+	cmp( eax, rwstr( "dword", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "dword", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_dword, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash125_0:
+	cmp( eax, rwstr( "movzx", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "movzx", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_movzx, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash127_0:
+	cmp( eax, rwstr( "psrad", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psrad", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psrad, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash128_0:
+	cmp( eax, rwstr( "scasb", 0, 4 ));
+	jne Len5_Hash128_1;
+	cmp( bl, rwstr( "scasb", 4, 1 ));
+	jne Len5_Hash128_1;
+	mov( tkn_scasb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash128_1:
+	cmp( eax, rwstr( "tbyte", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "tbyte", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_tbyte, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash129_0:
+	cmp( eax, rwstr( "bound", 0, 4 ));
+	jne Len5_Hash129_1;
+	cmp( bl, rwstr( "bound", 4, 1 ));
+	jne Len5_Hash129_1;
+	mov( tkn_bound, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash129_1:
+	cmp( eax, rwstr( "psraw", 0, 4 ));
+	jne Len5_Hash129_2;
+	cmp( bl, rwstr( "psraw", 4, 1 ));
+	jne Len5_Hash129_2;
+	mov( tkn_psraw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash129_2:
+	cmp( eax, rwstr( "setnl", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setnl", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setnl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash130_0:
+	cmp( eax, rwstr( "cmpss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmpss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash132_0:
+	cmp( eax, rwstr( "cmovo", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmovo", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovo, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash133_0:
+	cmp( eax, rwstr( "break", 0, 4 ));
+	jne Len5_Hash133_1;
+	cmp( bl, rwstr( "break", 4, 1 ));
+	jne Len5_Hash133_1;
+	mov( tkn_break, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash133_1:
+	cmp( eax, rwstr( "wchar", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "wchar", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_wchar, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash136_0:
+	cmp( eax, rwstr( "xmm14", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xmm14", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xmm14, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash137_0:
+	cmp( eax, rwstr( "fsubp", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fsubp", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fsubp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash138_0:
+	cmp( eax, rwstr( "rdpmc", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rdpmc", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_rdpmc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash139_0:
+	cmp( eax, rwstr( "qword", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "qword", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_qword, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash140_0:
+	cmp( eax, rwstr( "fldcw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fldcw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fldcw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash141_0:
+	cmp( eax, rwstr( "int64", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "int64", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_int64, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash143_0:
+	cmp( eax, rwstr( "divss", 0, 4 ));
+	jne Len5_Hash143_1;
+	cmp( bl, rwstr( "divss", 4, 1 ));
+	jne Len5_Hash143_1;
+	mov( tkn_divss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash143_1:
+	cmp( eax, rwstr( "maxsd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "maxsd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_maxsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash144_0:
+	cmp( eax, rwstr( "fmulp", 0, 4 ));
+	jne Len5_Hash144_1;
+	cmp( bl, rwstr( "fmulp", 4, 1 ));
+	jne Len5_Hash144_1;
+	mov( tkn_fmulp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash144_1:
+	cmp( eax, rwstr( "psubb", 0, 4 ));
+	jne Len5_Hash144_2;
+	cmp( bl, rwstr( "psubb", 4, 1 ));
+	jne Len5_Hash144_2;
+	mov( tkn_psubb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash144_2:
+	cmp( eax, rwstr( "welse", 0, 4 ));
+	jne Len5_Hash144_3;
+	cmp( bl, rwstr( "welse", 4, 1 ));
+	jne Len5_Hash144_3;
+	mov( tkn_welse, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash144_3:
+	cmp( eax, rwstr( "xmm13", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xmm13", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xmm13, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash145_0:
+	cmp( eax, rwstr( "stosd", 0, 4 ));
+	jne Len5_Hash145_1;
+	cmp( bl, rwstr( "stosd", 4, 1 ));
+	jne Len5_Hash145_1;
+	mov( tkn_stosd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash145_1:
+	cmp( eax, rwstr( "subss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "subss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_subss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash152_0:
+	cmp( eax, rwstr( "popad", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "popad", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_popad, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash153_0:
+	cmp( eax, rwstr( "xmm10", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xmm10", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xmm10, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash154_0:
+	cmp( eax, rwstr( "lodsd", 0, 4 ));
+	jne Len5_Hash154_1;
+	cmp( bl, rwstr( "lodsd", 4, 1 ));
+	jne Len5_Hash154_1;
+	mov( tkn_lodsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash154_1:
+	cmp( eax, rwstr( "minps", 0, 4 ));
+	jne Len5_Hash154_2;
+	cmp( bl, rwstr( "minps", 4, 1 ));
+	jne Len5_Hash154_2;
+	mov( tkn_minps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash154_2:
+	cmp( eax, rwstr( "xmm11", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xmm11", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xmm11, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash156_0:
+	cmp( eax, rwstr( "fcomp", 0, 4 ));
+	jne Len5_Hash156_1;
+	cmp( bl, rwstr( "fcomp", 4, 1 ));
+	jne Len5_Hash156_1;
+	mov( tkn_fcomp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash156_1:
+	cmp( eax, rwstr( "xmm12", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xmm12", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xmm12, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash161_0:
+	cmp( eax, rwstr( "cmpsb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmpsb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpsb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash162_0:
+	cmp( eax, rwstr( "iretd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "iretd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_iretd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash164_0:
+	cmp( eax, rwstr( "setbe", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setbe", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash165_0:
+	cmp( eax, rwstr( "loopz", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "loopz", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_loopz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash166_0:
+	cmp( eax, rwstr( "class", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "class", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_class, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash169_0:
+	cmp( eax, rwstr( "untry", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "untry", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_untry, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash170_0:
+	cmp( eax, rwstr( "leave", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "leave", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_leave, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash172_0:
+	cmp( eax, rwstr( "repnz", 0, 4 ));
+	jne Len5_Hash172_1;
+	cmp( bl, rwstr( "repnz", 4, 1 ));
+	jne Len5_Hash172_1;
+	mov( tkn_repnz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash172_1:
+	cmp( eax, rwstr( "align", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "align", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_align, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash173_0:
+	cmp( eax, rwstr( "addpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "addpd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_addpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash176_0:
+	cmp( eax, rwstr( "pushw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "pushw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_pushw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash178_0:
+	cmp( eax, rwstr( "andpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "andpd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_andpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash181_0:
+	cmp( eax, rwstr( "cpuid", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cpuid", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cpuid, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash182_0:
+	cmp( eax, rwstr( "thunk", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "thunk", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_thunk, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash183_0:
+	cmp( eax, rwstr( "fptan", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fptan", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fptan, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash184_0:
+	cmp( eax, rwstr( "xmm15", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "xmm15", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_xmm15, eax );
+	mov( regsse_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash186_0:
+	cmp( eax, rwstr( "fsqrt", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fsqrt", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fsqrt, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash187_0:
+	cmp( eax, rwstr( "cmove", 0, 4 ));
+	jne Len5_Hash187_1;
+	cmp( bl, rwstr( "cmove", 4, 1 ));
+	jne Len5_Hash187_1;
+	mov( tkn_cmove, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash187_1:
+	cmp( eax, rwstr( "fucom", 0, 4 ));
+	jne Len5_Hash187_2;
+	cmp( bl, rwstr( "fucom", 4, 1 ));
+	jne Len5_Hash187_2;
+	mov( tkn_fucom, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash187_2:
+	cmp( eax, rwstr( "mulps", 0, 4 ));
+	jne Len5_Hash187_3;
+	cmp( bl, rwstr( "mulps", 4, 1 ));
+	jne Len5_Hash187_3;
+	mov( tkn_mulps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash187_3:
+	cmp( eax, rwstr( "outsw", 0, 4 ));
+	jne Len5_Hash187_4;
+	cmp( bl, rwstr( "outsw", 4, 1 ));
+	jne Len5_Hash187_4;
+	mov( tkn_outsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash187_4:
+	cmp( eax, rwstr( "psllw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psllw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psllw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash189_0:
+	cmp( eax, rwstr( "paddw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "paddw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_paddw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash190_0:
+	cmp( eax, rwstr( "uns64", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "uns64", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_uns64, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash192_0:
+	cmp( eax, rwstr( "fistp", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fistp", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fistp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash193_0:
+	cmp( eax, rwstr( "cmpsd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmpsd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash194_0:
+	cmp( eax, rwstr( "fbstp", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fbstp", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fbstp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash202_0:
+	cmp( eax, rwstr( "streg", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "streg", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_streg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash204_0:
+	cmp( eax, rwstr( "divsd", 0, 4 ));
+	jne Len5_Hash204_1;
+	cmp( bl, rwstr( "divsd", 4, 1 ));
+	jne Len5_Hash204_1;
+	mov( tkn_divsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash204_1:
+	cmp( eax, rwstr( "maxss", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "maxss", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_maxss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash207_0:
+	cmp( eax, rwstr( "ficom", 0, 4 ));
+	jne Len5_Hash207_1;
+	cmp( bl, rwstr( "ficom", 4, 1 ));
+	jne Len5_Hash207_1;
+	mov( tkn_ficom, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash207_1:
+	cmp( eax, rwstr( "int16", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "int16", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_int16, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash208_0:
+	cmp( eax, rwstr( "popfd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "popfd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_popfd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash209_0:
+	cmp( eax, rwstr( "const", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "const", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_const, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash210_0:
+	cmp( eax, rwstr( "subsd", 0, 4 ));
+	jne Len5_Hash210_1;
+	cmp( bl, rwstr( "subsd", 4, 1 ));
+	jne Len5_Hash210_1;
+	mov( tkn_subsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash210_1:
+	cmp( eax, rwstr( "union", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "union", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_union, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash212_0:
+	cmp( eax, rwstr( "psrlw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psrlw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psrlw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash214_0:
+	cmp( eax, rwstr( "lword", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "lword", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_lword, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash216_0:
+	cmp( eax, rwstr( "rcpps", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "rcpps", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_rcpps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash217_0:
+	cmp( eax, rwstr( "minpd", 0, 4 ));
+	jne Len5_Hash217_1;
+	cmp( bl, rwstr( "minpd", 4, 1 ));
+	jne Len5_Hash217_1;
+	mov( tkn_minpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash217_1:
+	cmp( eax, rwstr( "label", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "label", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_label, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash219_0:
+	cmp( eax, rwstr( "setne", 0, 4 ));
+	jne Len5_Hash219_1;
+	cmp( bl, rwstr( "setne", 4, 1 ));
+	jne Len5_Hash219_1;
+	mov( tkn_setne, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash219_1:
+	cmp( eax, rwstr( "int32", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "int32", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_int32, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash221_0:
+	cmp( eax, rwstr( "movsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "movsw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_movsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash224_0:
+	cmp( eax, rwstr( "scasd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "scasd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_scasd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash225_0:
+	cmp( eax, rwstr( "cmovl", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "cmovl", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash226_0:
+	cmp( eax, rwstr( "fcomi", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fcomi", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fcomi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash228_0:
+	cmp( eax, rwstr( "setno", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "setno", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_setno, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash231_0:
+	cmp( eax, rwstr( "fstsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fstsw", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fstsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash232_0:
+	cmp( eax, rwstr( "felse", 0, 4 ));
+	jne Len5_Hash232_1;
+	cmp( bl, rwstr( "felse", 4, 1 ));
+	jne Len5_Hash232_1;
+	mov( tkn_felse, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash232_1:
+	cmp( eax, rwstr( "uns32", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "uns32", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_uns32, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash233_0:
+	cmp( eax, rwstr( "fldpi", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "fldpi", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_fldpi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash237_0:
+	cmp( eax, rwstr( "wrsmr", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "wrsmr", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_wrsmr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash238_0:
+	cmp( eax, rwstr( "addps", 0, 4 ));
+	jne Len5_Hash238_1;
+	cmp( bl, rwstr( "addps", 4, 1 ));
+	jne Len5_Hash238_1;
+	mov( tkn_addps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash238_1:
+	cmp( eax, rwstr( "finit", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "finit", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_finit, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash240_0:
+	cmp( eax, rwstr( "psubd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psubd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psubd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash241_0:
+	cmp( eax, rwstr( "andps", 0, 4 ));
+	jne Len5_Hash241_1;
+	cmp( bl, rwstr( "andps", 4, 1 ));
+	jne Len5_Hash241_1;
+	mov( tkn_andps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash241_1:
+	cmp( eax, rwstr( "bswap", 0, 4 ));
+	jne Len5_Hash241_2;
+	cmp( bl, rwstr( "bswap", 4, 1 ));
+	jne Len5_Hash241_2;
+	mov( tkn_bswap, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash241_2:
+	cmp( eax, rwstr( "fsubr", 0, 4 ));
+	jne Len5_Hash241_3;
+	cmp( bl, rwstr( "fsubr", 4, 1 ));
+	jne Len5_Hash241_3;
+	mov( tkn_fsubr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash241_3:
+	cmp( eax, rwstr( "stosb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "stosb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_stosb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash246_0:
+	cmp( eax, rwstr( "movsx", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "movsx", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_movsx, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash248_0:
+	cmp( eax, rwstr( "mulpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "mulpd", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_mulpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash250_0:
+	cmp( eax, rwstr( "lodsb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "lodsb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_lodsb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash252_0:
+	cmp( eax, rwstr( "uns16", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "uns16", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_uns16, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash254_0:
+	cmp( eax, rwstr( "pavgb", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "pavgb", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_pavgb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash255_0:
+	cmp( eax, rwstr( "fstcw", 0, 4 ));
+	jne Len5_Hash255_1;
+	cmp( bl, rwstr( "fstcw", 4, 1 ));
+	jne Len5_Hash255_1;
+	mov( tkn_fstcw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len5_Hash255_1:
+	cmp( eax, rwstr( "psubq", 0, 4 ));
+	jne IsAnID;
+	cmp( bl, rwstr( "psubq", 4, 1 ));
+	jne IsAnID;
+	mov( tkn_psubq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash0_0:
+	cmp( eax, rwstr( "cmovnl", 0, 4 ));
+	jne Len6_Hash0_1;
+	cmp( bx, rwstr( "cmovnl", 4, 2 ));
+	jne Len6_Hash0_1;
+	mov( tkn_cmovnl, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash0_1:
+	cmp( eax, rwstr( "exitif", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "exitif", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_exitif, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash2_0:
+	cmp( eax, rwstr( "record", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "record", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_record, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash4_0:
+	cmp( eax, rwstr( "endtry", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "endtry", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_endtry, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash8_0:
+	cmp( eax, rwstr( "shufps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "shufps", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_shufps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash12_0:
+	cmp( eax, rwstr( "fpatan", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fpatan", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fpatan, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash17_0:
+	cmp( eax, rwstr( "fldl2e", 0, 4 ));
+	jne Len6_Hash17_1;
+	cmp( bx, rwstr( "fldl2e", 4, 2 ));
+	jne Len6_Hash17_1;
+	mov( tkn_fldl2e, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash17_1:
+	cmp( eax, rwstr( "movaps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movaps", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movaps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash18_0:
+	cmp( eax, rwstr( "movhpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movhpd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movhpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash24_0:
+	cmp( eax, rwstr( "pmullw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmullw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pmullw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash26_0:
+	cmp( eax, rwstr( "fprem1", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fprem1", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fprem1, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash28_0:
+	cmp( eax, rwstr( "psubsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "psubsw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_psubsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash30_0:
+	cmp( eax, rwstr( "ficomp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "ficomp", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_ficomp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash31_0:
+	cmp( eax, rwstr( "paddsb", 0, 4 ));
+	jne Len6_Hash31_1;
+	cmp( bx, rwstr( "paddsb", 4, 2 ));
+	jne Len6_Hash31_1;
+	mov( tkn_paddsb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash31_1:
+	cmp( eax, rwstr( "pmaxub", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmaxub", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pmaxub, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash33_0:
+	cmp( eax, rwstr( "psrldq", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "psrldq", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_psrldq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash34_0:
+	cmp( eax, rwstr( "fstenv", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fstenv", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fstenv, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash37_0:
+	cmp( eax, rwstr( "cmovbe", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovbe", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash38_0:
+	cmp( eax, rwstr( "setnbe", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "setnbe", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_setnbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash40_0:
+	cmp( eax, rwstr( "sqrtsd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "sqrtsd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_sqrtsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash54_0:
+	cmp( eax, rwstr( "andnpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "andnpd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_andnpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash60_0:
+	cmp( eax, rwstr( "movnti", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movnti", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movnti, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash62_0:
+	cmp( eax, rwstr( "comisd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "comisd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_comisd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash63_0:
+	cmp( eax, rwstr( "loopne", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "loopne", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_loopne, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash65_0:
+	cmp( eax, rwstr( "pmaxsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmaxsw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pmaxsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash68_0:
+	cmp( eax, rwstr( "pextrw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pextrw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pextrw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash69_0:
+	cmp( eax, rwstr( "pmulhw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmulhw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pmulhw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash72_0:
+	cmp( eax, rwstr( "fcmova", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmova", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fcmova, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash74_0:
+	cmp( eax, rwstr( "endval", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "endval", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_endval, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash75_0:
+	cmp( eax, rwstr( "psadbw", 0, 4 ));
+	jne Len6_Hash75_1;
+	cmp( bx, rwstr( "psadbw", 4, 2 ));
+	jne Len6_Hash75_1;
+	mov( tkn_psadbw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash75_1:
+	cmp( eax, rwstr( "shufpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "shufpd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_shufpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash77_0:
+	cmp( eax, rwstr( "fldln2", 0, 4 ));
+	jne Len6_Hash77_1;
+	cmp( bx, rwstr( "fldln2", 4, 2 ));
+	jne Len6_Hash77_1;
+	mov( tkn_fldln2, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash77_1:
+	cmp( eax, rwstr( "valres", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "valres", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_valres, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash81_0:
+	cmp( eax, rwstr( "movhps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movhps", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movhps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash82_0:
+	cmp( eax, rwstr( "movapd", 0, 4 ));
+	jne Len6_Hash82_1;
+	cmp( bx, rwstr( "movapd", 4, 2 ));
+	jne Len6_Hash82_1;
+	mov( tkn_movapd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash82_1:
+	cmp( eax, rwstr( "movntq", 0, 4 ));
+	jne Len6_Hash82_2;
+	cmp( bx, rwstr( "movntq", 4, 2 ));
+	jne Len6_Hash82_2;
+	mov( tkn_movntq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash82_2:
+	cmp( eax, rwstr( "switch", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "switch", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_switch, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash87_0:
+	cmp( eax, rwstr( "pshufw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pshufw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pshufw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash88_0:
+	cmp( eax, rwstr( "fcmovb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmovb", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fcmovb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash90_0:
+	cmp( eax, rwstr( "cmovne", 0, 4 ));
+	jne Len6_Hash90_1;
+	cmp( bx, rwstr( "cmovne", 4, 2 ));
+	jne Len6_Hash90_1;
+	mov( tkn_cmovne, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash90_1:
+	cmp( eax, rwstr( "pslldq", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pslldq", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pslldq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash95_0:
+	cmp( eax, rwstr( "int128", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "int128", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_int128, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash99_0:
+	cmp( eax, rwstr( "fcmovu", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmovu", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fcmovu, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash101_0:
+	cmp( eax, rwstr( "cmovno", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovno", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovno, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash107_0:
+	cmp( eax, rwstr( "sqrtss", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "sqrtss", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_sqrtss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash115_0:
+	cmp( eax, rwstr( "fisubr", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fisubr", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fisubr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash117_0:
+	cmp( eax, rwstr( "andnps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "andnps", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_andnps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash119_0:
+	cmp( eax, rwstr( "fcomip", 0, 4 ));
+	jne Len6_Hash119_1;
+	cmp( bx, rwstr( "fcomip", 4, 2 ));
+	jne Len6_Hash119_1;
+	mov( tkn_fcomip, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash119_1:
+	cmp( eax, rwstr( "lfence", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "lfence", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_lfence, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash121_0:
+	cmp( eax, rwstr( "movsdp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movsdp", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movsdp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash123_0:
+	cmp( eax, rwstr( "frstor", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "frstor", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_frstor, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash125_0:
+	cmp( eax, rwstr( "comiss", 0, 4 ));
+	jne Len6_Hash125_1;
+	cmp( bx, rwstr( "comiss", 4, 2 ));
+	jne Len6_Hash125_1;
+	mov( tkn_comiss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash125_1:
+	cmp( eax, rwstr( "wbinvd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "wbinvd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_wbinvd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash126_0:
+	cmp( eax, rwstr( "pinsrw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pinsrw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pinsrw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash129_0:
+	cmp( eax, rwstr( "paddsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "paddsw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_paddsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash130_0:
+	cmp( eax, rwstr( "psubsb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "psubsb", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_psubsb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash132_0:
+	cmp( eax, rwstr( "fcompp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcompp", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fcompp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash136_0:
+	cmp( eax, rwstr( "mfence", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "mfence", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_mfence, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash137_0:
+	cmp( eax, rwstr( "sqrtps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "sqrtps", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_sqrtps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash141_0:
+	cmp( eax, rwstr( "loopnz", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "loopnz", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_loopnz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash142_0:
+	cmp( eax, rwstr( "pushad", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pushad", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pushad, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash144_0:
+	cmp( eax, rwstr( "fldl2t", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fldl2t", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fldl2t, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash145_0:
+	cmp( eax, rwstr( "endfor", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "endfor", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_endfor, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash149_0:
+	cmp( eax, rwstr( "movdqu", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movdqu", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movdqu, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash150_0:
+	cmp( eax, rwstr( "real64", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "real64", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_real64, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash152_0:
+	cmp( eax, rwstr( "movupd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movupd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movupd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash153_0:
+	cmp( eax, rwstr( "cmovns", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovns", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovns, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash154_0:
+	cmp( eax, rwstr( "cmovnc", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovnc", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovnc, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash157_0:
+	cmp( eax, rwstr( "real80", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "real80", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_real80, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash165_0:
+	cmp( eax, rwstr( "cmovae", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovae", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash166_0:
+	cmp( eax, rwstr( "setnae", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "setnae", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_setnae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash169_0:
+	cmp( eax, rwstr( "cmovng", 0, 4 ));
+	jne Len6_Hash169_1;
+	cmp( bx, rwstr( "cmovng", 4, 2 ));
+	jne Len6_Hash169_1;
+	mov( tkn_cmovng, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash169_1:
+	cmp( eax, rwstr( "pshufd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pshufd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pshufd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash170_0:
+	cmp( eax, rwstr( "cmovna", 0, 4 ));
+	jne Len6_Hash170_1;
+	cmp( bx, rwstr( "cmovna", 4, 2 ));
+	jne Len6_Hash170_1;
+	mov( tkn_cmovna, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash170_1:
+	cmp( eax, rwstr( "fldlg2", 0, 4 ));
+	jne Len6_Hash170_2;
+	cmp( bx, rwstr( "fldlg2", 4, 2 ));
+	jne Len6_Hash170_2;
+	mov( tkn_fldlg2, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash170_2:
+	cmp( eax, rwstr( "invlpg", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "invlpg", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_invlpg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash171_0:
+	cmp( eax, rwstr( "pminub", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pminub", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pminub, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash175_0:
+	cmp( eax, rwstr( "fscale", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fscale", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fscale, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash176_0:
+	cmp( eax, rwstr( "fidivr", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fidivr", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fidivr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash183_0:
+	cmp( eax, rwstr( "static", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "static", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_static, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash184_0:
+	cmp( eax, rwstr( "fcmove", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmove", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fcmove, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash185_0:
+	cmp( eax, rwstr( "fldenv", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fldenv", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fldenv, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash186_0:
+	cmp( eax, rwstr( "cmovnb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovnb", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovnb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash187_0:
+	cmp( eax, rwstr( "movlps", 0, 4 ));
+	jne Len6_Hash187_1;
+	cmp( bx, rwstr( "movlps", 4, 2 ));
+	jne Len6_Hash187_1;
+	mov( tkn_movlps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash187_1:
+	cmp( eax, rwstr( "sfence", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "sfence", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_sfence, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash189_0:
+	cmp( eax, rwstr( "cmovge", 0, 4 ));
+	jne Len6_Hash189_1;
+	cmp( bx, rwstr( "cmovge", 4, 2 ));
+	jne Len6_Hash189_1;
+	mov( tkn_cmovge, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash189_1:
+	cmp( eax, rwstr( "fucomp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fucomp", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fucomp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash190_0:
+	cmp( eax, rwstr( "movdqa", 0, 4 ));
+	jne Len6_Hash190_1;
+	cmp( bx, rwstr( "movdqa", 4, 2 ));
+	jne Len6_Hash190_1;
+	mov( tkn_movdqa, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash190_1:
+	cmp( eax, rwstr( "setnge", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "setnge", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_setnge, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash191_0:
+	cmp( eax, rwstr( "downto", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "downto", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_downto, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash192_0:
+	cmp( eax, rwstr( "real32", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "real32", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_real32, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash195_0:
+	cmp( eax, rwstr( "fucomi", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fucomi", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fucomi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash197_0:
+	cmp( eax, rwstr( "cmovnp", 0, 4 ));
+	jne Len6_Hash197_1;
+	cmp( bx, rwstr( "cmovnp", 4, 2 ));
+	jne Len6_Hash197_1;
+	mov( tkn_cmovnp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash197_1:
+	cmp( eax, rwstr( "string", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "string", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_string, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash198_0:
+	cmp( eax, rwstr( "pushfd", 0, 4 ));
+	jne Len6_Hash198_1;
+	cmp( bx, rwstr( "pushfd", 4, 2 ));
+	jne Len6_Hash198_1;
+	mov( tkn_pushfd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash198_1:
+	cmp( eax, rwstr( "uns128", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "uns128", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_uns128, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash202_0:
+	cmp( eax, rwstr( "sqrtpd", 0, 4 ));
+	jne Len6_Hash202_1;
+	cmp( bx, rwstr( "sqrtpd", 4, 2 ));
+	jne Len6_Hash202_1;
+	mov( tkn_sqrtpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash202_1:
+	cmp( eax, rwstr( "repeat", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "repeat", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_repeat, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash209_0:
+	cmp( eax, rwstr( "result", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "result", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_result, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash212_0:
+	cmp( eax, rwstr( "elseif", 0, 4 ));
+	jne Len6_Hash212_1;
+	cmp( bx, rwstr( "elseif", 4, 2 ));
+	jne Len6_Hash212_1;
+	mov( tkn_elseif, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash212_1:
+	cmp( eax, rwstr( "method", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "method", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_method, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash219_0:
+	cmp( eax, rwstr( "movups", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movups", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movups, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash222_0:
+	cmp( eax, rwstr( "cmovpe", 0, 4 ));
+	jne Len6_Hash222_1;
+	cmp( bx, rwstr( "cmovpe", 4, 2 ));
+	jne Len6_Hash222_1;
+	mov( tkn_cmovpe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash222_1:
+	cmp( eax, rwstr( "fxsave", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fxsave", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fxsave, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash225_0:
+	cmp( eax, rwstr( "cmovpo", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovpo", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovpo, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash232_0:
+	cmp( eax, rwstr( "cmovnz", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovnz", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovnz, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash238_0:
+	cmp( eax, rwstr( "intmul", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "intmul", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_intmul, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash239_0:
+	cmp( eax, rwstr( "fsubrp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fsubrp", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fsubrp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash240_0:
+	cmp( eax, rwstr( "cmovle", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovle", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_cmovle, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash241_0:
+	cmp( eax, rwstr( "fdivrp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fdivrp", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_fdivrp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash243_0:
+	cmp( eax, rwstr( "setnle", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "setnle", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_setnle, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash245_0:
+	cmp( eax, rwstr( "pminsw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pminsw", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_pminsw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash247_0:
+	cmp( eax, rwstr( "endvar", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "endvar", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_endvar, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len6_Hash248_0:
+	cmp( eax, rwstr( "movlpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movlpd", 4, 2 ));
+	jne IsAnID;
+	mov( tkn_movlpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash5_0:
+	cmp( eax, rwstr( "movq2dq", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movq2dq", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "movq2dq", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_movq2dq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash9_0:
+	cmp( eax, rwstr( "stmxcsr", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "stmxcsr", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "stmxcsr", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_stmxcsr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash10_0:
+	cmp( eax, rwstr( "pcmpgtw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pcmpgtw", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pcmpgtw", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pcmpgtw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash11_0:
+	cmp( eax, rwstr( "cmpeqps", 0, 4 ));
+	jne Len7_Hash11_1;
+	cmp( bx, rwstr( "cmpeqps", 4, 2 ));
+	jne Len7_Hash11_1;
+	cmp( cl, rwstr( "cmpeqps", 6, 1 ));
+	jne Len7_Hash11_1;
+	mov( tkn_cmpeqps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash11_1:
+	cmp( eax, rwstr( "rsqrtss", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "rsqrtss", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "rsqrtss", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_rsqrtss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash14_0:
+	cmp( eax, rwstr( "pmaddwd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmaddwd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pmaddwd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pmaddwd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash20_0:
+	cmp( eax, rwstr( "psubusb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "psubusb", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "psubusb", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_psubusb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash24_0:
+	cmp( eax, rwstr( "pcmpeqb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pcmpeqb", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pcmpeqb", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pcmpeqb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash31_0:
+	cmp( eax, rwstr( "cmplepd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmplepd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmplepd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmplepd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash37_0:
+	cmp( eax, rwstr( "movhlps", 0, 4 ));
+	jne Len7_Hash37_1;
+	cmp( bx, rwstr( "movhlps", 4, 2 ));
+	jne Len7_Hash37_1;
+	cmp( cl, rwstr( "movhlps", 6, 1 ));
+	jne Len7_Hash37_1;
+	mov( tkn_movhlps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash37_1:
+	cmp( eax, rwstr( "endtype", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "endtype", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "endtype", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_endtype, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash38_0:
+	cmp( eax, rwstr( "default", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "default", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "default", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_default, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash39_0:
+	cmp( eax, rwstr( "pmuludq", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmuludq", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pmuludq", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pmuludq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash42_0:
+	cmp( eax, rwstr( "cmovnbe", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovnbe", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmovnbe", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovnbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash44_0:
+	cmp( eax, rwstr( "boolean", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "boolean", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "boolean", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_boolean, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash46_0:
+	cmp( eax, rwstr( "movntps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movntps", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "movntps", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_movntps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash49_0:
+	cmp( eax, rwstr( "cmpxchg", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpxchg", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpxchg", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpxchg, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash50_0:
+	cmp( eax, rwstr( "foreach", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "foreach", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "foreach", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_foreach, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash53_0:
+	cmp( eax, rwstr( "fxrstor", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fxrstor", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fxrstor", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fxrstor, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash60_0:
+	cmp( eax, rwstr( "cmpltps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpltps", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpltps", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpltps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash61_0:
+	cmp( eax, rwstr( "fcmovbe", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmovbe", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fcmovbe", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fcmovbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash66_0:
+	cmp( eax, rwstr( "fcmovne", 0, 4 ));
+	jne Len7_Hash66_1;
+	cmp( bx, rwstr( "fcmovne", 4, 2 ));
+	jne Len7_Hash66_1;
+	cmp( cl, rwstr( "fcmovne", 6, 1 ));
+	jne Len7_Hash66_1;
+	mov( tkn_fcmovne, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash66_1:
+	cmp( eax, rwstr( "sysexit", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "sysexit", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "sysexit", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_sysexit, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash72_0:
+	cmp( eax, rwstr( "cmpeqpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpeqpd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpeqpd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpeqpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash75_0:
+	cmp( eax, rwstr( "fyl2xp1", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fyl2xp1", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fyl2xp1", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fyl2xp1, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash92_0:
+	cmp( eax, rwstr( "cmpleps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpleps", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpleps", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpleps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash102_0:
+	cmp( eax, rwstr( "paddusw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "paddusw", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "paddusw", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_paddusw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash109_0:
+	cmp( eax, rwstr( "movntpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movntpd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "movntpd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_movntpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash111_0:
+	cmp( eax, rwstr( "private", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "private", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "private", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_private, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash120_0:
+	cmp( eax, rwstr( "pcmpeqd", 0, 4 ));
+	jne Len7_Hash120_1;
+	cmp( bx, rwstr( "pcmpeqd", 4, 2 ));
+	jne Len7_Hash120_1;
+	cmp( cl, rwstr( "pcmpeqd", 6, 1 ));
+	jne Len7_Hash120_1;
+	mov( tkn_pcmpeqd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash120_1:
+	cmp( eax, rwstr( "forever", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "forever", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "forever", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_forever, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash125_0:
+	cmp( eax, rwstr( "segment", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "segment", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "segment", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_segment, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash126_0:
+	cmp( eax, rwstr( "fucomip", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fucomip", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fucomip", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fucomip, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash127_0:
+	cmp( eax, rwstr( "cmpltpd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpltpd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpltpd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpltpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash134_0:
+	cmp( eax, rwstr( "pcmpeqw", 0, 4 ));
+	jne Len7_Hash134_1;
+	cmp( bx, rwstr( "pcmpeqw", 4, 2 ));
+	jne Len7_Hash134_1;
+	cmp( cl, rwstr( "pcmpeqw", 6, 1 ));
+	jne Len7_Hash134_1;
+	mov( tkn_pcmpeqw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash134_1:
+	cmp( eax, rwstr( "pmulhuw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pmulhuw", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pmulhuw", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pmulhuw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash135_0:
+	cmp( eax, rwstr( "real128", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "real128", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "real128", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_real128, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash138_0:
+	cmp( eax, rwstr( "psubusw", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "psubusw", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "psubusw", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_psubusw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash141_0:
+	cmp( eax, rwstr( "fucompp", 0, 4 ));
+	jne Len7_Hash141_1;
+	cmp( bx, rwstr( "fucompp", 4, 2 ));
+	jne Len7_Hash141_1;
+	cmp( cl, rwstr( "fucompp", 6, 1 ));
+	jne Len7_Hash141_1;
+	mov( tkn_fucompp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash141_1:
+	cmp( eax, rwstr( "returns", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "returns", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "returns", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_returns, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash148_0:
+	cmp( eax, rwstr( "pcmpgtb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pcmpgtb", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pcmpgtb", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pcmpgtb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash151_0:
+	cmp( eax, rwstr( "breakif", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "breakif", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "breakif", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_breakif, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash152_0:
+	cmp( eax, rwstr( "movlhps", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movlhps", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "movlhps", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_movlhps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash153_0:
+	cmp( eax, rwstr( "fcmovnu", 0, 4 ));
+	jne Len7_Hash153_1;
+	cmp( bx, rwstr( "fcmovnu", 4, 2 ));
+	jne Len7_Hash153_1;
+	cmp( cl, rwstr( "fcmovnu", 6, 1 ));
+	jne Len7_Hash153_1;
+	mov( tkn_fcmovnu, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash153_1:
+	cmp( eax, rwstr( "pointer", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pointer", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pointer", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pointer, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash154_0:
+	cmp( eax, rwstr( "movntdq", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movntdq", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "movntdq", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_movntdq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash155_0:
+	cmp( eax, rwstr( "frndint", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "frndint", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "frndint", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_frndint, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash157_0:
+	cmp( eax, rwstr( "cmpltsd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpltsd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpltsd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpltsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash162_0:
+	cmp( eax, rwstr( "fcmovnb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmovnb", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fcmovnb", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fcmovnb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash170_0:
+	cmp( eax, rwstr( "cmovnae", 0, 4 ));
+	jne Len7_Hash170_1;
+	cmp( bx, rwstr( "cmovnae", 4, 2 ));
+	jne Len7_Hash170_1;
+	cmp( cl, rwstr( "cmovnae", 6, 1 ));
+	jne Len7_Hash170_1;
+	mov( tkn_cmovnae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash170_1:
+	cmp( eax, rwstr( "cmpeqsd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpeqsd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpeqsd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpeqsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash174_0:
+	cmp( eax, rwstr( "ucomisd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "ucomisd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "ucomisd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_ucomisd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash175_0:
+	cmp( eax, rwstr( "storage", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "storage", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "storage", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_storage, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash178_0:
+	cmp( eax, rwstr( "cmovnge", 0, 4 ));
+	jne Len7_Hash178_1;
+	cmp( bx, rwstr( "cmovnge", 4, 2 ));
+	jne Len7_Hash178_1;
+	cmp( cl, rwstr( "cmovnge", 6, 1 ));
+	jne Len7_Hash178_1;
+	mov( tkn_cmovnge, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash178_1:
+	cmp( eax, rwstr( "fcmovna", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fcmovna", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fcmovna", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fcmovna, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash186_0:
+	cmp( eax, rwstr( "fdecstp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fdecstp", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fdecstp", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fdecstp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash189_0:
+	cmp( eax, rwstr( "fcmovae", 0, 4 ));
+	jne Len7_Hash189_1;
+	cmp( bx, rwstr( "fcmovae", 4, 2 ));
+	jne Len7_Hash189_1;
+	cmp( cl, rwstr( "fcmovae", 6, 1 ));
+	jne Len7_Hash189_1;
+	mov( tkn_fcmovae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash189_1:
+	cmp( eax, rwstr( "program", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "program", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "program", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_program, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash190_0:
+	cmp( eax, rwstr( "cmpless", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpless", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpless", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpless, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash195_0:
+	cmp( eax, rwstr( "wstring", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "wstring", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "wstring", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_wstring, eax );
+	mov( type_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash221_0:
+	cmp( eax, rwstr( "movdq2q", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "movdq2q", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "movdq2q", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_movdq2q, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash222_0:
+	cmp( eax, rwstr( "cmpltss", 0, 4 ));
+	jne Len7_Hash222_1;
+	cmp( bx, rwstr( "cmpltss", 4, 2 ));
+	jne Len7_Hash222_1;
+	cmp( cl, rwstr( "cmpltss", 6, 1 ));
+	jne Len7_Hash222_1;
+	mov( tkn_cmpltss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash222_1:
+	cmp( eax, rwstr( "fxtract", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fxtract", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fxtract", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fxtract, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash227_0:
+	cmp( eax, rwstr( "clflush", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "clflush", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "clflush", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_clflush, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash233_0:
+	cmp( eax, rwstr( "cmpeqss", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmpeqss", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpeqss", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpeqss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash237_0:
+	cmp( eax, rwstr( "ucomiss", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "ucomiss", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "ucomiss", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_ucomiss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash239_0:
+	cmp( eax, rwstr( "ldmxcsr", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "ldmxcsr", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "ldmxcsr", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_ldmxcsr, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash243_0:
+	cmp( eax, rwstr( "fsincos", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fsincos", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fsincos", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fsincos, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash244_0:
+	cmp( eax, rwstr( "pcmpgtd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "pcmpgtd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "pcmpgtd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_pcmpgtd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash248_0:
+	cmp( eax, rwstr( "paddusb", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "paddusb", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "paddusb", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_paddusb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash250_0:
+	cmp( eax, rwstr( "fincstp", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "fincstp", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "fincstp", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_fincstp, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash253_0:
+	cmp( eax, rwstr( "cmplesd", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmplesd", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmplesd", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmplesd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len7_Hash255_0:
+	cmp( eax, rwstr( "cmovnle", 0, 4 ));
+	jne IsAnID;
+	cmp( bx, rwstr( "cmovnle", 4, 2 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmovnle", 6, 1 ));
+	jne IsAnID;
+	mov( tkn_cmovnle, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash4_0:
+	cmp( eax, rwstr( "cvtss2si", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtss2si", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtss2si, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash6_0:
+	cmp( eax, rwstr( "cvtpi2pd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtpi2pd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtpi2pd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash16_0:
+	cmp( eax, rwstr( "abstract", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "abstract", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_abstract, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash20_0:
+	cmp( eax, rwstr( "unpchkpd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "unpchkpd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_unpchkpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash22_0:
+	cmp( eax, rwstr( "unpcklpd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "unpcklpd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_unpcklpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash25_0:
+	cmp( eax, rwstr( "cmpnltpd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnltpd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnltpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash33_0:
+	cmp( eax, rwstr( "cmpordpd", 0, 4 ));
+	jne Len8_Hash33_1;
+	cmp( ebx, rwstr( "cmpordpd", 4, 4 ));
+	jne Len8_Hash33_1;
+	mov( tkn_cmpordpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash33_1:
+	cmp( eax, rwstr( "cvtsi2sd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtsi2sd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtsi2sd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash35_0:
+	cmp( eax, rwstr( "cvtps2pi", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtps2pi", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtps2pi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash36_0:
+	cmp( eax, rwstr( "cvtdq2pq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtdq2pq", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtdq2pq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash37_0:
+	cmp( eax, rwstr( "endclass", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endclass", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_endclass, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash42_0:
+	cmp( eax, rwstr( "movmskpd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "movmskpd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_movmskpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash43_0:
+	cmp( eax, rwstr( "cvtdq2pd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtdq2pd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtdq2pd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash46_0:
+	cmp( eax, rwstr( "cmpneqpd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpneqpd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpneqpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash51_0:
+	cmp( eax, rwstr( "cvtpd2dq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtpd2dq", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtpd2dq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash58_0:
+	cmp( eax, rwstr( "cmpnleps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnleps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnleps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash66_0:
+	cmp( eax, rwstr( "cvtps2pd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtps2pd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtps2pd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash69_0:
+	cmp( eax, rwstr( "cvtpi2ps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtpi2ps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtpi2ps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash73_0:
+	cmp( eax, rwstr( "readonly", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "readonly", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_readonly, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash76_0:
+	cmp( eax, rwstr( "override", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "override", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_override, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash81_0:
+	cmp( eax, rwstr( "endunion", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endunion", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_endunion, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash82_0:
+	cmp( eax, rwstr( "endconst", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endconst", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_endconst, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash85_0:
+	cmp( eax, rwstr( "unpcklps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "unpcklps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_unpcklps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash87_0:
+	cmp( eax, rwstr( "unpchkps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "unpchkps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_unpchkps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash90_0:
+	cmp( eax, rwstr( "cmpnltps", 0, 4 ));
+	jne Len8_Hash90_1;
+	cmp( ebx, rwstr( "cmpnltps", 4, 4 ));
+	jne Len8_Hash90_1;
+	mov( tkn_cmpnltps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash90_1:
+	cmp( eax, rwstr( "endlabel", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endlabel", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_endlabel, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash98_0:
+	cmp( eax, rwstr( "cmpordps", 0, 4 ));
+	jne Len8_Hash98_1;
+	cmp( ebx, rwstr( "cmpordps", 4, 4 ));
+	jne Len8_Hash98_1;
+	mov( tkn_cmpordps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash98_1:
+	cmp( eax, rwstr( "cvtsi2ss", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtsi2ss", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtsi2ss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash100_0:
+	cmp( eax, rwstr( "prefetch", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "prefetch", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_prefetch, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash101_0:
+	cmp( eax, rwstr( "cvtss2sd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtss2sd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtss2sd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash104_0:
+	cmp( eax, rwstr( "cvtdq2ps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtdq2ps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtdq2ps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash105_0:
+	cmp( eax, rwstr( "movmskps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "movmskps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_movmskps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash106_0:
+	cmp( eax, rwstr( "fcmovnae", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "fcmovnae", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_fcmovnae, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash109_0:
+	cmp( eax, rwstr( "cmpneqps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpneqps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpneqps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash121_0:
+	cmp( eax, rwstr( "cmpnlepd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnlepd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnlepd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash128_0:
+	cmp( eax, rwstr( "cmpordss", 0, 4 ));
+	jne Len8_Hash128_1;
+	cmp( ebx, rwstr( "cmpordss", 4, 4 ));
+	jne Len8_Hash128_1;
+	mov( tkn_cmpordss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash128_1:
+	cmp( eax, rwstr( "inherits", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "inherits", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_inherits, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash130_0:
+	cmp( eax, rwstr( "cvtsd2si", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtsd2si", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtsd2si, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash135_0:
+	cmp( eax, rwstr( "cvtpd2ps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtpd2ps", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtpd2ps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash143_0:
+	cmp( eax, rwstr( "cmpneqss", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpneqss", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpneqss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash146_0:
+	cmp( eax, rwstr( "maskmovq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "maskmovq", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_maskmovq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash155_0:
+	cmp( eax, rwstr( "cmpnlesd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnlesd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnlesd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash158_0:
+	cmp( eax, rwstr( "packssdw", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "packssdw", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_packssdw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash160_0:
+	cmp( eax, rwstr( "cvtsd2ss", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtsd2ss", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtsd2ss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash165_0:
+	cmp( eax, rwstr( "cvtpd2pi", 0, 4 ));
+	jne Len8_Hash165_1;
+	cmp( ebx, rwstr( "cvtpd2pi", 4, 4 ));
+	jne Len8_Hash165_1;
+	mov( tkn_cvtpd2pi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash165_1:
+	cmp( eax, rwstr( "continue", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "continue", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_continue, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash167_0:
+	cmp( eax, rwstr( "cvtpi2ss", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtpi2ss", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtpi2ss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash170_0:
+	cmp( eax, rwstr( "sysenter", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "sysenter", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_sysenter, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash181_0:
+	cmp( eax, rwstr( "cvtps2dq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvtps2dq", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cvtps2dq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash184_0:
+	cmp( eax, rwstr( "cmpnltss", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnltss", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnltss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash195_0:
+	cmp( eax, rwstr( "cmpordsd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpordsd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpordsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash199_0:
+	cmp( eax, rwstr( "packuswb", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "packuswb", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_packuswb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash204_0:
+	cmp( eax, rwstr( "cmpneqsd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpneqsd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpneqsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash210_0:
+	cmp( eax, rwstr( "endwhile", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endwhile", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_endwhile, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash216_0:
+	cmp( eax, rwstr( "cmpnless", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnless", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnless, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash217_0:
+	cmp( eax, rwstr( "pmovmskb", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "pmovmskb", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_pmovmskb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash219_0:
+	cmp( eax, rwstr( "iterator", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "iterator", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_iterator, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash234_0:
+	cmp( eax, rwstr( "fcmovnbe", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "fcmovnbe", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_fcmovnbe, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash247_0:
+	cmp( eax, rwstr( "packsswb", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "packsswb", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_packsswb, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len8_Hash251_0:
+	cmp( eax, rwstr( "cmpnltsd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpnltsd", 4, 4 ));
+	jne IsAnID;
+	mov( tkn_cmpnltsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash30_0:
+	cmp( eax, rwstr( "endrecord", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endrecord", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "endrecord", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_endrecord, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash34_0:
+	cmp( eax, rwstr( "exception", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "exception", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "exception", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_exception, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash65_0:
+	cmp( eax, rwstr( "namespace", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "namespace", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "namespace", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_namespace, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash71_0:
+	cmp( eax, rwstr( "cvttpd2dq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvttpd2dq", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cvttpd2dq", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cvttpd2dq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash75_0:
+	cmp( eax, rwstr( "cmpxchg8b", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpxchg8b", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cmpxchg8b", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cmpxchg8b, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash78_0:
+	cmp( eax, rwstr( "endswitch", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endswitch", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "endswitch", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_endswitch, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash87_0:
+	cmp( eax, rwstr( "cvttps2pi", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvttps2pi", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cvttps2pi", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cvttps2pi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash94_0:
+	cmp( eax, rwstr( "overrides", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "overrides", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "overrides", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_overrides, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash107_0:
+	cmp( eax, rwstr( "punpckhdq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpckhdq", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "punpckhdq", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_punpckhdq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash112_0:
+	cmp( eax, rwstr( "cvttss2si", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvttss2si", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cvttss2si", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cvttss2si, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash115_0:
+	cmp( eax, rwstr( "punpcklbw", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpcklbw", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "punpcklbw", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_punpcklbw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash121_0:
+	cmp( eax, rwstr( "punpcklwd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpcklwd", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "punpcklwd", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_punpcklwd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash129_0:
+	cmp( eax, rwstr( "punpckldq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpckldq", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "punpckldq", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_punpckldq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash147_0:
+	cmp( eax, rwstr( "punpckhwd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpckhwd", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "punpckhwd", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_punpckhwd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash153_0:
+	cmp( eax, rwstr( "punpckhbw", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpckhbw", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "punpckhbw", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_punpckhbw, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash171_0:
+	cmp( eax, rwstr( "endstatic", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endstatic", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "endstatic", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_endstatic, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash193_0:
+	cmp( eax, rwstr( "cvttps2dq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvttps2dq", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cvttps2dq", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cvttps2dq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash200_0:
+	cmp( eax, rwstr( "procedure", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "procedure", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "procedure", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_procedure, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash209_0:
+	cmp( eax, rwstr( "cvttpd2pi", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvttpd2pi", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cvttpd2pi", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cvttpd2pi, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len9_Hash246_0:
+	cmp( eax, rwstr( "cvttsd2si", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cvttsd2si", 4, 4 ));
+	jne IsAnID;
+	cmp( cl, rwstr( "cvttsd2si", 8, 1 ));
+	jne IsAnID;
+	mov( tkn_cvttsd2si, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash58_0:
+	cmp( eax, rwstr( "cmpunordsd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpunordsd", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "cmpunordsd", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_cmpunordsd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash79_0:
+	cmp( eax, rwstr( "endstorage", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endstorage", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "endstorage", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_endstorage, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash144_0:
+	cmp( eax, rwstr( "punpckhqdq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpckhqdq", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "punpckhqdq", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_punpckhqdq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash155_0:
+	cmp( eax, rwstr( "cmpunordps", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpunordps", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "cmpunordps", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_cmpunordps, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash159_0:
+	cmp( eax, rwstr( "continueif", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "continueif", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "continueif", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_continueif, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash164_0:
+	cmp( eax, rwstr( "comunordss", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "comunordss", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "comunordss", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_comunordss, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash192_0:
+	cmp( eax, rwstr( "maskmovdqu", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "maskmovdqu", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "maskmovdqu", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_maskmovdqu, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash199_0:
+	cmp( eax, rwstr( "punpcklqdq", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "punpcklqdq", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "punpcklqdq", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_punpcklqdq, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash216_0:
+	cmp( eax, rwstr( "cmpunordpd", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "cmpunordpd", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "cmpunordpd", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_cmpunordpd, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash232_0:
+	cmp( eax, rwstr( "prefetcht1", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "prefetcht1", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "prefetcht1", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_prefetcht1, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash235_0:
+	cmp( eax, rwstr( "prefetcht0", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "prefetcht0", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "prefetcht0", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_prefetcht0, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len10_Hash238_0:
+	cmp( eax, rwstr( "prefetcht2", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "prefetcht2", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "prefetcht2", 8, 2 ));
+	jne IsAnID;
+	mov( tkn_prefetcht2, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len11_Hash8_0:
+	cmp( eax, rwstr( "prefetchnta", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "prefetchnta", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "prefetchnta", 8, 2 ));
+	jne IsAnID;
+	cmp( dl, rwstr( "prefetchnta", 10, 1 ));
+	jne IsAnID;
+	mov( tkn_prefetchnta, eax );
+	mov( instr_tc, ebx );
+	jmp rwDone;
+
+Len11_Hash78_0:
+	cmp( eax, rwstr( "endreadonly", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "endreadonly", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "endreadonly", 8, 2 ));
+	jne IsAnID;
+	cmp( dl, rwstr( "endreadonly", 10, 1 ));
+	jne IsAnID;
+	mov( tkn_endreadonly, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len11_Hash79_0:
+	cmp( eax, rwstr( "unprotected", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "unprotected", 4, 4 ));
+	jne IsAnID;
+	cmp( cx, rwstr( "unprotected", 8, 2 ));
+	jne IsAnID;
+	cmp( dl, rwstr( "unprotected", 10, 1 ));
+	jne IsAnID;
+	mov( tkn_unprotected, eax );
+	mov( rw_tc, ebx );
+	jmp rwDone;
+
+Len12_Hash170_0:
+	cmp( eax, rwstr( "anyexception", 0, 4 ));
+	jne IsAnID;
+	cmp( ebx, rwstr( "anyexception", 4, 4 ));
+	jne IsAnID;
+	cmp( ecx, rwstr( "anyexception", 8, 4 ));
+	jne IsAnID;
+	mov( tkn_anyexception, eax );
+	mov( stmt_tc, ebx );
+	jmp rwDone;
+
+
+
+// End of HLA reserved word scanner include file.

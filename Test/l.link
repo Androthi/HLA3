@@ -1,0 +1,13 @@
+-heap:0xF4240,0xF4240
+-stack:0xF4240,0xF4240
+-base:0x4000000
+-section:.data,RW
+-section:.text,ER
+-machine:ix86
+-subsystem:console
+-entry:HLAMain
+-nologo
+-out:samp.exe
+samp.obj
+kernel32.lib
+user32.lib

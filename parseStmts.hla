@@ -1,0 +1,1770 @@
+// parseStmts.hla
+//
+//	This is the parser for the HLA v2.0 compiler.
+
+unit compilerUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+#includeonce( "codegen.hhf" )
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+
+readonly
+  regToModRM:
+	array.lookupTable
+	(
+    	byte,
+    	-1,
+    	%000:_AL _AX _EAX _RAX _MM0 _XMM0 _XMM8 _ST0 _R8 _R8B _R8W _R8D,
+
+    	%001:_CL _CX _ECX _RCX _MM1 _XMM1 _XMM9  _ST1 _R9 _R9B _R9W _R9D,
+
+    	%010:_DL _DX _EDX _RDX _MM2 _XMM2 _XMM10 _ST2 _R10 _R10B _R10W _R10D,
+
+    	%011:_BL _BX _EBX _RBX _MM3 _XMM3 _XMM11 _ST3 _R11 _R11B _R11W _R11D,
+
+    	%100:_AH _SPB _SP _ESP _RSP _MM4 _XMM4 _XMM12 _ST4 _R12 _R12B _R12W _R12D,
+
+    	%101:_CH _BPB _BP _EBP _RBP _MM5 _XMM5 _XMM13 _ST5 _R13 _R13B _R13W _R13D,
+
+    	%110:_DH _SIB _SI _ESI _RSI _MM6 _XMM6 _XMM14 _ST6 _R14 _R14B _R14W _R14D,
+
+    	%111:_BH _DIB _DI _EDI _RDI _MM7 _XMM7 _XMM15 _ST7 _R15 _R15B _R15W _R15D 
+	);
+
+  regToREX:
+  	array.lookupTable
+	(
+    	byte,
+    	0,
+    	%000:_AL _AX _EAX _RAX _MM0 _XMM0 _XMM8 _ST0 _R8 _R8B _R8W _R8D,
+
+    	%001:_CL _CX _ECX _RCX _MM1 _XMM1 _XMM9  _ST1 _R9 _R9B _R9W _R9D,
+
+    	%010:_DL _DX _EDX _RDX _MM2 _XMM2 _XMM10 _ST2 _R10 _R10B _R10W _R10D,
+
+    	%011:_BL _BX _EBX _RBX _MM3 _XMM3 _XMM11 _ST3 _R11 _R11B _R11W _R11D,
+
+    	%100:_AH _SPB _SP _ESP _RSP _MM4 _XMM4 _XMM12 _ST4 _R12 _R12B _R12W _R12D,
+
+    	%101:_CH _BPB _BP _EBP _RBP _MM5 _XMM5 _XMM13 _ST5 _R13 _R13B _R13W _R13D,
+
+    	%110:_DH _SIB _SI _ESI _RSI _MM6 _XMM6 _XMM14 _ST6 _R14 _R14B _R14W _R14D,
+
+    	%111:_BH _DIB _DI _EDI _RDI _MM7 _XMM7 _XMM15 _ST7 _R15 _R15B _R15W _R15D 
+	);
+
+
+  //////////////////////////////////////////////////////////////////////
+  //
+  // Tables to translate register values into addressing mode encodings:
+
+
+  // scale2SIB - 
+  //	translates 1, 2, 4, or 8 into an SIB encoding for the
+  // 	scale factor.
+
+  scale2SIB:
+	byte[9] :=
+		[ 
+			0, 
+			%00_000_000,		// Encoding for scale = 1 
+			%01_000_000,		// Encoding for scale = 2 
+			0, 
+			%10_000_000,		// Encoding for scale = 4 
+			0, 
+			0, 
+			0, 
+			%11_000_000		// Encoding for scale = 8
+		];
+
+  // index2SIB-
+  //	translates a register into an encoding for the index register
+  //	field of the SIB.
+
+  index2SIB:
+	array.lookupTable
+	(
+		byte,
+		0,
+		%00_000_000: _EAX _RAX _R8,
+		%00_001_000: _ECX _RCX _R9,
+		%00_010_000: _EDX _RDX _R10,
+		%00_011_000: _EBX _RBX _R11,
+		%00_100_000: _R12 _none,
+		%00_101_000: _EBP _RBP _R13,
+		%00_110_000: _ESI _RSI _R14,
+		%00_111_000: _EDI _RDI _R15
+	);
+
+  // base2SIB-
+  //	translates a register value to the SIB encoding for a base register.
+
+  base2SIB:
+	array.lookupTable
+	(
+		byte,
+		0,
+		%00_000_000: _EAX _RAX _R8,
+		%00_000_001: _ECX _RCX _R9,
+		%00_000_010: _EDX _RDX _R10,
+		%00_000_011: _EBX _RBX _R11,
+		%00_000_100: _ESP _RSP _R12,
+		%00_000_101: _EBP _RBP _R13 _none,
+		%00_000_110: _ESI _RSI _R14,
+		%00_000_111: _EDI _RDI _R15
+	);
+
+  // index2REX-
+  //	translates an index register value to the REX encoding for
+  //	that index register (0 means no 64-bit mode in use)
+
+  index2REX:
+	array.lookupTable
+	(
+		dword,
+		0,
+		%0100_0000_0000_0000_0000_0000: _RAX _RBX _RCX _RDX _RSP _RBP _RSI _RDI,
+		%0100_0010_0000_0000_0000_0000: _R8 _R9 _R10 _R11 _R12 _R13 _R14 _R15
+	);
+
+
+  // base2REX-
+  //	translates a base register value to the REX encoding for
+  //	that base register (0 means no 64-bit mode in use)
+
+  base2REX:
+	array.lookupTable
+	(
+		dword,
+		0,
+		%0100_0000_0000_0000_0000_0000: _RAX _RBX _RCX _RDX _RSP _RBP _RSI _RDI,
+		%0100_0001_0000_0000_0000_0000: _R8 _R9 _R10 _R11 _R12 _R13 _R14 _R15
+	);
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// createIntRec-
+//
+//	Creates an intermediate code (internalCode_t) record.
+
+
+procedure createIntRec; @noframe; 
+begin createIntRec;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	push( edi );
+
+	// Need to compute the size of the internal code record
+	// we are creating. This is the size of internalCode_t
+	// plus enough lineNumRec_t records to handle the depth
+	// of the include stack (note that @size( internalCode_t )
+	// includes space for one line number record already). 
+
+	mov( 1, eax );
+	cmp( includeSP, 0 );
+	cmovne( includeSP, eax );
+	intmul( @size( lineNumRec_t ), eax );
+	add( @size( internalCode_t ) - @size( lineNumRec_t ), eax );
+	malloc( eax );
+
+	// Link this entry into the list of instructions:
+
+	mov( lastInstr, ebx );
+	mov( eax, lastInstr );
+	mov( eax, intCodeEBX.next );
+	mov( ebx, intCodeEAX.prev );
+
+	mov( eax, ebx );
+
+	// Clear the internalCode_t structure we just created
+	// (don't bother with line numbers, we'll initialize them
+	// momentarily):
+
+	mov( @size( internalCode_t )>>2, ecx );
+	xor( eax, eax );
+	mov( ebx, edi );
+	cld();
+	rep.stosd();
+
+	// Construct the line number records:
+
+	xor( edx, edx );
+	lea( edi, intCodeEBX.lineNumRecs );
+	for( xor( ecx, ecx ); ecx < includeSP; add( 1, ecx )) do
+	
+		mov( includeStk.lineNumber[ edx ], eax );
+		mov( eax, (type lineNumRec_t [edi]).lineNumber[ecx*8] );
+		mov( includeStk.fullFileName[ edx ], eax );
+		mov( eax, (type lineNumRec_t [edi]).filename[ecx*8] );
+		add( @size( includeInfo_t ), edx );
+		
+	endfor; 
+	mov( lineNumber, eax );
+	mov( eax, (type lineNumRec_t [edi]).lineNumber[ecx*8] );
+	mov( fullFileName, eax );
+	mov( eax, (type lineNumRec_t [edi]).filename[ecx*8] );
+
+
+	mov( ebx, eax );	// Return pointer to new record in EAX
+	pop( edi );
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	ret();
+
+end createIntRec;
+
+
+
+////////////////////////////////////////////////////////////////////////////
+//
+// instructionComposition-
+//
+//	Handles instruction composition by looking for a statement where
+// we expect an operand to be.
+
+procedure instructionComposition; @noframe;
+begin instructionComposition;
+
+	pushABCD;
+	lex( esi );
+	switch( ebx )
+
+		#print( "TODO: Handle instruction composition" )
+
+		case(ID_tc)
+
+			// Need to check for a procedure call here (to use
+			// the "returns" value):
+
+			// TODO:check for procedure call here
+
+			jmp exitIC;
+
+		case(instr_tc)	
+
+			// TODO: handle instruction composition here
+
+			jmp exitIC;
+		case(stmt_tc)
+		
+			// TODO: handle instruction composition here
+
+			jmp exitIC;
+		
+
+	endswitch;
+
+  exitIC:
+	reuseLastTkn();
+	popABCD;
+	ret();
+
+end instructionComposition;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// BuildSIB( memAdrs )
+//
+//	Given a base and index register, a scaling factor, and a displacement, 
+// this procedure returns the SIB byte in AH and the mod/RM byte in AL 
+//
+// Assertion:
+//	When called, we've either got the [disp+ESP] addressing mode or a valid
+// indexed addressing mode.
+//
+// Returns:
+//
+//	modRM:	AL
+//	SIB:	AH
+//	REX:	EAX[3] (H.O. byte of eax)
+
+procedure BuildSIB( var memAdrs:binaryMemoryOperand_t ); @use eax;
+begin BuildSIB;
+
+	push( ecx );
+	push( edx );
+	mov( memAdrs, ecx );
+	movzx( binMemOpECX.indexReg, edx );
+	xor( eax, eax );
+
+	// Check parameter validity:
+
+	assert
+	(
+			dl = _EAX
+		||	dl = _ECX 
+		||	dl = _EDX 
+		||	dl = _EBX 
+		||	dl = _none
+		||	dl = _EBP 
+		||	dl = _ESI 
+		||	dl = _RAX
+		||	dl = _RCX 
+		||	dl = _RDX 
+		||	dl = _RBX 
+		||	dl = _RBP 
+		||	dl = _RSI
+		||	dl = _R8
+		||	dl = _R9
+		||	dl = _R10
+		||	dl = _R11
+		||	dl = _R12
+		||	dl = _R13
+		||	dl = _R14
+		||	dl = _R15
+	);
+	mov( index2SIB[ edx-index2SIB_minIndex ], ah );
+	if( edx in index2REX_minValue..index2REX_maxValue ) then
+
+		or( index2REX[ edx*4-index2REX_minIndex ], eax );
+
+	endif;
+	 
+	movzx( binMemOpECX.baseReg, edx );
+	assert
+	(
+			dl = _EAX
+		||	dl = _ECX 
+		||	dl = _EDX 
+		||	dl = _EBX 
+		||	dl = _ESP
+		||	dl = _EBP 
+		||	dl = _ESI 
+		||	dl = _RAX
+		||	dl = _RCX 
+		||	dl = _RDX 
+		||	dl = _RBX 
+		||	dl = _RBP 
+		||	dl = _RSI
+		||	dl = _R8
+		||	dl = _R9
+		||	dl = _R10
+		||	dl = _R11
+		||	dl = _R12
+		||	dl = _R13
+		||	dl = _R14
+		||	dl = _R15
+	); 
+	or( base2SIB[ edx-base2SIB_minIndex ], ah );
+	if( edx in base2REX_minValue..base2REX_maxValue ) then
+
+		or( base2REX[ edx*4-base2REX_minIndex ], eax );
+
+	endif;
+	
+	movzx( binMemOpECX.scale, edx );	
+	assert( dl = 1 || dl = 2 || dl = 4 || dl = 8 );
+	or( scale2SIB[ edx ], ah );	
+		
+	// Now compute the modRM byte. The RM value is trivial,
+	// it's always %100 (SIB byte follows). The computation
+	// of the MOD file is the only thing that is interesting.
+	// If the staticSym field of the memory address is non-NULL
+	// or the dispBaseAdrs and dispMinusAdrs fields are non-NULL,
+	// then default to a four-byte displacement (which we may
+	// shorten later). Otherwise, compute the MOD value based on
+	// the value of the constant (constant64) field.
+	
+	mov( %10_000_100, al );		// Assume we have a four-byte displacement
+	if
+	( 
+			binMemOpECX.staticSym = NULL
+		&&	binMemOpECX.dispBaseAdrs = NULL
+		&&	binMemOpECX.dispMinusAdrs = NULL
+	) then
+	
+		
+		mov( binMemOpECX.constant, edx );
+		if( edx = 0 ) then
+		
+			// Note: no zero-byte displacements for
+			// EBP/RBP/R13 (because this particular addressing
+			// mode combination is reserved for direct/PC-relative
+			// addressing).
+
+			mov( ah, dl );
+			and( %00_111_000, dl );
+			if( dl <> %00_100_000 ) then
+
+				mov( %00_000_100, al );
+	
+			endif;
+					
+		elseif( (type int32 edx) in -128..127 ) then
+		
+			mov( %01_000_100, al );
+			
+		// else we have a four-byte displacement (set above)
+		
+		endif;
+		
+	endif;
+
+	pop( edx );
+	pop( ecx );
+
+end BuildSIB;
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// BuildModRM( memAdrs )
+//
+//	Given a base register and a displacement, 
+// this procedure returns the MOD-R/M byte in AL 
+//
+// Assertion:
+//	When called, there is no index register specified, no scaling factor,
+//  and the base register is not ESP/RSP.
+//
+// Returns:
+//
+//	modRM:	AL
+//	REX:	EAX[3] (H.O. byte of eax)
+
+procedure BuildModRM( var memAdrs:binaryMemoryOperand_t ); @use eax;
+begin BuildModRM;
+
+//#print( "HereIAm" )
+
+end BuildModRM;
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getOperand-
+//
+//	Fetches a register (8, 16, or 32-bit), memory operand, or immediate
+// operand.  Stores addressing mode information and value in operand.
+// Bits 16-23 of EAX will contain the REX byte for 64-bit operands if
+// these bits are not all zero.
+
+procedure getOperand( var operand:instrOperand_t );
+var
+	memAdrs	:attr_t;
+
+begin getOperand;
+
+	push( ebx );
+	push( ecx );
+	push( edx );
+	instructionComposition();
+	lex( esi );
+	mov( mod_reg_c, edx );		// Assume a register (mod=%11)
+	cmp( ebx, reg8_tc );
+	jb TrySpecialReg;
+	ja TryReg32;
+
+		// It's an 8-bit register
+
+		mov( operand, ebx );
+		mov( 1, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( register_c, instOpEBX.mode );
+		switch( eax )
+
+			case( tkn_al )
+
+				mov( _AL, instOpEBX.register );
+				// or( al_encoding_c, dl );
+				// EDX already contains %11_000_000 for AL.	
+
+			case( tkn_bl )
+
+				mov( _BL, instOpEBX.register );
+				or( bl_encoding_c, dl );
+
+			case( tkn_cl )
+
+				mov( _CL, instOpEBX.register );
+				or( cl_encoding_c, dl );
+
+			case( tkn_dl )
+
+				mov( _DL, instOpEBX.register );
+				or( dl_encoding_c, dl );
+
+			case( tkn_ah )
+
+				mov( _AH, instOpEBX.register );
+				or( ah_encoding_c, dl );
+
+			case( tkn_bh )
+
+				mov( _BH, instOpEBX.register );
+				or( bh_encoding_c, dl );
+
+			case( tkn_ch )
+
+				mov( _CH, instOpEBX.register );
+				or( ch_encoding_c, dl );
+
+			case( tkn_dh )
+
+				mov( _DH, instOpEBX.register );
+				or( dh_encoding_c, dl );
+
+			case( tkn_sib )
+
+				mov( _SIB, instOpEBX.register );
+				mov( sib_encoding_c, edx );
+
+			case( tkn_dib )
+
+				mov( _DIB, instOpEBX.register );
+				mov( dib_encoding_c, edx );
+
+			case( tkn_bpb )
+
+				mov( _BPB, instOpEBX.register );
+				mov( bpb_encoding_c, edx );
+
+			case( tkn_spb )
+
+				mov( _SPB, instOpEBX.register );
+				mov( spb_encoding_c, edx );
+
+			case( tkn_r8b )
+
+				mov( _R8B, instOpEBX.register );
+				mov( r8_encoding_c, edx );
+
+			case( tkn_r9b )
+
+				mov( _R9B, instOpEBX.register );
+				mov( r9_encoding_c, edx );
+
+			case( tkn_r10b )
+
+				mov( _R10B, instOpEBX.register );
+				mov( r10_encoding_c, edx );
+
+			case( tkn_r11b )
+
+				mov( _R11B, instOpEBX.register );
+				mov( r11_encoding_c, edx );
+
+			case( tkn_r12b )
+
+				mov( _R12B, instOpEBX.register );
+				mov( r12_encoding_c, edx );
+
+			case( tkn_r13b )
+
+				mov( _R13B, instOpEBX.register );
+				mov( r13_encoding_c, edx );
+
+			case( tkn_r14b )
+
+				mov( _R14B, instOpEBX.register );
+				mov( r14_encoding_c, edx );
+
+			case( tkn_r15b )
+
+				mov( _R15B, instOpEBX.register );
+				mov( r15_encoding_c, edx );
+
+
+		endswitch;
+		mov( eax, edx );
+		jmp modRMDone;
+
+	TryReg32:
+	  cmp( ebx, reg32_tc );
+	  jb IsReg16;
+	  ja TryReg64;
+
+		// It's a 32-bit register
+
+		mov( operand, ebx );
+		mov( 4, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( register_c, instOpEBX.mode );
+		switch( eax )
+
+			case( tkn_eax )
+
+				mov( _EAX, instOpEBX.register );
+				// or( eax_encoding_c, dl );
+				// EDX already contains %11_000_000
+
+			case( tkn_ebx )
+
+				mov( _EBX, instOpEBX.register );
+				or( ebx_encoding_c, dl );
+
+			case( tkn_ecx )
+
+				mov( _ECX, instOpEBX.register );
+				or( ecx_encoding_c, dl );
+
+			case( tkn_edx )
+
+				mov( _EDX, instOpEBX.register );
+				or( edx_encoding_c, dl );
+
+			case( tkn_esi )
+
+				mov( _ESI, instOpEBX.register );
+				or( esi_encoding_c, dl );
+
+			case( tkn_edi )
+
+				mov( _EDI, instOpEBX.register );
+				or( edi_encoding_c, dl );
+
+			case( tkn_ebp )
+
+				mov( _EBP, instOpEBX.register );
+				or( ebp_encoding_c, dl );
+
+			case( tkn_esp )
+
+				mov( _ESP, instOpEBX.register );
+				or( esp_encoding_c, dl );
+
+			case( tkn_r8d )
+
+				mov( _R8D, instOpEBX.register );
+				mov( r8_encoding_c, edx );
+
+			case( tkn_r9d )
+
+				mov( _R9D, instOpEBX.register );
+				mov( r9_encoding_c, edx );
+
+			case( tkn_r10d )
+
+				mov( _R10D, instOpEBX.register );
+				mov( r10_encoding_c, edx );
+
+			case( tkn_r11d )
+
+				mov( _R11D, instOpEBX.register );
+				mov( r11_encoding_c, edx );
+
+			case( tkn_r12d )
+
+				mov( _R12D, instOpEBX.register );
+				mov( r12_encoding_c, edx );
+
+			case( tkn_r13d )
+
+				mov( _R13D, instOpEBX.register );
+				mov( r13_encoding_c, edx );
+
+			case( tkn_r14d )
+
+				mov( _R14D, instOpEBX.register );
+				mov( r14_encoding_c, edx );
+
+			case( tkn_r15d )
+
+				mov( _R15D, instOpEBX.register );
+				mov( r15_encoding_c, edx );
+
+		endswitch;
+		mov( edx, eax );
+		jmp modRMDone;
+
+
+	// It's a 16-bit register:
+
+	IsReg16:
+
+		mov( operand, ebx );
+		mov( 2, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( register_c, instOpEBX.mode );
+		switch( eax )
+
+			case( tkn_ax )
+
+				mov( _AX, instOpEBX.register );
+				// or( ax_encoding_c, dl );
+				// EDX already contains %11_000_000
+
+			case( tkn_bx )
+
+				mov( _BX, instOpEBX.register );
+				or( bx_encoding_c, dl );
+
+			case( tkn_cx )
+
+				mov( _CX, instOpEBX.register );
+				or( cx_encoding_c, dl );
+
+			case( tkn_dx )
+
+				mov( _DX, instOpEBX.register );
+				or( dx_encoding_c, dl );
+
+			case( tkn_si )
+
+				mov( _SI, instOpEBX.register );
+				or( di_encoding_c, dl );
+
+			case( tkn_di )
+
+				mov( _DI, instOpEBX.register );
+				or( di_encoding_c, dl );
+
+			case( tkn_bp )
+
+				mov( _BP, instOpEBX.register );
+				or( bp_encoding_c, dl );
+
+			case( tkn_sp )
+
+				mov( _SP, instOpEBX.register );
+				or( sp_encoding_c, dl );
+
+			case( tkn_r8w )
+
+				mov( _R8W, instOpEBX.register );
+				mov( r8_encoding_c, edx );
+
+			case( tkn_r9w )
+
+				mov( _R9W, instOpEBX.register );
+				mov( r9_encoding_c, edx );
+
+			case( tkn_r10w )
+
+				mov( _R10W, instOpEBX.register );
+				mov( r10_encoding_c, edx );
+
+			case( tkn_r11w )
+
+				mov( _R11W, instOpEBX.register );
+				mov( r11_encoding_c, edx );
+
+			case( tkn_r12w )
+
+				mov( _R12W, instOpEBX.register );
+				mov( r12_encoding_c, edx );
+
+			case( tkn_r13w )
+
+				mov( _R13W, instOpEBX.register );
+				mov( r13_encoding_c, edx );
+
+			case( tkn_r14w )
+
+				mov( _R14W, instOpEBX.register );
+				mov( r14_encoding_c, edx );
+
+			case( tkn_r15w )
+
+				mov( _R15W, instOpEBX.register );
+				mov( r15_encoding_c, edx );
+
+		endswitch;
+		mov( edx, eax );
+		jmp modRMDone;
+
+
+	// It's a 64-bit register
+
+	
+	TryReg64:
+		cmp( ebx, reg32_tc );
+		je	IsReg64;
+
+			HLAerror( "Unexpected register operand" nl );
+			raise( ex.hlaerr );
+
+	IsReg64:
+
+		mov( operand, ebx );
+		mov( 8, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( register_c, instOpEBX.mode );
+		switch( eax )
+
+			case( tkn_rax )
+
+				mov( _RAX, instOpEBX.register );
+				mov( rax_encoding_c, edx );
+
+			case( tkn_rbx )
+
+				mov( _RBX, instOpEBX.register );
+				mov( rbx_encoding_c, edx );
+
+			case( tkn_rcx )
+
+				mov( _RCX, instOpEBX.register );
+				mov( rcx_encoding_c, edx );
+
+			case( tkn_rdx )
+
+				mov( _RDX, instOpEBX.register );
+				mov( rdx_encoding_c, edx );
+
+			case( tkn_rsi )
+
+				mov( _RSI, instOpEBX.register );
+				mov( rsi_encoding_c, edx );
+
+			case( tkn_rdi )
+
+				mov( _RDI, instOpEBX.register );
+				mov( rdi_encoding_c, edx );
+
+			case( tkn_rbp )
+
+				mov( _RBP, instOpEBX.register );
+				mov( rbp_encoding_c, edx );
+
+			case( tkn_rsp )
+
+				mov( _RSP, instOpEBX.register );
+				mov( rsp_encoding_c, edx );
+
+			case( tkn_r8 )
+
+				mov( _R8, instOpEBX.register );
+				mov( r8_encoding_c, edx );
+
+			case( tkn_r9 )
+
+				mov( _R9, instOpEBX.register );
+				mov( r9_encoding_c, edx );
+
+			case( tkn_r10 )
+
+				mov( _R10, instOpEBX.register );
+				mov( r10_encoding_c, edx );
+
+			case( tkn_r11 )
+
+				mov( _R11, instOpEBX.register );
+				mov( r11_encoding_c, edx );
+
+			case( tkn_r12 )
+
+				mov( _R12, instOpEBX.register );
+				mov( r12_encoding_c, edx );
+
+			case( tkn_r13 )
+
+				mov( _R13, instOpEBX.register );
+				mov( r13_encoding_c, edx );
+
+			case( tkn_r14 )
+
+				mov( _R14, instOpEBX.register );
+				mov( r14_encoding_c, edx );
+
+			case( tkn_r15 )
+
+				mov( _R15, instOpEBX.register );
+				mov( r15_encoding_c, edx );
+
+		endswitch;
+		mov( edx, eax );
+		jmp modRMDone;
+
+
+	TrySpecialReg:
+		cmp( ebx, regmmx_tc );
+		jb memOrImmediate;
+		je MMXregister;
+		cmp( ebx, regfpu_c );
+		jb SSEregister;
+		je FPUregister;
+		cmp( ebx, regdbg_tc );
+		jb SEGregister;
+		je DBGregister;
+		cmp( ebx, regctrl_tc );
+		je CTLregister;
+
+			HLAerror( "Internal HLA error! Unexpected token class: ", ebx, nl );
+			raise( ex.hlaerr );
+
+	MMXregister:
+		mov( operand, ebx );
+		mov( 8, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( regmmx_c, instOpEBX.mode );
+		switch( eax );
+
+			case( tkn_mm0 )
+				mov( _MM0, instOpEBX.register );
+				mov( mm0_encoding_c, edx );
+
+			case( tkn_mm1 )
+				mov( _MM1, instOpEBX.register );
+				mov( mm1_encoding_c, edx );
+
+			case( tkn_mm2 )
+				mov( _MM2, instOpEBX.register );
+				mov( mm2_encoding_c, edx );
+
+			case( tkn_mm3 )
+				mov( _MM3, instOpEBX.register );
+				mov( mm3_encoding_c, edx );
+
+			case( tkn_mm4 )
+				mov( _MM4, instOpEBX.register );
+				mov( mm4_encoding_c, edx );
+
+			case( tkn_mm5 )
+				mov( _MM5, instOpEBX.register );
+				mov( mm5_encoding_c, edx );
+
+			case( tkn_mm6 )
+				mov( _MM6, instOpEBX.register );
+				mov( mm6_encoding_c, edx );
+
+			case( tkn_mm7 )
+				mov( _MM7, instOpEBX.register );
+				mov( mm7_encoding_c, edx );
+
+			default
+				HLAerror( "Internal HLA error! Illegal MMX register" nl );
+				raise( ex.hlaerr );
+
+		endswitch;
+		jmp modRMDone;
+
+
+
+	SSEregister:
+		mov( operand, ebx );
+		mov( 16, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( regsse_c, instOpEBX.mode );
+		switch( eax );
+
+			case( tkn_xmm0 )
+				mov( _XMM0, instOpEBX.register );
+				mov( xmm0_encoding_c, edx );
+
+			case( tkn_xmm1 )
+				mov( _XMM1, instOpEBX.register );
+				mov( xmm1_encoding_c, edx );
+
+			case( tkn_xmm2 )
+				mov( _XMM2, instOpEBX.register );
+				mov( xmm2_encoding_c, edx );
+
+			case( tkn_xmm3 )
+				mov( _XMM3, instOpEBX.register );
+				mov( xmm3_encoding_c, edx );
+
+			case( tkn_xmm4 )
+				mov( _XMM4, instOpEBX.register );
+				mov( xmm4_encoding_c, edx );
+
+			case( tkn_xmm5 )
+				mov( _XMM5, instOpEBX.register );
+				mov( xmm5_encoding_c, edx );
+
+			case( tkn_xmm6 )
+				mov( _XMM6, instOpEBX.register );
+				mov( xmm6_encoding_c, edx );
+
+			case( tkn_xmm7 )
+				mov( _XMM7, instOpEBX.register );
+				mov( xmm7_encoding_c, edx );
+
+			case( tkn_xmm8 )
+				mov( _XMM8, instOpEBX.register );
+				mov( xmm8_encoding_c, edx );
+
+			case( tkn_xmm9 )
+				mov( _XMM9, instOpEBX.register );
+				mov( xmm9_encoding_c, edx );
+
+			case( tkn_xmm10 )
+				mov( _XMM10, instOpEBX.register );
+				mov( xmm10_encoding_c, edx );
+
+			case( tkn_xmm11 )
+				mov( _XMM11, instOpEBX.register );
+				mov( xmm11_encoding_c, edx );
+
+			case( tkn_xmm12 )
+				mov( _XMM12, instOpEBX.register );
+				mov( xmm12_encoding_c, edx );
+
+			case( tkn_xmm13 )
+				mov( _XMM13, instOpEBX.register );
+				mov( xmm13_encoding_c, edx );
+
+			case( tkn_xmm14 )
+				mov( _XMM14, instOpEBX.register );
+				mov( xmm14_encoding_c, edx );
+
+			case( tkn_xmm15 )
+				mov( _XMM15, instOpEBX.register );
+				mov( xmm15_encoding_c, edx );
+
+			default
+				HLAerror( "Internal HLA error! Illegal SSE register" nl );
+				raise( ex.hlaerr );
+
+		endswitch;
+		jmp modRMDone;
+
+
+
+	FPUregister:
+		mov( operand, ebx );
+		mov( 10, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( regfpu_c, instOpEBX.mode );
+		switch( eax );
+
+			case( tkn_st0 )
+				mov( _ST0, instOpEBX.register );
+				mov( st0_encoding_c, edx );
+
+			case( tkn_st1 )
+				mov( _ST1, instOpEBX.register );
+				mov( st1_encoding_c, edx );
+
+			case( tkn_st2 )
+				mov( _ST2, instOpEBX.register );
+				mov( st2_encoding_c, edx );
+
+			case( tkn_st3 )
+				mov( _ST3, instOpEBX.register );
+				mov( st3_encoding_c, edx );
+
+			case( tkn_st4 )
+				mov( _ST4, instOpEBX.register );
+				mov( st4_encoding_c, edx );
+
+			case( tkn_st5 )
+				mov( _ST5, instOpEBX.register );
+				mov( st5_encoding_c, edx );
+
+			case( tkn_st6 )
+				mov( _ST6, instOpEBX.register );
+				mov( st6_encoding_c, edx );
+
+			case( tkn_st7 )
+				mov( _ST7, instOpEBX.register );
+				mov( st7_encoding_c, edx );
+
+			default
+				HLAerror( "Internal HLA error! Illegal FPU register" nl );
+				raise( ex.hlaerr );
+
+		endswitch;
+		jmp modRMDone;
+
+
+
+	SEGregister:
+		mov( operand, ebx );
+		mov( 2, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( regseg_c, instOpEBX.mode );
+		switch( eax );
+
+			case( tkn_cseg )
+				mov( _CSEG, instOpEBX.register );
+				mov( cseg_encoding_c, edx );
+
+			case( tkn_dseg )
+				mov( _DSEG, instOpEBX.register );
+				mov( dseg_encoding_c, edx );
+
+			case( tkn_eseg )
+				mov( _ESEG, instOpEBX.register );
+				mov( eseg_encoding_c, edx );
+
+			case( tkn_fseg )
+				mov( _FSEG, instOpEBX.register );
+				mov( fseg_encoding_c, edx );
+
+			case( tkn_gseg )
+				mov( _GSEG, instOpEBX.register );
+				mov( gseg_encoding_c, edx );
+
+			case( tkn_sseg )
+				mov( _SSEG, instOpEBX.register );
+				mov( sseg_encoding_c, edx );
+
+
+			default
+				HLAerror( "Internal HLA error! Illegal SEG register" nl );
+				raise( ex.hlaerr );
+
+		endswitch;
+		jmp modRMDone;
+
+
+
+
+
+	DBGregister:
+		mov( operand, ebx );
+		mov( 4, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( regdr_c, instOpEBX.mode );
+		switch( eax );
+
+			case( tkn_dr0 )
+				mov( _DR0, instOpEBX.register );
+				mov( dr0_encoding_c, edx );
+
+			case( tkn_dr1 )
+				mov( _DR1, instOpEBX.register );
+				mov( dr1_encoding_c, edx );
+
+			case( tkn_dr2 )
+				mov( _DR2, instOpEBX.register );
+				mov( dr2_encoding_c, edx );
+
+			case( tkn_dr3 )
+				mov( _DR3, instOpEBX.register );
+				mov( dr3_encoding_c, edx );
+
+			case( tkn_dr4 )
+				mov( _DR4, instOpEBX.register );
+				mov( dr4_encoding_c, edx );
+
+			case( tkn_dr5 )
+				mov( _DR5, instOpEBX.register );
+				mov( dr5_encoding_c, edx );
+
+			case( tkn_dr6 )
+				mov( _DR6, instOpEBX.register );
+				mov( dr6_encoding_c, edx );
+
+			case( tkn_dr7 )
+				mov( _DR7, instOpEBX.register );
+				mov( dr7_encoding_c, edx );
+
+			case( tkn_dr8 )
+				mov( _DR8, instOpEBX.register );
+				mov( dr8_encoding_c, edx );
+
+			case( tkn_dr9 )
+				mov( _DR9, instOpEBX.register );
+				mov( dr9_encoding_c, edx );
+
+			case( tkn_dr10 )
+				mov( _DR10, instOpEBX.register );
+				mov( dr10_encoding_c, edx );
+
+			case( tkn_dr11 )
+				mov( _DR11, instOpEBX.register );
+				mov( dr11_encoding_c, edx );
+
+			case( tkn_dr12 )
+				mov( _DR12, instOpEBX.register );
+				mov( dr12_encoding_c, edx );
+
+			case( tkn_dr13 )
+				mov( _DR13, instOpEBX.register );
+				mov( dr13_encoding_c, edx );
+
+			case( tkn_dr14 )
+				mov( _DR14, instOpEBX.register );
+				mov( dr14_encoding_c, edx );
+
+			case( tkn_dr15 )
+				mov( _DR15, instOpEBX.register );
+				mov( dr15_encoding_c, edx );
+
+			default
+				HLAerror( "Internal HLA error! Illegal DEBUG register" nl );
+				raise( ex.hlaerr );
+
+		endswitch;
+		jmp modRMDone;
+
+
+
+	CTLregister:
+		mov( operand, ebx );
+		mov( 4, instOpEBX.size );
+		mov( 0, instOpEBX.length );
+		mov( regcr_c, instOpEBX.mode );
+		switch( eax );
+
+			case( tkn_cr0 )
+				mov( _CR0, instOpEBX.register );
+				mov( cr0_encoding_c, edx );
+
+			case( tkn_cr1 )
+				mov( _CR1, instOpEBX.register );
+				mov( cr1_encoding_c, edx );
+
+			case( tkn_cr2 )
+				mov( _CR2, instOpEBX.register );
+				mov( cr2_encoding_c, edx );
+
+			case( tkn_cr3 )
+				mov( _CR3, instOpEBX.register );
+				mov( cr3_encoding_c, edx );
+
+			case( tkn_cr4 )
+				mov( _CR4, instOpEBX.register );
+				mov( cr4_encoding_c, edx );
+
+			case( tkn_cr5 )
+				mov( _CR5, instOpEBX.register );
+				mov( cr5_encoding_c, edx );
+
+			case( tkn_cr6 )
+				mov( _CR6, instOpEBX.register );
+				mov( cr6_encoding_c, edx );
+
+			case( tkn_cr7 )
+				mov( _CR7, instOpEBX.register );
+				mov( cr7_encoding_c, edx );
+
+			case( tkn_cr8 )
+				mov( _CR8, instOpEBX.register );
+				mov( cr8_encoding_c, edx );
+
+			case( tkn_cr9 )
+				mov( _CR9, instOpEBX.register );
+				mov( cr9_encoding_c, edx );
+
+			case( tkn_cr10 )
+				mov( _CR10, instOpEBX.register );
+				mov( cr10_encoding_c, edx );
+
+			case( tkn_cr11 )
+				mov( _CR11, instOpEBX.register );
+				mov( cr11_encoding_c, edx );
+
+			case( tkn_cr12 )
+				mov( _CR12, instOpEBX.register );
+				mov( cr12_encoding_c, edx );
+
+			case( tkn_cr13 )
+				mov( _CR13, instOpEBX.register );
+				mov( cr13_encoding_c, edx );
+
+			case( tkn_cr14 )
+				mov( _CR14, instOpEBX.register );
+				mov( cr14_encoding_c, edx );
+
+			case( tkn_cr15 )
+				mov( _CR15, instOpEBX.register );
+				mov( cr15_encoding_c, edx );
+
+			default
+				HLAerror( "Internal HLA error! Illegal CNTRL register" nl );
+				raise( ex.hlaerr );
+
+		endswitch;
+		jmp modRMDone;
+
+
+
+
+ 
+
+
+    //////////////////////////////////////////////////////////////////////////
+	//
+	//	Handle memory and constant operands down here
+	//
+	//////////////////////////////////////////////////////////////////////////
+
+	memOrImmediate:
+
+		expr( memAdrs );	// May raise an exception!
+
+		if( memAdrs.symClass = Memory_ct ) then
+
+			// It's a memory operand, copy the fields over:
+
+			mov( operand, ecx );
+			mov( memAdrs.m.staticSym, eax );
+			mov( eax, instOpECX.memAdrs.staticSym );
+			mov( memAdrs.m.dispBaseAdrs, eax );
+			mov( eax, instOpECX.memAdrs.dispBaseAdrs );
+			mov( memAdrs.m.dispMinusAdrs, eax );
+			mov( eax, instOpECX.memAdrs.dispMinusAdrs );
+			mov( memAdrs.m.constant, eax );
+			mov( eax, instOpECX.memAdrs.constant );
+			mov( memAdrs.m.constant[4], eax );
+			mov( eax, instOpECX.memAdrs.constant[4] );
+
+			mov( memAdrs.m.baseReg, al );
+			mov( al, instOpECX.memAdrs.baseReg );
+
+			mov( memAdrs.m.indexReg, al );
+			mov( al, instOpECX.memAdrs.indexReg );
+
+			mov( memAdrs.m.segReg, al );
+			mov( al, instOpECX.memAdrs.segReg );
+			mov( memAdrs.m.scale, al );
+			mov( al, instOpECX.memAdrs.scale );
+
+			mov( 0, instOpECX.memAdrs.modRM );
+			mov( 0, instOpECX.memAdrs.SIB );
+			mov( 0, instOpECX.memAdrs.REX );
+
+			// Compute the mod-r/m and sib values:
+			//
+			// First, determine if we need an SIB byte:
+
+			mov( memAdrs.m.indexReg, al );
+			mov( memAdrs.m.baseReg, ah );
+			if( al <> _none ) then
+
+				// We've got an indexed addressing mode, that requires
+				// an SIB byte.
+
+				BuildSIB( memAdrs.m );
+					
+			elseif( ah = _ESP || ah = _RSP ) then
+
+				// We've got an [esp] addressing mode and it
+				// requires an SIB byte
+
+				if( al = _ESP || al = _RSP) then
+
+					HLAerror
+					( 
+						"ESP(RSP) cannot be used as an index register" nl 
+					);
+					xor( eax, eax );	// Return an arbitrary addressing mode
+
+				else
+
+					// Base = ESP, index = ??? (including _none, but not ESP).
+
+					BuildSIB( memAdrs.m );
+
+				endif;
+
+
+			elseif( ah <> _none ) then
+
+				// We've got an addressing mode that uses a mod-R/M byte
+#print( "HereIAm")
+				//BuildModRM( memAdrs );
+
+
+
+			else 
+			
+				// No base/index registers in this addressing mode
+
+				#print( "TODO: finish memory addressing modes in getOperand" )
+
+			endif;
+
+			// Currently, we don't support x86-64 instructions, so trap
+			// out all the 64-bit addressing modes and registers here:
+
+			test( $ffff_0000, eax );
+			if( @nz ) then
+
+				HLAerror
+				(
+					"64-bit addressing modes are not currently supported"
+					nl
+				);
+				and( $ffff, eax );
+
+			endif;
+
+
+		elseif( memAdrs.symClass = Constant_ct ) then
+
+			// It's an immediate constant
+
+			#print( "TODO: handle immediate constants in getOperand" )
+
+		else
+
+			HLAerror( "Unexpected operand type" nl );
+			raise( ex.hlaerr );
+
+		endif;
+
+  modRMDone:
+	pop( edx );
+	pop( ecx );
+	pop( ebx );		
+
+end getOperand;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// optionalEmptyParens-
+//
+//	Parses the optional empty parenthesis following
+// an implied addressing mode instruction.
+
+procedure optionalEmptyParens; @noframe;
+begin optionalEmptyParens;
+
+	if( !intelSyntax ) then
+
+		lex( esi );
+		cmp( eax, '(' );
+		jne reuseLast;
+
+			lex( esi );
+			cmp( eax, ')' );
+			je allDone;
+
+				HLAerror( "Syntax error, expected ')'" nl );
+
+		reuseLast:
+				reuseLastTkn();
+
+		allDone:
+
+	endif;
+	ret();
+
+end optionalEmptyParens;
+
+procedure getLParen; @noframe;
+begin getLParen;
+
+	if( !intelSyntax ) then
+
+		lex( esi );
+		if( eax = '(' ) then
+
+			ret();
+
+		endif;
+		HLAerror( "Syntax error, expected '('" nl );
+		reuseLastTkn();
+
+	endif;
+	ret();
+
+end getLParen;
+
+
+procedure getRParen; @noframe;
+begin getRParen;
+
+	if( !intelSyntax ) then
+
+		lex( esi );
+		if( eax = ')' ) then
+
+			ret();
+
+		endif;
+		HLAerror( "Syntax error, expected ')'" nl );
+		reuseLastTkn();
+
+	endif;
+	ret();
+
+end getRParen;
+
+procedure getComma;	@noframe;
+begin getComma;
+
+	lex( esi );
+	if( eax = ',' ) then
+
+		ret();
+
+	endif;
+	HLAerror( "Expected a ',', encountered " );
+	dumpQLexeme();
+	reuseLastTkn();
+	ret();
+
+end getComma;
+
+
+
+// getReg32=
+//
+//	Parses a 32-bit integer register and returns the appropriate
+// bit pattern in EAX for that register.
+
+procedure getReg32( var operand:instrOperand_t in edx ); @noframe;
+begin getReg32;
+
+	mov( 4, instOpEDX.size );
+	mov( 0, instOpEDX.length );
+	mov( register_c, instOpEDX.mode );
+	instructionComposition();
+	lex( esi );
+	switch( eax )
+
+		case( tkn_eax )
+
+			mov( _EAX, instOpEDX.register );
+			xor( eax, eax );	// rrr = 000
+			ret();
+
+		case( tkn_ebx )
+
+			mov( _EBX, instOpEDX.register );
+			mov( %011, eax );
+			ret();
+
+		case( tkn_ecx )
+
+			mov( _ECX, instOpEDX.register );
+			mov( %001, eax );
+			ret();
+
+		case( tkn_edx )
+
+			mov( _EDX, instOpEDX.register );
+			mov( %010, eax );
+			ret();
+
+		case( tkn_esp )
+
+			mov( _ESP, instOpEDX.register );
+			mov( %100, eax );
+			ret();
+
+		case( tkn_ebp )
+
+			mov( _EBP, instOpEDX.register );
+			mov( %101, eax );
+			ret();
+
+		case( tkn_esi )
+
+			mov( _ESI, instOpEDX.register );
+			mov( %110, eax );
+			ret();
+
+		case( tkn_edi )
+
+			mov( _EDI, instOpEDX.register );
+			mov( %111, eax );
+			ret();
+
+
+	endswitch;
+
+	HLAerror( "Expected a 32-bit general purpose register" nl );
+	mov( _EAX, instOpEDX.register );
+	xor( eax, eax );
+	ret();
+
+end getReg32;
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// getCntOperand - 
+//	Get an immediate constant for shifts, rotates, INT, RET, and
+//	similar instructions.
+
+procedure getCntOperand;
+var
+	constResult	:attr_t;
+
+
+begin getCntOperand;
+
+	instructionComposition();
+	try
+
+		constExpr( constResult );
+		raiseErr( @c );
+		mov( constResult.pType, al );
+		if( !isSmallNum( al )) then
+
+			raise( ex.hlaerr );
+
+		endif;
+		mov( constResult.uns32_vt, eax );
+			
+
+	  exception( ex.hlaerr )
+
+		HLAerror
+		( 
+			"Error, expected a small numeric immediate constant" nl 
+		);
+		xor( eax, eax );
+
+	endtry;
+
+end getCntOperand;
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+procedure parse1Stmt; @returns( "al" ); @noframe;
+begin parse1Stmt;
+
+	resetTknQ();
+	lex( esi );			// Get the next available token (END).
+	switch( ebx )
+		
+		
+		
+		case( punct_tc )
+
+			//> just ignoring all extra punctuation for now 
+			mov( edi, ecx );	// returns = ""
+			mov( edi, edx );
+
+			/*  //>
+			if( eax <> ';' ) then
+
+				HLAerror
+				( 
+					"Unexpected character in file: '",
+					(type char al),
+					"'" nl
+				);
+				reuseLastTkn();
+				mov( false, al );
+				ret();
+			endif;
+			*/
+			
+			mov( true, al );
+			ret();
+
+		case(ID_tc)
+			
+			stdout.put( ".Encountered an identifier :", tokenECX.trueName, nl );		
+
+			// If it's an unexpected identifier, break out an
+			// let the caller handle it.
+
+			//stdout.put( "Unhandled: " );
+			//dumpLexeme();
+			//stdout.newln();
+
+			// Note: need to check if this is a procedure
+			// call and adjust "returns" accordingly:
+
+			mov( edi, ecx );	// returns = ""
+			mov( edi, edx );
+
+			mov( true, al );
+			ret();
+
+		case(instr_tc)	
+
+			// Note: no leading prefixes at this point:
+
+			parseInstr( NULL, 0 );	// "returns" comes back in ECX/EDX.
+			getSemicolon();
+			mov( true, al );		
+			ret();
+
+		case(stmt_tc)
+		
+			if( eax <> tkn_end ) then
+			 
+				stdout.put( "...Encountered a statement" nl );
+
+				// If it's an unexpected statement, break out an
+				// let the caller handle it.
+
+				stdout.put( "Unhandled: " );
+				dumpLexeme();
+				stdout.newln();
+				
+			endif;
+
+			mov( edi, ecx );	// returns = ""
+			mov( edi, edx );
+
+			mov( false, al );
+			ret();
+				
+
+		case( rw_tc )
+
+			stdout.put( ".....Encountered a reserved word" nl );
+
+			// If it's an unexpected reserved word, break out
+			// and let the caller handle it:
+
+			stdout.put( "Unhandled: " );
+			dumpLexeme();
+			stdout.newln();
+
+			mov( edi, ecx );	// returns = ""
+			mov( edi, edx );
+
+			mov( false, al );
+			ret();
+		
+
+	endswitch;
+
+	// If it's an unexpected token:
+
+	stdout.put( "..Encountered something else:" nl );
+	dumpLexeme();
+	stdout.newln();
+	mov( edi, ecx );	// returns = ""
+	mov( edi, edx );
+	mov( false, al );
+	ret();
+
+
+end parse1Stmt;
+
+
+ 
+//////////////////////////////////////////////////////////////////////////////
+//
+procedure parseStmts; 
+
+//> not used ?
+var
+	attr	:attr_t;
+	
+begin parseStmts;
+
+	try
+
+		while( parse1Stmt() ) do
+
+			// All the work is done in parse1Stmt
+
+		endwhile;
+
+	  exception( ex.hlaerr );
+
+		// Who knows what's going on here?
+		// Let's just try to find the end of the current statement
+		// and move on (question: would it be better to continue
+		// parsing statements at this point?)
+
+		resyncOnSemicolon();
+
+	endtry;
+	
+end parseStmts;
+
+
+
+end compilerUnit;

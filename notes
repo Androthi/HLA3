@@ -1,0 +1,32 @@
+notes:  
+
+====================================================================================
+
+Compiling notes:
+
+Projects
+	UnitTests
+		conducting unit testing on HLA3 .. missing
+		
+	HLA3
+		hla compiler
+		
+	ctls
+		generates files
+			cmpCTLs.hla
+			ctlTokens.hhf
+	
+	funcs
+		generates files
+			cmpFuncs.hla
+			fTokens.hhf
+		
+	rw
+		generates files:
+			rwtokens.hhf
+			jmpTbl.hla
+			cmpCode.hla
+		
+	Run Tests
+		Kmake script to run HLA3 tests .. most tests missing
+		

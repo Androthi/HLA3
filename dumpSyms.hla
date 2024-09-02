@@ -1,0 +1,2391 @@
+unit dumpSymsUnit;
+
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+#includeonce( "codegen.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;	
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// dumpAttr-
+//
+//	This is a debugging tool to display the value of some attribute.
+
+//proc( "dumpAttr" )
+procedure dumpAttr( var attr:attr_t );  
+begin dumpAttr;
+
+	assert( attr <> NULL );
+	push( eax );
+	push( ebx );
+	push( ecx );
+	mov( attr, ebx );
+	HLAerror2( nl );
+	HLAerror2( "Attribute Dump:" nl nl );
+	HLAerror2( "NumElements: ", attrEBX.numElements, nl );
+	if( attrEBX.symType <> NULL ) then
+	
+		mov( attrEBX.symType, eax );
+		HLAerror2( "Symtype: ", symEAX.trueName, nl );
+		
+	else
+	
+		HLAerror2( "Symtype: (NULL)" nl );
+		
+	endif;
+	HLAerror2( "pType: ", (type uns8 attrEBX.pType), nl );
+	HLAerror2
+	( 
+		"Values: " nl,
+		(type dword attrEBX.lword_vt), ", ",
+		(type dword (type attr_t [ebx+4]).lword_vt), ", ",
+		(type dword (type attr_t [ebx+8]).lword_vt), ", ",
+		(type dword (type attr_t [ebx+12]).lword_vt), nl,
+		(type dword (type attr_t [ebx+16]).lword_vt), ", ",
+		(type dword (type attr_t [ebx+20]).lword_vt), ", ",
+		(type dword (type attr_t [ebx+24]).lword_vt), ", ",
+		(type dword (type attr_t [ebx+28]).lword_vt), nl
+	);
+
+	if( attrEBX.pType = Record_pt ) then
+
+		mov( attrEBX.numFields, ecx );
+		mov( attrEBX.fieldValues_vt, eax );
+		repeat
+
+			dumpAttr( [eax] );
+			add( @size( attr_t ), eax );
+			dec( ecx );
+
+		until( @z );
+		HLAerror2( "----------------------------------" nl );
+
+	elseif( attrEBX.pType = Array_pt ) then
+
+		mov( attrEBX.numElements, ecx );
+		mov( attrEBX.arrayValues_vt, eax );
+		repeat
+
+			dumpAttr( [eax] );
+			add( @size( attr_t ), eax );
+			dec( ecx );
+
+		until( @z );
+		HLAerror2( "----------------------------------" nl );
+
+	endif;
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+		 
+end dumpAttr;
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// dumpTkn
+//
+//	This is a debugging tool that dumps the value of a token.
+
+//proc( "dumpTkn" )
+procedure dumpTkn( var tkn:token_t );  
+begin dumpTkn;
+
+	push( eax );
+	push( ebx );
+	mov( tkn, ebx );
+	canAccess( [ebx] );
+	HLAerror2( nl );
+	HLAerror2( "Token Dump:" nl nl);
+	HLAerror2( "tknValue: ", tokenEBX.tknValue, nl );
+	HLAerror2( "tknClass: ", tokenEBX.tknClass, nl );
+	HLAerror2( "lexemeStart: ", tokenEBX.lexemeStart, nl );
+	HLAerror2( "endLexeme: ", tokenEBX.endLexeme, nl );
+	HLAerror2( "alloc: ", tokenEBX.alloc, nl );
+	HLAerror2( "isID: ", tokenEBX.isID, nl );
+	HLAerror2( "hasAttr: ", tokenEBX.hasAttr, nl );
+
+	if( tokenEBX.isID ) then
+	
+		HLAerror2( "trueName: ", tokenEBX.trueName, nl );
+		HLAerror2( "trueName: ", tokenEBX.lcName, nl );
+		mov( tokenEBX.symNode, eax );
+		if( !eax ) then
+		
+			HLAerror2( "type: ", symEAX.trueName, nl );
+			
+		else
+		
+			HLAerror2( "type: (NULL)" nl );
+			
+		endif;
+		
+	elseif(	tokenEBX.hasAttr ) then
+
+		lea( eax, tokenEBX.attr);
+		dumpAttr( [eax] );
+		
+	endif;
+	HLAerror2( nl );
+
+	pop( ebx );
+	pop( eax );
+		 
+end dumpTkn;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// printValue-
+//
+//	Prints the value of a value_t object.
+//
+// Inputs:
+//
+//	pType-		DWord version of the value's pType.
+//	symType-	Pointer to symbol table entry of object's type (if not
+//				 a primitive type).
+//	v-			The value.
+
+//proc( "printValue" )
+procedure printValue( pType:dword; symType: symNodePtr_t; var v:attr_t );
+begin printValue;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( pType, eax );
+	mov( symType, ebx );
+	canAccess( [ebx] );
+	mov( v, ecx );
+	canAccess( [ecx] );
+	
+	switch( eax )
+	
+		case( Boolean_pt )
+		
+			stdout.putbool( attrECX.boolean_vt );
+				
+		case( Enum_pt )
+		
+			if( curEnumSize = 1 ) then
+			
+				stdout.putu8( attrECX.uns8_vt );
+				
+			elseif( curEnumSize = 2 ) then
+
+				stdout.putu16( attrECX.uns16_vt );
+				
+			else
+				
+				stdout.putu32( attrECX.uns32_vt );
+				
+			endif;
+			
+		case( Uns8_pt )		
+		
+			stdout.putu8( attrECX.uns8_vt );
+				
+		case( Uns16_pt )		
+		
+			stdout.putu16( attrECX.uns16_vt );
+				
+		case( Uns32_pt )		
+		
+			stdout.putu32( attrECX.uns32_vt );
+				
+		case( Uns64_pt )		
+		
+			stdout.putu64( attrECX.uns64_vt );
+			
+		case( Uns128_pt )		
+		
+			stdout.putu128( (type uns128 attrECX.dword_vt) );
+			
+		case( Int8_pt )		
+		
+			stdout.puti8( attrECX.int8_vt );
+				
+		case( Int16_pt )		
+		
+			stdout.puti16( attrECX.int16_vt );
+				
+		case( Int32_pt )		
+		
+			stdout.puti32( attrECX.int32_vt );
+				
+		case( Int64_pt )		
+		
+			stdout.puti64( attrECX.int64_vt );
+			
+		case( Int128_pt )		
+
+			stdout.puti128( (type int128 attrECX.dword_vt) );
+			
+		case
+		( 
+			Char_pt,
+			XChar_pt
+		)
+				
+			if( attrECX.char_vt in #$20..#$7f ) then
+			
+				stdout.putc( '''' );
+				stdout.putc( attrECX.char_vt );
+				if( attrECX.char_vt = '''' ) then
+				
+					stdout.putc( '''' );
+					
+				endif;
+				stdout.putc( '''' );
+				
+			else
+			
+				stdout.puts( "#$" );
+				stdout.putb( attrECX.char_vt );
+				
+			endif;
+				
+		case( Unicode_pt )
+		
+			stdout.put( "#u$", (type word attrECX.word_vt) );
+			if( attrECX.word_vt in #$20..#$7f ) then
+			
+				stdout.puts( " ('" );
+				stdout.putc( attrECX.char_vt );
+				if( attrECX.char_vt = '''' ) then
+				
+					stdout.putc( '''' );
+					
+				endif;
+				stdout.puts( "')" );
+				
+			endif;
+
+				
+				
+		case( Byte_pt )		
+		
+			stdout.putc( '$' );
+			stdout.putb( attrECX.byte_vt );
+				
+		case( Word_pt )		
+		
+			stdout.putc( '$' );
+			stdout.putw( attrECX.word_vt );
+				
+		case( DWord_pt )		
+		
+			stdout.putc( '$' );
+			conv.setUnderscores( true );
+			stdout.putd( attrECX.dword_vt );
+			conv.setUnderscores( false );
+				
+		case( QWord_pt )		
+		
+			stdout.putc( '$' );
+			conv.setUnderscores( true );
+			stdout.putq( attrECX.qword_vt );
+			conv.setUnderscores( false );
+				
+		case( TByte_pt )		
+		
+			stdout.putc( '$' );
+			conv.setUnderscores( true );
+			stdout.puttb( attrECX.tbyte_vt );
+			conv.setUnderscores( false );
+				
+		case( LWord_pt )
+		
+			stdout.putc( '$' );
+			conv.setUnderscores( true );
+			stdout.putl( attrECX.lword_vt );
+			conv.setUnderscores( false );
+	
+		case( Real32_pt )		
+				
+			finit();
+			fclex();
+			stdout.pute32( attrECX.real32_vt, 12 );
+				
+		case( Real64_pt ) 		
+			
+			finit();
+			fclex();
+			stdout.pute64( attrECX.real64_vt, 12 );
+				
+		case( Real80_pt )		
+				
+			finit();
+			fclex();
+			stdout.pute80( attrECX.real80_vt, 12 );
+				
+
+		case( String_pt, Utf8_pt, Text_pt )
+		
+			mov( 0, ah );
+			mov( attrECX.string_vt, ebx );
+			canAccess( [ebx] );
+			if( str.length( ebx ) = 0 ) then
+
+				stdout.put( """""" );
+
+			else
+
+				forever
+					
+					mov( [ebx], al );
+					breakif( al = 0 );
+					if( al = '"' ) then
+					
+						if( !ah ) then
+							
+							stdout.putc( '"' );
+							mov( 1, ah );
+							
+						endif;
+						stdout.put( """""" );
+						
+					elseif( al in #$20..#$7e ) then
+					
+						if( !ah ) then
+							
+							stdout.put( '"' );
+							mov( 1, ah );
+							
+						endif;
+						stdout.putc( al );
+						
+					else
+					
+						if( ah ) then
+							
+							stdout.put( """ " );
+							mov( 0, ah );
+							
+						endif;
+						stdout.put( "#$", al, ' ' );
+					
+					endif;
+					inc( ebx );
+					
+				endfor;
+				if( ah ) then
+				
+					stdout.put( '"' );
+					
+				endif;
+
+			endif;
+			
+		case( UString_pt )
+		
+			mov( 0, ah );
+			mov( attrECX.string_vt, ebx );
+			canAccess( [ebx] );
+			if( str.length( ebx ) = 0 ) then
+
+				stdout.puts( "u""""" );
+
+			else
+
+				stdout.putc( 'u' );
+				forever
+					
+					mov( [ebx], al );
+					breakif( (type word [ebx]) = 0 );
+					if
+					( 
+							(type byte [ebx+1]) <> 0 
+						||	al not in #$20..#$7e 
+					) then
+
+						if( ah ) then
+							
+							stdout.put( """ " );
+							mov( 0, ah );
+							
+						endif;
+						stdout.put( "#$", (type word [ebx]), ' ' );
+
+					elseif( al = '"' ) then
+					
+						if( !ah ) then
+							
+							stdout.putc( '"' );
+							mov( 1, ah );
+							
+						endif;
+						stdout.put( """""" );
+						
+					else
+					
+						if( !ah ) then
+							
+							stdout.put( '"' );
+							mov( 1, ah );
+							
+						endif;
+						stdout.putc( al );
+						
+					endif;
+					add( 2,ebx );
+					
+				endfor;
+				if( ah ) then
+				
+					stdout.put( '"' );
+					
+				endif;
+
+			endif;
+			
+		case( Cset_pt, XCset_pt )
+	
+			stdout.put( "{ " );
+			mov( 0, edx );
+			while( edx < 256 ) do
+			
+				bt( edx, attrECX.cset_vt );
+				if( @c ) then
+				
+					if( dl <= #$20 ) then
+					
+						stdout.put( "#$", dl, ' ' );
+						
+					elseif( dl >= #$7f ) then
+					
+						stdout.put( " #$", dl );
+						
+					else
+					
+						stdout.putc( dl );
+						
+					endif;
+				
+				endif;
+				inc( edx );
+				
+			endwhile;
+			stdout.put( " }" );		
+			
+
+		case( Array_pt )
+		
+			HLAerror2( nl, ' ':23, "[ " );
+			mov( attrECX.arrayValues_vt, edx );
+			canAccess( [edx] );
+
+			// Print each element of the constant array:
+
+			mov( attrECX.numElements, ecx );
+			while( ecx > 1 ) do
+			
+				movzx( attrEDX.pType, eax );
+				printValue( eax, attrEDX.symType, [edx] );
+				HLAerror2( ", " );
+				add( @size( attr_t ), edx );
+				dec( ecx );
+				
+			endwhile;
+			movzx( attrEDX.pType, eax );
+			printValue( eax, attrEDX.symType, [edx] );
+			HLAerror2( " ]" );
+				
+
+		case( Record_pt )
+		
+			mov( attrECX.symType, eax );
+			canAccess( [eax] );
+			HLAerror2( (type symNode_t [eax]).trueName, ":[ " );
+			mov( attrECX.fieldValues_vt, edx );
+			canAccess( [edx] );
+
+			// Print the value for each field of this record:
+
+			mov( attrECX.numFields, ecx );
+			while( ecx > 1 ) do
+			
+				movzx( attrEDX.pType, eax );
+				if( al = AnonRec_pt ) then
+				
+					HLAerror2( "record:[ " );
+					add( @size( attr_t ), edx );
+				
+				elseif( al = AnonUnion_pt ) then
+				
+					mov( attrEDX.symType, eax );
+					canAccess( [eax] ); 
+					HLAerror2( "union.", symEAX.trueName, ":[ " );
+					mov( attrEDX.curField_vt, ebx );
+					canAccess( [ebx] );
+					movzx( attrEBX.pType, eax );
+					printValue( eax, attrEBX.symType, [ebx] );
+					mov( attrEDX.numFields, eax );
+					sub( eax, ecx );
+					inc( ecx );
+					intmul( @size( attr_t ), eax );
+					add( eax, edx );
+					HLAerror2( " ]" );
+				
+				else
+				
+					if( al = EndAnonRec_pt || al = EndAnonUnion_pt ) then
+				
+						HLAerror2( " ]" );
+					
+					else
+
+						movzx( attrEDX.pType, eax );
+						printValue( eax, attrEDX.symType, [edx] );
+						
+					endif;
+					add( @size( attr_t ), edx );
+					
+				endif;
+				mov( attrEDX.pType, al );
+				if
+				( 
+						ecx > 1 
+					&&	al <> EndAnonRec_pt 
+					&&	al <> EndAnonUnion_pt 
+				) then
+				
+					HLAerror2( ", " );
+					
+				endif;
+				dec( ecx );
+				
+			endwhile;
+			movzx( attrEDX.pType, eax );
+			if( ecx > 0 && al <> EndAnonRec_pt && al <> EndAnonUnion_pt ) then
+			
+				printValue( eax, attrEDX.symType, [edx] );
+				
+			endif;
+			HLAerror2( " ]" );
+			
+
+		case( Union_pt )
+		
+			mov( attrECX.symType, eax );
+			canAccess( [eax] );
+			
+			push( edx );
+			mov( attrECX.curField_vt, edx );
+			canAccess( [edx] );
+			assert( (type symNode_t [edx]).trueName <> NULL );
+			HLAerror2
+			( 
+				nl, 
+				' ':23, 
+				(type symNode_t [eax]).trueName,
+				'.',
+				(type symNode_t [edx]).trueName, 
+				":[ " 
+			);
+			pop( edx );
+
+			// Just like records, except there is only one field:
+			
+			mov( attrECX.fieldValues_vt, ecx );
+			canAccess( [ecx] );
+			movzx( attrECX.pType, eax );
+			printValue( eax, attrECX.symType, attrECX );
+			HLAerror2( " ]" );
+			
+		case( Pointer_pt, Procptr_pt )
+		
+			HLAerror2( "ptr( " );
+			xor( edx, edx );
+			if( attrECX.p.dispBaseAdrs <> NULL ) then
+
+				mov( attrECX.p.dispBaseAdrs, eax );
+				canAccess( [eax] );
+				mov( staticEAX.symbol, eax );
+				if( eax <> NULL ) then
+
+					assert( symEAX.trueName <> NULL );
+					HLAerror2( symEAX.trueName );
+					mov( attrECX.p.dispMinusAdrs, eax );
+					if( eax <> NULL ) then
+								
+						mov( staticEAX.symbol, eax );
+						canAccess( [eax] );	
+						HLAerror2( '-', symEAX.trueName );
+						
+					endif;
+
+				endif;
+				
+			endif;
+			if( attrECX.p.constant >= 0 ) then
+			
+				HLAerror2( '+' );
+				
+			endif;
+			HLAerror2( attrECX.p.constant, " )" );
+			
+		case
+		( 
+			Thunk_pt,		
+			Deferred_pt,	
+			Class_pt,		
+			Namespace_pt,
+			Segment_pt,		
+			Label_pt,		
+			Proc_pt,		
+			Method_pt,		
+			ClassProc_pt,
+			ClassIter_pt,
+			Iterator_pt,	
+			Program_pt,		
+			Macro_pt,		
+			Variant_pt,		
+			Error_pt
+		)
+		
+			stdout.put
+			( 
+				nl 
+				"*** printValue doesn't support this data type: ",
+				(type uns8 al)
+			);
+			if( ebx <> NULL && symEBX.trueName <> NULL ) then
+			
+				stdout.put( " (", symEBX.trueName, ")" );
+				
+			endif;
+			stdout.newln();
+		
+		default
+		
+			stdout.put
+			( 
+				nl 
+				"*** printValues doesn't support this data type: ",
+				(type uns8 al) 
+			);
+			if( ebx <> NULL && symEBX.trueName <> NULL ) then
+			
+				stdout.put( " (", symEBX.trueName, ")" );
+				
+			endif;
+			stdout.newln();
+		
+	endswitch;		
+
+
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end printValue;
+
+
+
+//proc( "printType" )
+procedure printType
+( 
+		pType	:dword in eax; 
+	var symNode	:symNode_t;
+		Level	:uns32;
+		prtSize	:boolean 
+); 
+const
+	theSym	:text := "symEBX";
+	
+
+	procedure printSize( sym: dword in eax ); @noframe;
+	begin printSize;
+	
+		if( ebp::prtSize ) then
+		
+			stdout.put( " size:", (type uns32 eax):3  );
+			
+		endif;
+		ret();
+	
+	end printSize;
+
+	procedure printOfs( var sym: symNode_t in eax ); @noframe;
+	begin printOfs;
+	
+		if( symEAX.symClass = Static_ct ) then
+			HLAerror2
+			( 
+				" ofs:", 
+				(type int32 symEAX.offset)
+			);
+
+		endif;
+
+	end printOfs;
+
+
+	procedure printOpts( var sym :symNode_t );
+
+		procedure prtYesOrNo( dflt:boolean in al ); @noframe;
+		begin prtYesOrNo;
+
+			if( al = true ) then
+
+				stdout.put( " No" );
+
+			else
+
+				stdout.put( ' ' );
+
+			endif;
+			ret();
+
+		end prtYesOrNo;
+
+	begin printOpts;
+
+		push( eax );
+		push( ebx );
+		mov( sym, ebx );
+		canAccess( [ebx] );
+		if( symEBX.symClass = Static_ct ) then
+
+			if( symEBX.isVolatile ) then
+
+				stdout.put( " volatile" );
+
+			endif;
+			if( symEBX.isNoStorage ) then
+
+				stdout.put( " nostorage" );
+
+			endif;
+
+		endif;
+		mov( symEBX.pType, al );
+		if( isProcedure( al ) ) then
+
+			mov( defaultFrame, al );
+			if( al <> symEBX.cproc.hasFrame ) then
+
+				prtYesOrNo( al );
+				stdout.put( "Frame" );
+
+			endif;
+
+			mov( defaultDisplay, al );
+			if( al <> symEBX.cproc.hasDisplay ) then
+
+				prtYesOrNo( al );
+				stdout.put( "Display" );
+
+			endif;
+
+			mov( defaultStackAlign, al );
+			if( al <> symEBX.cproc.alignsStack ) then
+
+				prtYesOrNo( al );
+				stdout.put( "AlignStack" );
+
+			endif;
+
+			mov( defaultEnter, al );
+			if( al <> symEBX.cproc.useEnter ) then
+
+				prtYesOrNo( al );
+				stdout.put( "Enter" );
+
+			endif;
+
+			mov( defaultLeave, al );
+			if( al <> symEBX.cproc.useLeave ) then
+
+				prtYesOrNo( al );
+				stdout.put( "Leave" );
+
+			endif;
+
+			if( symEBX.cproc.callSeq = cdecl_cs ) then
+
+				stdout.put( "Cdecl" );
+
+			elseif( symEBX.cproc.callSeq = stdcall_cs ) then
+
+				stdout.put( "Stdcall" );
+
+			endif;
+
+			mov( symEBX.cproc.preserves, eax );
+			if( eax <> preserveNone ) then
+
+				stdout.put( "Preserves(" );
+				test( preserveAL, eax );
+				if( @nz ) then
+
+					stdout.put( " al" );
+
+				endif;
+
+				test( preserveBL, eax );
+				if( @nz ) then
+
+					stdout.put( " bl" );
+
+				endif;
+
+				test( preserveCL, eax );
+				if( @nz ) then
+
+					stdout.put( " cl" );
+
+				endif;
+
+				test( preserveDL, eax );
+				if( @nz ) then
+
+					stdout.put( " dl" );
+
+				endif;
+
+				test( preserveAH, eax );
+				if( @nz ) then
+
+					stdout.put( " ah" );
+
+				endif;
+
+				test( preserveBH, eax );
+				if( @nz ) then
+
+					stdout.put( " bh" );
+
+				endif;
+
+				test( preserveCH, eax );
+				if( @nz ) then
+
+					stdout.put( " ch" );
+
+				endif;
+
+				test( preserveDH, eax );
+				if( @nz ) then
+
+					stdout.put( " dh" );
+
+				endif;
+
+				test( preserveAX, eax );
+				if( @nz ) then
+
+					stdout.put( " ax" );
+
+				endif;
+
+				test( preserveBX, eax );
+				if( @nz ) then
+
+					stdout.put( " bx" );
+
+				endif;
+
+				test( preserveCX, eax );
+				if( @nz ) then
+
+					stdout.put( " cx" );
+
+				endif;
+
+				test( preserveDX, eax );
+				if( @nz ) then
+
+					stdout.put( " dx" );
+
+				endif;
+
+				test( preserveBP, eax );
+				if( @nz ) then
+
+					stdout.put( " bp" );
+
+				endif;
+
+				test( preserveSI, eax );
+				if( @nz ) then
+
+					stdout.put( " si" );
+
+				endif;
+
+				test( preserveDI, eax );
+				if( @nz ) then
+
+					stdout.put( " di" );
+
+				endif;
+
+				test( preserveSP, eax );
+				if( @nz ) then
+
+					stdout.put( " sp" );
+
+				endif;
+
+
+				test( preserveEAX, eax );
+				if( @nz ) then
+
+					stdout.put( " eax" );
+
+				endif;
+
+				test( preserveEBX, eax );
+				if( @nz ) then
+
+					stdout.put( " ebx" );
+
+				endif;
+
+				test( preserveECX, eax );
+				if( @nz ) then
+
+					stdout.put( " ecx" );
+
+				endif;
+
+				test( preserveEDX, eax );
+				if( @nz ) then
+
+					stdout.put( " edx" );
+
+				endif;
+
+				test( preserveEBP, eax );
+				if( @nz ) then
+
+					stdout.put( " ebp" );
+
+				endif;
+
+				test( preserveESI, eax );
+				if( @nz ) then
+
+					stdout.put( " esi" );
+
+				endif;
+
+				test( preserveEDI, eax );
+				if( @nz ) then
+
+					stdout.put( " edi" );
+
+				endif;
+
+				test( preserveESP, eax );
+				if( @nz ) then
+
+					stdout.put( " esp" );
+
+				endif;
+				stdout.put( " )" );
+
+			endif;
+
+			mov( symEBX.cproc.uses, al );
+			if( al <> _none ) then
+
+				stdout.put( " uses " );
+				if( al = _EAX ) then
+
+					stdout.put( "eax" );
+
+				elseif( al = _EBX ) then
+
+					stdout.put( "ebx" );
+
+				elseif( al = _ECX ) then
+
+					stdout.put( "ecx" );
+
+				elseif( al = _EDX ) then
+
+					stdout.put( "edx" );
+
+				elseif( al = _EBP ) then
+
+					stdout.put( "ebp" );
+
+				elseif( al = _ESI ) then
+
+					stdout.put( "esi" );
+
+				elseif( al = _EDI ) then
+
+					stdout.put( "edi" );
+
+				elseif( al = _ESP ) then
+
+					stdout.put( "esp" );
+
+				endif;
+
+			endif;
+			if( symEBX.cproc.returnsStr <> NULL ) then
+
+				stdout.put( " returns( ", symEBX.cproc.returnsStr, " )" );
+
+			endif;
+
+		endif;
+		pop( ebx );
+		pop( eax );
+
+	end printOpts;
+
+	procedure printExtern( var sym:symNode_t );
+	begin printExtern;
+
+		push( ebx );
+		mov( sym, ebx );
+		canAccess( [ebx] );
+		if( symEBX.isExternal && !symEBX.isPublic ) then
+
+			stdout.put( " external" );
+			if( symEBX.externName <> NULL ) then
+
+				stdout.put( '(', symEBX.externName, ')' );
+
+			endif;
+
+		elseif( symEBX.isPublic ) then
+
+			stdout.put( " public" );
+			if( symEBX.externName <> NULL ) then
+
+				stdout.put( '(', symEBX.externName, ')' );
+
+			endif;
+
+		endif;
+
+	end printExtern;
+	
+
+readonly
+	inRegMap : string[] :=
+		[
+			"EAX",
+			"EBX",
+			"ECX",
+			"EDX",
+			"EDI",
+			"ESI",
+			"EBP",
+			"ESP"
+		]; 
+
+	
+begin printType;
+
+	push( ebx );
+	mov( symNode, ebx );
+	canAccess( [ebx] );
+	switch( eax )
+	
+		case
+		(
+			Boolean_pt,		
+			Uns8_pt,		
+			Uns16_pt,		
+			Uns32_pt,		
+			Uns64_pt,		
+			Uns128_pt,		
+			Byte_pt,		
+			Word_pt,		
+			DWord_pt,		
+			QWord_pt,		
+			TByte_pt,		
+			LWord_pt,		
+			Int8_pt,		
+			Int16_pt,		
+			Int32_pt,		
+			Int64_pt,		
+			Int128_pt,		
+			Char_pt, 		
+			XChar_pt,		
+			Unicode_pt,		
+			Real32_pt,		
+			Real64_pt, 		
+			Real80_pt,
+			Real128_pt,
+			Utf8_pt,		
+			String_pt,		
+			UString_pt,
+			Text_pt,		
+			Cset_pt,		
+			XCset_pt,		
+			Thunk_pt
+		)
+
+			pTypePrint( al );
+			HLAerror2( ' ' );
+			mov( theSym.objectSize, eax );
+			printSize( eax );
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+
+
+		case( Enum_pt )
+		
+			mov( theSym.symType, eax );
+			if
+			( 
+					eax = NULL 
+				||	str.eq( (type symNode_t [eax]).trueName, "" ) 
+			) then
+			
+				// We've got an anonymous type, so just print "ENUM"
+				
+				pTypePrint( Enum_pt );
+				HLAerror2( ' ' );
+				printSize( curEnumSize );
+				
+			else
+			
+				// Okay, it's a defined enum type.  Print it's name:
+				
+				mov( theSym.symType, eax );
+				canAccess( [eax] );
+				assert( symEAX.trueName <> NULL );
+				HLAerror2( symEAX.trueName, ' ' );
+				printSize( curEnumSize );
+				
+			endif;
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+		
+			
+		case
+		( 
+			Placeholder_pt
+		)
+		
+			// Don't display anything for these objects.
+			
+
+		case( Namespace_pt )
+
+			// Nothing to print at this point, just ignore.		
+		
+		case( Array_pt )		
+		
+			mov( theSym.symType, ecx );
+			canAccess( [ecx] );
+			assert( symECX.trueName <> NULL );
+			HLAerror2( symECX.trueName );
+			if( theSym.symClass = Type_ct ) then
+			
+				mov( theSym.numElements, eax );
+				HLAerror2( '(', (type uns32 eax), ')' );
+				
+			endif;
+			HLAerror2( ' ' );
+			mov( symNode, ebx );
+			printSize( theSym.objectSize );
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+
+		case( Deferred_pt )	
+		
+			// Need to print the type name from the symType field:
+			
+			mov( theSym.symType, ebx );
+			canAccess( [ebx] );
+			movzx( theSym.pType, eax );
+			printType( eax, [ebx], Level, true );
+						
+		case( Record_pt )		
+		
+			if( theSym.symClass = Type_ct ) then
+			
+				HLAerror2( "record " );
+				printSize( theSym.objectSize );
+				
+			else
+			
+				mov( theSym.symType, eax );
+				HLAerror2( (type symNode_t [eax]).trueName, ' ' );
+				printSize( theSym.objectSize );
+				
+			endif;
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+		case( Union_pt )		
+		
+			if( theSym.symClass = Type_ct ) then
+			
+				HLAerror2( "union " );
+				printSize( theSym.objectSize );
+				
+			else
+			
+				mov( theSym.symType, eax );
+				HLAerror2( (type symNode_t [eax]).trueName, ' ' );
+				printSize( theSym.objectSize );
+				
+			endif;
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+		
+		case( Class_pt )
+		
+			if( theSym.symClass = Type_ct ) then
+			
+				HLAerror2( "class " );
+				mov( theSym.inhType, eax );
+				if( eax <> NULL ) then
+				
+					HLAerror2( "inherits( ", symEAX.trueName, " ) " );
+					
+				endif;
+				HLAerror2( "@this(" );
+				movzx( theSym.thisReg, eax );
+				mov( inRegMap[ eax*4 - 4*uns8(_EAX)], eax );
+				stdout.put( (type string eax), ':' );
+				movzx( theSym.vmtReg, eax );
+				mov( inRegMap[ eax*4 - 4*uns8(_EAX)], eax );
+				stdout.put( (type string eax), ") " );
+				printSize( theSym.objectSize );
+				
+			else
+			
+				mov( theSym.symType, eax );
+				HLAerror2( (type symNode_t [eax]).trueName, ' ' );
+				printSize( theSym.objectSize );
+				
+			endif;
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+				
+		case( Pointer_pt )		
+		
+			mov( theSym.symType, eax );
+			canAccess( [eax] );
+			assert( symEAX.trueName <> NULL );
+			if( theSym.symClass = Type_ct ) then
+			
+				HLAerror2
+				( 
+					"pointer to ", 
+					symEAX.trueName, 
+					" " 
+				);
+				
+			else
+			
+				HLAerror2( symEAX.trueName, ' ' );
+				
+			endif;
+			printSize( theSym.objectSize );
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+		case( Procptr_pt )		
+		
+			// Note: most procedure types are actually "deferred_pt"
+			// and we wind up here after a recursive call from the
+			// Deferred_pt case.
+
+			mov( theSym.symType, eax );
+			canAccess( [eax] );
+			if( eax = &procptr_ste ) then
+
+				// "xxx:procedure..." declaration
+
+				HLAerror2( "proc ptr (4 bytes) " );
+
+			else
+
+				// "xxx:someProcType..." declaration
+
+				assert( symEAX.trueName <> NULL );
+				HLAerror2( symEAX.trueName, " (4 bytes) " );
+
+			endif;
+			printOfs( theSym );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+		case( Symboltbl_pt )
+		
+			stdout.put( "Symbol Table " );
+			
+		case( Segment_pt )		
+		
+			stdout.put( "external( """, theSym.externName, """ )" );
+			
+		case( Program_pt )		
+		
+			stdout.put( "program " );
+
+		case( AnonRec_pt )
+		
+			mov( symEBX.fieldCnt, eax );
+			stdout.put( "anon Record, #fields:", (type uns32 eax));
+			
+		case( EndAnonRec_pt )
+		
+			stdout.put( "end anon Record" );
+			
+		case( AnonUnion_pt )
+		
+			mov( symEBX.fieldCnt, eax );
+			stdout.put( "anon Union, #fields:", (type uns32 eax));
+			
+		case( EndAnonUnion_pt )
+		
+			stdout.put( "end anon Union" );
+			
+
+		case( Proc_pt )		
+		
+			HLAerror2( "procedure " );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+			
+		case( Macro_pt )		
+		
+			if( !testMode ) then
+			
+				HLAerror2
+				( 
+					"text start:", 
+					(type dword symEBX.macro.textStart),
+					" end:",
+					(type dword symEBX.macro.textEnd)
+				);
+				
+			endif;
+			HLAerror2(  nl );
+			
+		case( ClassProc_pt )		
+		
+			HLAerror2( "classProc " );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+			
+		case( Method_pt )		
+		
+			HLAerror2( "method (vmtofs:", (type uns32 theSym.offset), ") " );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+			
+		case( ClassIter_pt )		
+		
+			HLAerror2
+			( 
+				"iterator (vmtofs:", 
+				(type uns32 theSym.offset), 
+				") " 
+			);
+			printOpts( theSym );
+			printExtern( theSym );
+			
+			
+		case( Iterator_pt )		
+		
+			HLAerror2( "iterator " );
+			printOpts( theSym );
+			printExtern( theSym );
+			
+			
+		case
+		( 
+			Label_pt,
+			Variant_pt,
+			Error_pt 
+		)		
+		
+			stdout.put( "unhandled ptype " );
+			
+						
+		default
+		
+			stdout.put( nl "Unexpected pType in <<printType>> function" nl );
+			
+	endswitch;
+	pop( ebx );
+
+end printType;
+
+
+
+//proc( "putSpacer" )
+procedure putSpacer( Level:dword );
+begin putSpacer;
+
+	push( eax );
+	push( ebx );
+	stdout.newln();
+	mov( Level, eax );
+	intmul( 3, eax );
+	mov( 78, ebx );
+	sub( eax, ebx );
+	if( eax <> 0 ) then
+	
+		stdout.putcSize( ' ', eax, ' ' ); 
+		
+	endif;
+	if( (type int32 ebx) > 0 ) then
+	
+		stdout.putcSize( '-', ebx, '-' );
+		
+	endif;
+	stdout.newln();
+	pop( ebx );
+	pop( eax );
+
+end putSpacer;
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// dumpSymbol-
+//
+//	This procedure dumps a single symbol's value to the stdout device.
+//
+//	Input:
+//
+//	symbol- Pointer to the symbol to display.
+
+//proc( "dumpSymbol" )
+procedure dumpSymbol
+( 
+	symbol		:symNodePtr_t; 
+	Level		:uns32; 
+	staticValue	:boolean;
+	dummyProc	:boolean
+);
+var
+	pType		:dword;
+	symClass	:dword;
+	symType		:dword;
+	
+readonly
+	inRegStrs	:string[ uns8(_RIP) + 1 ] :=
+				[
+					"none",			
+					"al",			
+					"ah",			
+					"bl",			
+					"bh",			
+					"cl",			
+					"ch",			
+					"dl",			
+					"dh",			
+					"dib",			
+					"sib",			
+					"bpb",			
+					"spb",			
+					"r8b",			
+					"r9b",			
+					"r10b",			
+					"r11b",			
+					"r12b",			
+					"r13b",			
+					"r14b",			
+					"r15b",
+								
+					"ax",			
+					"bx",			
+					"cx",			
+					"dx",			
+					"di",			
+					"si",			
+					"bp",			
+					"sp",			
+					"r8w",			
+					"r9w",			
+					"r10w",			
+					"r11w",			
+					"r12w",			
+					"r13w",			
+					"r14w",			
+					"r15w",	
+							
+					"eax",			
+					"ebx",			
+					"ecx",			
+					"edx",			
+					"edi",			
+					"esi",			
+					"ebp",			
+					"esp",			
+					"r8d",			
+					"r9d",			
+					"r10d",			
+					"r11d",			
+					"r12d",			
+					"r13d",			
+					"r14d",			
+					"r15d",	
+							
+					"rax",			
+					"rbx",			
+					"rcx",			
+					"rdx",			
+					"rdi",			
+					"rsi",			
+					"rbp",			
+					"rsp",			
+					"r8",			
+					"r9",			
+					"r10",			
+					"r11",			
+					"r12",			
+					"r13",			
+					"r14",			
+					"r15",
+								
+					"st0",			
+					"st1",			
+					"st2",			
+					"st3",			
+					"st4",			
+					"st5",			
+					"st6",			
+					"st7",
+								
+					"mm0",			
+					"mm1",			
+					"mm2",			
+					"mm3",			
+					"mm4",			
+					"mm5",			
+					"mm6",			
+					"mm7",
+								
+					"xmm0",			
+					"xmm1",			
+					"xmm2",			
+					"xmm3",			
+					"xmm4",			
+					"xmm5",			
+					"xmm6",			
+					"xmm7",			
+					"xmm8",			
+					"xmm9",			
+					"xmm10",			
+					"xmm11",			
+					"xmm12",			
+					"xmm13",			
+					"xmm14",			
+					"xmm15",
+								
+					"dr0",			
+					"dr1",			
+					"dr2",			
+					"dr3",			
+					"dr4",			
+					"dr5",			
+					"dr6",			
+					"dr7",			
+					"dr8",			
+					"dr9",			
+					"dr10",			
+					"dr11",			
+					"dr12",			
+					"dr13",			
+					"dr14",			
+					"dr15",	
+							
+					"cr0",			
+					"cr1",			
+					"cr2",			
+					"cr3",			
+					"cr4",			
+					"cr5",			
+					"cr6",			
+					"cr7",			
+					"cr8",			
+					"cr9",			
+					"cr10",			
+					"cr11",			
+					"cr12",			
+					"cr13",			
+					"cr14",			
+					"cr15",	
+							
+					"cseg",			
+					"dseg",			
+					"eseg",			
+					"fseg",			
+					"gseg",			
+					"sseg",
+					"rip"			
+				];
+				
+	pClassStrs	:string[ uns8( lazy_pc) + 1 ] :=
+				[
+					"notp",	
+					"value",	
+					"reference",
+					"untyped VAR",	
+					"value/result",		
+					"result",
+					"name",	
+					"lazy evaluation"		
+				];
+	 
+begin dumpSymbol;
+
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+
+	mov( symbol, ebx );
+	canAccess( [ebx] );
+	mov( Level, eax );
+	if( eax <> 0 ) then
+	
+		intmul( 3, eax );
+		stdout.put( ' ':eax );
+		
+	endif;
+
+	stdout.put( symEBX.trueName:-18, ' ' );
+	
+	stdout.put( symEBX.lexLevel, ":" );
+	movzx( symEBX.symClass, eax );
+	mov( eax, symClass );
+	stdout.put( classTypeStrs[ eax*4 ], " :" );
+	
+	mov( symEBX.symType, eax );
+	mov( eax, symType );
+	movzx( symEBX.pType, eax );
+	if( eax = DWord_pt ) then
+
+		// Major Kludge! Dword types also
+		// allow pointers. If the value is a dword
+		// object, then use the constant's ptype
+		// rather than the object's pType:
+
+		if( symEBX.va.pType = Pointer_pt ) then
+
+			mov( symEBX.va.symType, eax );
+			mov( eax, symType );
+			movzx( symEBX.va.pType, eax );
+
+		endif;
+
+	endif;
+	mov( eax, pType );
+	printType( eax, [ebx], Level, true );
+
+	mov( symClass, eax );
+	switch( eax )
+	
+		case( Constant_ct, Value_ct ) 
+	
+			HLAerror2( " := " );
+
+			printValue
+			( 
+				pType, 
+				symType, 
+				symEBX.va 
+			);
+			
+		case( Type_ct )
+		
+			// Don't do anything special for program objects
+			
+		case( Var_ct )
+		
+			HLAerror2
+			( 	
+				" ofs:", 
+				(type int32 symEBX.offset):4
+			);
+			
+		
+		case( Parm_ct )
+		
+			movzx( symEBX.pClass, ecx );
+			HLAerror2( " passed by ", pClassStrs[ecx*4] );
+			movzx( symEBX.inReg, ecx  );
+			if( cl = _none ) then
+			
+				HLAerror2
+				( 
+					" ofs:", 
+					(type int32 symEBX.offset)
+				);
+				
+			else
+			
+				HLAerror2( " in ", inRegStrs[ecx*4] );
+				
+			endif;
+
+		case( Static_ct )
+
+			if( staticValue && symEBX.isInitialized ) then
+
+				HLAerror2( " := " );
+
+				printValue
+				( 
+					pType, 
+					symType, 
+					symEBX.va 
+				);
+
+			endif;
+			
+		case
+		( 
+			Label_ct,
+			Proc_ct,
+			Iterator_ct,
+			ClassProc_ct,
+			ClassIter_ct,
+			Method_ct,
+			Macro_ct,
+			Keyword_ct,
+			Terminator_ct,
+			Program_ct,
+			Namespace_ct,
+			Symboltbl_ct,
+			Segment_ct,
+			Register_ct,
+			Memory_ct,
+			Placeholder_ct 
+		)
+		
+			//  Don't do anything special for these object types
+		
+			
+		default
+
+			stdout.put( " (unhandled symbol class type)" );
+		
+	endswitch;
+
+
+	
+	// Print nested symbol table info after printing the value or offset:
+	
+	mov( symEBX.pType, al );
+	if( al = Namespace_pt ) then
+		
+		inc( Level );
+		dumpSyms( symEBX.linearSyms, Level, true );
+		
+	elseif
+	(
+			al = Record_pt
+		||	al = Union_pt
+		||	al = Class_pt
+		||	al = Procptr_pt
+		||	al = Proc_pt
+		||	al = Iterator_pt
+		||	al = Macro_pt
+	) then
+	
+		if( symEBX.linearSyms <> NULL && !dummyProc ) then
+		
+			mov( Level, eax );
+			inc( eax );
+
+			// The first symbol in a procedure parameter list
+			// is special, don't display the local symbol table
+			// for it (which is a recursive loop).
+			 
+			putSpacer( eax );
+			mov( symEBX.linearSyms, ebx );
+			dumpSymbol( ebx, eax, false, true );
+			mov( symEBX.next, ebx );
+			if( ebx <> NULL ) then
+
+				dumpSyms( ebx, eax, false );
+
+			endif;
+			
+		endif;
+		
+	endif;
+
+	stdout.newln();
+
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+
+end dumpSymbol;
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+// dumpSyms-
+//
+//	This procedure dumps the symbol table to the standard output device.
+//
+// Inputs:
+//
+//	SymTbl-	Pointer to the start of the (linear list) symbol table to
+//			display.
+//
+//	Level-	Indentation value (used for nested tables).
+
+
+
+//proc( "dumpSyms" )
+procedure dumpSyms( symptr: symNodePtr_t; Level:uns32; spacer:boolean );
+begin dumpSyms;
+	push( eax );
+	push( ebx );
+	push( ecx );
+
+	if( spacer ) then
+
+		putSpacer( Level );	
+
+	endif;
+	mov( symptr, ebx );
+	while( ebx <> NULL ) do
+
+		if
+		( 
+				symEBX.pType = EndAnonRec_pt 
+			||	symEBX.pType = EndAnonUnion_pt 
+		) then
+		
+			dec( Level );
+			
+		endif;
+		dumpSymbol( ebx, Level, false, false );
+		if( symEBX.pType = AnonRec_pt || symEBX.pType = AnonUnion_pt ) then
+		
+			inc( Level );
+			
+		endif;		
+		mov( symEBX.next, ebx );
+	
+	endwhile;
+	putSpacer( Level );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+	
+end dumpSyms;
+
+
+
+//////////////////////////////////////////////////////////////////
+//
+// dumpSegment-
+//
+//	This procedure dumps the data records associated with a single
+// segment.
+//
+//	Parameters:
+//
+//		whichSeg-
+//			Pointer to the symbol table entry for the segment
+//			whose segment list this procedure is to process.
+//
+//		title-
+//			Title string to print at start of dump.
+
+//proc( "dumpSegment" )
+procedure dumpSegment
+( 
+	var whichSeg		:symNode_t;
+		segmentItems	:segItemArrayPtr_t; 
+		title			:string 
+);
+var
+	ct	:classType_t;
+
+begin dumpSegment;
+
+	exitif( segmentItems = NULL ) dumpSegment;
+	stdout.put
+	( 
+		nl nl, 
+		"--------------------------------------------------------" nl
+		"Data for segment: ", title, nl
+		"--------------------------------------------------------" nl
+		nl
+	);
+	mov( whichSeg, ebx );
+	canAccess( [ebx] );
+	mov( symEBX.segList, ebx );
+	while( ebx <> NULL ) do
+
+		mov( segEBX.segItemType, eax );
+		switch( eax )
+		
+			case( firstEntry_c )
+				stdout.put
+				( 
+					title, 
+					"(", 
+					(type uns32 segEBX.alignedOn.max),
+					", ",
+					(type uns32 segEBX.alignedOn.min),
+					")" nl
+				);
+
+			case( alignRecord_c )
+				stdout.put
+				( 
+					"ALIGN(", 
+					(type uns32 segEBX.alignedOn.max), 
+					")" nl 
+				);
+
+			case( symbolRecord_c )
+				dumpSymbol( segEBX.symPtr, 0, true, false );
+
+			case( dataRecord_c )
+
+				push( ebx );
+				mov( segEBX.valList.valPtr, ecx );
+				canAccess( [ecx] );
+				mov( segEBX.valList.elementCnt, edx );
+				if( edx <> 0 ) then
+
+					mov( segEBX.valList.valType, ebx );
+					canAccess( [ebx] );
+					canAccess( symEBX.trueName );
+					stdout.put( symEBX.trueName, " " );
+					while( edx > 1 ) do 
+						movzx( attrECX.pType, eax );
+						printValue( eax, attrECX.symType, [ecx] );
+						dec( edx );
+						add( @size( attr_t), ecx );
+						stdout.put( ", " );
+
+					endwhile;
+					movzx( attrECX.pType, eax );
+					printValue( eax, attrECX.symType, [ecx] );
+					stdout.put( ';' nl );
+
+				endif;
+				pop( ebx );
+			default
+				HLAerror
+				( 
+					"Unexpected segItemEnum value (internal HLA error)"
+					nl
+				);
+
+		endswitch;
+
+		// Move on to the next item in the list:
+
+		mov( segEBX.nextSegItem, ebx );
+
+	endwhile;
+
+	// Dump the offset information for the segment:
+
+	mov( segmentItems, eax );
+	if( eax <> NULL ) then
+
+		pushad();
+
+		mov( (type segItemArray_t [eax]).count, edx );
+		stdout.put
+		( 
+			nl  
+			"-----------------------------" nl 
+			"Variable offsets into segment" nl nl
+			"Number of declaration sections: ",
+			(type uns32 edx),
+			nl
+		);
+		add( @size( segItemListPtr_t ) + @size( uns32 )*2, eax );
+		for( mov( 0, ecx ); ecx < edx; inc( ecx )) do
+
+			mov( [eax], esi );
+			mov( (type segItemList_t [esi]).itemCount, ebx );
+			stdout.put( nl "ItemCnt:", (type uns32 ebx) );
+			mov( (type segItemList_t [esi]).size, ebx );
+			stdout.put( " Size: ", (type uns32 ebx) );
+			mov( (type segItemList_t [esi]).alignment, ebx );
+			stdout.put( " Alignment: ", (type uns32 ebx), nl );
+
+			push( ecx );
+			push( edx );
+			push( eax );
+			mov( (type segItemList_t [esi]).itemCount, edx );
+			mov( (type segItemList_t [esi]).firstItem, eax );
+			for( mov(1,ecx); ecx <= edx; inc(ecx)) do
+			
+				 if
+				 ( 
+				 	(type segItem_t [eax]).segItemType >= symbolRecord_c 
+				 ) then
+
+					mov( (type segItem_t [eax]).offset, ebx );
+					stdout.put
+					( 
+						"    ", 
+						(type uns32 ecx ),
+						": "
+					);
+					if
+					( 
+						(type segItem_t [eax]).segItemType = symbolRecord_c 
+					) then
+
+						push( eax );
+						mov( (type segItem_t [eax]).symPtr, eax );
+						stdout.put( symEAX.trueName, ": " );
+						pop( eax );
+
+					endif;
+
+					stdout.put
+					( 
+						"Offset: ", 
+						(type uns32 ebx), 
+						nl 
+					);
+
+				endif;
+				mov( (type segItem_t [eax]).nextSegItem, eax );
+
+			endfor;
+			pop( eax );
+			pop( edx );
+			pop( ecx );
+			add( 4, eax );
+			 
+		endfor;
+		popad();
+
+	endif;
+end dumpSegment;
+
+//////////////////////////////////////////////////////////////////
+//
+// dumpSegs -
+//
+//	This function dumps all the data item records associated with
+// each of the segments.
+//
+
+//proc( "dumpSegs" )
+procedure dumpSegs;
+begin dumpSegs;
+
+	dumpSegment( dataSegment, 		dataSegmentList,	"static" 	);
+	dumpSegment( bssSegment, 		bssSegmentList,		"storage" 	);
+	dumpSegment( readonlySegment, 	roSegmentList,		"readonly" 	);
+	dumpSegment( constSegment, 		constSegmentList,	"consts" 	);
+
+	mov( userSegmentsList, ebx );
+	while( ebx <> NULL ) do
+
+		mov( userSegEBX.theSegment, ecx );
+		push( ebx );
+		push( ecx );
+		dumpSegment( [ecx], userSegEBX.segList, symECX.trueName );
+		pop( ecx );
+		pop( ebx );
+
+		mov( userSegEBX.next, ebx );
+
+	endwhile;
+
+
+	// Dump the external symbols here:
+
+	mov( extList, ebx );
+	if( ebx <> NULL ) then
+
+		stdout.put
+		(
+			nl
+			"------------------------------------------------------------"
+			nl
+			"Public and External Symbols:"
+			nl
+			nl
+		);
+
+	endif;
+	while( ebx <> NULL ) do
+
+		if( (type extList_t [ebx]).isPublic ) then
+
+			stdout.put( "public:  " );
+
+		else
+			stdout.put( "         " );
+
+		endif;
+
+		mov( (type extList_t [ebx]).theClass, eax );
+		if( eax <> NULL ) then
+
+			stdout.put( symEAX.trueName, '.' );
+
+		endif;
+		mov( (type extList_t [ebx]).extSym, eax );
+		stdout.put( symEAX.trueName:-16 );
+		if( symEAX.externName <> NULL ) then
+
+			stdout.put( " (", symEAX.externName, ')' );
+
+		endif;
+		stdout.newln();
+		mov( (type extList_t [ebx]).next, ebx );
+
+	endwhile;
+
+end dumpSegs;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// dump1IntCode
+//
+//	This function "disassembles" a single intermediate code record
+// and prints it to the standard output (for debug purposes).
+
+procedure dump1IntCode( instr:internalCodePtr_t );
+
+	procedure printInstrOperand
+	( 
+			title		:string; 
+			operandType	:dword;
+		var	operand		:instrOperand_t
+	);
+	begin printInstrOperand;
+	end printInstrOperand;
+
+begin dump1IntCode;
+ 
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+	
+	mov( instr, ebx );
+	stdout.putc( '$' );
+	stdout.putdSize( intCodeEBX.offset, 1, '0' );
+	stdout.put( '(', (type uns32 intCodeEBX.length), "): " );
+	movzx( intCodeEBX.prefixes, eax );
+	if( ax <> 0 ) then
+
+		stdout.put( "[ " );
+		test( lockPrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "lock " );
+
+		endif;
+		test( repPrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "rep " );
+
+		endif;
+		test( repePrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "repe " );
+
+		endif;
+		test( repnePrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "repne " );
+
+		endif;
+		test( csegPrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "cseg " );
+
+		endif;
+		test( dsegPrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "dseg " );
+
+		endif;
+		test( esegPrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "eseg " );
+
+		endif;
+		test( fsegPrefix_c, eax );
+		if( @nz ) then
+
+			stdout.put( "fseg " );
+
+		endif;
+		test( gsegPrefix_c, ax );
+		if( @nz ) then
+
+			stdout.put( "gseg " );
+
+		endif;
+		test( ssegPrefix_c, ax );
+		if( @nz ) then
+
+			stdout.put( "sseg " );
+
+		endif;
+		test( adrsPrefix_c, ax );
+		if( @nz ) then
+
+			stdout.put( "adrs " );
+
+		endif;
+		test( sizePrefix_c, ax );
+		if( @nz ) then
+
+			stdout.put( "size " );
+
+		endif;
+		test( brTknPrefix_c, ax );
+		if( @nz ) then
+
+			stdout.put( "brTaken " );
+
+		endif;
+		test( brNotTknPrfx_c, ax );
+		if( @nz ) then
+
+			stdout.put( "brNotTaken " );
+
+		endif;
+		stdout.put( "] " );
+
+	endif;
+	movzx( intCodeEBX.instrTkn, eax );
+	mov( instrStrs[eax*4], eax );
+	stdout.put( (type string eax), nl );
+	
+	mov( intCodeEBX.cntOperand, eax );
+	if( eax = -2 ) then
+
+		stdout.put( "cnt: CL" nl );
+
+	elseif( eax = -3 ) then
+
+		stdout.put( "cnt: DX" nl );
+		
+	elseif( (type int32 eax) >= 0 ) then
+	
+		stdout.put( "cnt: ", (type uns32 eax), nl );
+		
+	endif;
+	 
+	movzx( intCodeEBX.srcOperand.mode, eax );
+	printInstrOperand( "src: ", eax, intCodeEBX.srcOperand );
+			 
+	movzx( intCodeEBX.destOperand.mode, eax );
+	printInstrOperand( "dest: ", eax, intCodeEBX.destOperand );
+	
+	mov( intCodeEBX.length, edx );
+	if( edx <> 0 ) then
+
+		stdout.put( "Code: " );
+		for( xor( ecx, ecx ); ecx < edx; add( 1, ecx )) do
+
+			mov( intCodeEBX.instrCode[ ecx ], al );
+			stdout.put( al, ' ' );
+
+		endfor;
+		stdout.newln();
+	
+	endif;		 
+
+	movzx( intCodeEBX.lineNumCnt, edx );
+	repeat
+
+		mov( intCodeEBX.lineNumRecs.filename[edx*8], eax );
+		mov( intCodeEBX.lineNumRecs.lineNumber[edx*8], ecx );
+		stdout.put
+		( 
+			"File: '",
+			(type string eax),
+			"', line: ",
+			(type uns32 ecx),
+			nl
+		);
+		sub( 1, edx );
+
+	until( @s );
+	stdout.newln();
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+end dump1IntCode;
+
+	
+
+// dumpIntCode-
+//
+//	Dumps the internal code sequence. This is for debugging purposes only
+
+procedure dumpIntCode;
+begin dumpIntCode;
+
+	push( eax );
+
+	stdout.put
+	( 
+		nl 
+		"Intermediate Code:" nl
+		"------------------" nl
+		nl
+	);
+
+	mov( instrList, eax );
+	while( eax <> NULL ) do
+
+		dump1IntCode( eax );
+		mov( intCodeEAX.next, eax );
+
+	endwhile;
+
+	pop( eax );
+
+end dumpIntCode;
+	
+
+ 
+
+end dumpSymsUnit;

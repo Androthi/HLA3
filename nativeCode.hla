@@ -1,0 +1,59 @@
+unit emitCodeUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+//> used for test emit raw data
+#includeonce ("hide/hidelib.hhf")
+#includeonce( "codegen.hhf" )
+
+
+?@noalignstack := true;
+?@nodisplay := true;
+
+procedure nativeCodeGen;
+
+	var
+		fbuf	:tBuffer;
+		fname	:string;
+
+begin nativeCodeGen;
+	
+	pushad();
+	//>
+	// just emit raw data for now
+	str.alloc( 1024 );
+	mov (eax, fname );
+	str.put( fname, filename, ".bin" );
+	fbuf.create();
+	
+
+	mov( instrList, eax );
+	while( eax <> NULL ) do
+
+		push(eax);
+	
+		mov( eax, ebx);
+		mov( intCodeEBX.length, edx );
+		stdout.put ("codelen = ", edx,nl );
+		if( edx <> 0 ) then
+			for( xor( ecx, ecx ); ecx < edx; add( 1, ecx )) do
+				mov( intCodeEBX.instrCode[ ecx ], al );
+				fbuf.putByte( al );
+			endfor;
+		endif;
+		
+		pop(eax);
+		mov( intCodeEAX.next, eax );
+
+	endwhile;
+		
+		
+	fbuf.writeFileName(fname);
+	fbuf.destroy();
+	str.free( fname );
+	popad();
+	mov( true, eax );	// Return success
+
+end nativeCodeGen;
+
+end emitCodeUnit;

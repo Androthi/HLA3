@@ -1,0 +1,1658 @@
+// rw.hla
+//
+// HLA v2.x reserved word scanner generator.
+//
+//	This program reads a text file in the current directory named
+// "rsvd.txt" containing a sequence of HLA reserved words.  This code
+// then emits header files and code that the HLA lexer uses to identify
+// HLA reserved words.
+// 
+// The "rsvd.txt" file contains a series of reserved words with one
+// reserved word per line.  Each line contains two items.  The first
+// "word" on the line is the "subtoken" identifier.  The second "word"
+// on the line is the HLA reserved word.  The two words are separated
+// by at least one space.
+//
+//	The subtoken identifier must be one of the following:
+//
+//			instr		Denotes and 80x86 instruction or other reserved
+//						word that is legal for "instruction composition".
+//
+//			rw			Denotes a generic reserved word that doesn't fall
+//						into one of the other classes.
+//
+//			stmt		Denotes an HLA High Level Language statement 
+//						reserved word.
+//
+//			type		Denotes one of the HLA predefined type reserved words.
+//
+//			reg8		Denotes one of the eight-bit register reserved words.
+//
+//			reg16		Denotes one of the sixteen-bit register reserved words.
+//
+//			reg32		Denotes one of the 32-bit register reserved words.
+//
+//			regmmx		Denotes one of the MMX register reserved words.
+//
+//			regsse		Denotes one of the SSE register reserved words.
+//
+//			regfpu		Denotes one of the FPU register reserved words.
+//
+// Note that this code prefixes the identifiers above with a "tkn_" prefix
+// since the HLA subtoken_t enumerated type uses names like "tkn_instr", 
+// "tkn_rw", etc.
+//
+// The HLA reserved word entry on each line must contain only alphanumeric
+// characters.  Furthermore, the alphabetic characters must be all lower
+// case characters (due to the case insensitive comparisons that this code
+// produces). Here are some typical entries from the rsvd.txt file:
+//
+// reg8 ah		
+// reg16 bp
+// reg32 esi		
+// regmmx mm3
+// regsse xmm4
+// regfpu st6		
+// instr clc		
+// stmt if		
+// type int32
+// rw const		
+//
+// An arbitrary amount of whitespace may precede and following the two
+// words on the line.
+//
+// For each reserved word entry (the second word on each line in this file),
+// this program generates an entry in the "rwToken_t" enumerated data type
+// of the form "tkn_XXXX" where "XXXX" represents the reserved word.
+//
+//------------------------------------------------------------------------
+//
+// After reading the "rsvd.txt" file, this program creates three output
+// files, "jmptbl.hla", "rwtokens.hhf", and "cmpcode.hla".  These three
+// files contain the information needed by the lexer to recognize and
+// process the HLA reserved words.
+//
+// The "rwtokens.hhf" file contains the enumeration definitions for all
+// the HLA reserved words (rw generates this list of constant by prepending
+// "tkn_" to the front of each reserved word, as noted above).
+//
+//-----------
+//
+//	The "jmptbl.hla" file contains an array of pointers to statements
+// within the "cmpcode.hla" file.  The lexer applies a hash function to
+// the current identifier it is testing and uses the value of the hash
+// function as an index into the jump table;  the lexer then transfers
+// control to the specified label in the "cmpcode.hla" module (i.e.,
+// this is a switch statement).
+//
+//	The actual jump table itself takes the following form:
+//
+//     rwJmpTbl: dword[ 13, 256 ];			  
+//
+// Each row in the table is a jump table for strings whose length matches
+// the row index (0..12, although rows zero and one are never used since
+// there are no reserved words whose string length is zero or one).  The
+// columns are indexed by the eight-bit value of the hash function applied
+// to the identifier. 
+//
+// The Hash value is efficiently generated using the following algorithm:
+//
+//	clear eax
+//	for each character in the reserved word, from first to last:
+//
+//		shift eax to the left one position.
+//		xor the next character with AL.
+//		xor AH with AL.
+//
+//	endfor
+//
+// Although very simple (and efficient to compute), this algorithm
+// produces a wide spread of entries in the 11 hash tables used for
+// identifiers whose lengths range from two to twelve characters.
+//
+// Note that the HLA lexical analyzer must use exactly this same
+// hashing function when testing for reserved words.
+//
+//-----------
+//
+// The "cmpcode.hla" file contains the segment of the lexical analyzer
+// that checks to ensure that the current string the compiler is processing
+// is, in fact, an HLA reserved word and not simply an identifier that
+// just happens to have the same hash value as some HLA reserved word.
+// The lexical analyzer includes this code in order to process text
+// when checking for reserved words.
+//
+//	The code in the "cmpcode.hla" module assumes that the lexical analyzer
+// has loaded up the characters that "cmpcode.hla" is attempting to match
+// in EAX, EBX, ECX, and DL as follows:
+//
+//	Two character IDs-		First char in AL, second in AH.
+//	Three character IDs-	First two chars in AX, third in BL. 
+//	Four character IDs-		In EAX (1st in AL, 2nd in AH, etc.).
+//	Five character IDs-		1st four chars in EAX, 5th in BL.
+//	Six character IDs-		1st four chars in EAX, next two in BX.
+//	Seven character IDs-	1st four chars in EAX, next two in BX, 7th in CL.
+//	Eight character IDs-	1st four in EAX, 2nd four in EBX.
+//	Nine character IDs-		1st four in EAX, 2nd four in EBX, last in CL.
+//	Ten character IDs-		1st four in EAX, 2nd four in EBX, last two in CX.
+//	Eleven character IDs-	1st eight in EAX and EBX, next two in CX, last in DL
+//	Twelve character IDs-	In EAX, EBX, and ECX.
+//
+// The "cmpcode.hla" comparison sequences assume that all alphabetic characters
+// held in these registers are lower case characters, converted to lower case
+// from upper case, as necessary, by the lexer that invokes this code.
+//
+//	Here is what a typical comparison sequence that this program generates
+// to the "cmpcode.hla" file looks like :
+//						 
+// Len5_Hash43_0:
+// 	cmp( eax, rwstr( "scasd", 0, 4 ));
+// 	jne IsAnID;										   
+// 	cmp( bl, rwstr( "scasd", 4, 1 ));
+// 	jne IsAnID;
+// 	mov( tkn_scasd, eax );
+// 	mov( tc_instr, ebx );
+// 	jmp rwDone;
+//
+// The "Len5_Hash43_0" label is automatically generated by this code.  It is
+// the label whose address is contained within the rwJmpTbl array.  The 
+// digit(s) following the "Len" prefix is the length of the identifier that 
+// this code is testing.  The digits following the "Hash" text correspond to
+// the value of the hash function that transfers control here (in other words,
+// "Len5_Hash43_0" is the address contained within rwJmpTbl[5,43]).  The
+// numeric suffix differentiates multiple compare sequences that have the
+// same length and hash function values (i.e., hash table collisions).
+//
+// The rwJmpTbl[5,43] entry in the example above does not have any collisions.
+// You can tell this because the two "jne" instructions transfer control to
+// the "IsAnID" label.  This is where the comparison code goes if the string
+// in the registers does not match the current reserved word under test
+// ("scasd" in this example) and there are not other reserved words that
+// hash to the same length/hash function values.  The "IsAnID" label must
+// appear in the lexer code following the inclusion of the "cmpcode.hla" code
+// and must return a "tkn_ID" value for the token result.
+//
+// If there are multiple reserved words that collide in the hash table, then
+// "cmpcode.hla" generates a sequence like the following:
+//
+// Len3_Hash52_0:
+// 	cmp( ax, rwstr( "edi", 0, 2 ));
+// 	jne Len3_Hash52_1;
+// 	cmp( bl, rwstr( "edi", 2, 1 ));
+// 	jne Len3_Hash52_1;
+// 	mov( tkn_edi, eax );
+// 	mov( tc_reg32, ebx );
+// 	jmp rwDone;
+// 
+// Len3_Hash52_1:
+// 	cmp( ax, rwstr( "aas", 0, 2 ));
+// 	jne Len3_Hash52_2;
+// 	cmp( bl, rwstr( "aas", 2, 1 ));
+// 	jne Len3_Hash52_2;
+// 	mov( tkn_aas, eax );
+// 	mov( tc_instr, ebx );
+// 	jmp rwDone;
+// 
+// Notice that if the first comparison fails to match, the code tries the
+// second reserved word that hashes to the same length/hash function value
+// pair.  If all comparisons fail, then the code falls through to the
+// "IsAnID" label.  Note in the sequence above there are actually three
+// collision, although the code for the third collision is not shown.
+//
+// The "rwstr" macro is very similar to the @substr compile-time function.
+// It extracts a string starting at the index specified by the second
+// parameter whose length is specified by the third parameter.  Unlike the
+// @substr function, however, rwstr return a 32-bit unsigned constant
+// rather than a string.  That constant is computed by simply concatenating
+// the one-to-four bytes in the extracted substring together.  The first
+// character of the substring is the low-order byte, and the last character
+// of the substring is the high-order byte of the result.  For example,
+// rwstr( "abcd", 0, 2 ) produces $6261 (since the ASCII codes for 'a' and
+// 'b' are $61 and $62, respectively).
+//
+// If the comparison code matches a reserved word, this code returns two
+// values in EAX and EBX.  EAX will contain the sub-token value specific
+// to the reserved word.  This is always the identifier "tkn_XXXX" where
+// "XXXX" is the reserved word the comparison matches.  This code also
+// returns a subtoken (or token class) value in EBX.  The subtoken is one
+// of the following values:
+//
+// 			instr_tc, 
+// 			rw_tc, 
+// 			stmt_tc, 
+// 			type_tc, 
+// 			regmmx_tc,
+//			regsse_tc, 
+// 			regfpu_tc,
+// 			reg8_tc, 		
+// 			reg16_tc, 		
+// 			reg32_tc
+//
+// The exact value returned depends upon the specific reserved word and
+// is specified in the "rsvd.txt" file (see the discussion earlier).
+//
+// The hash table lookup algorithm is very efficient.  About two thirds of
+// the time this algorithm can match or reject a string with only a single
+// (string) comparison.  The maximum number of (string) comparisons needed
+// to accept or reject a string is five (and that is very rare, there is
+// only one instance where five identifiers hash to the same value).
+//
+//---------------------------------------------------------------------------
+//
+// Adding new reserved words to the language is very easy under most
+// conditions.  Just edit the "rsvd.txt" file and add the desired words.
+// The "rsvd.txt" file is sorted by reserved word type and then alphabetically.
+// However, this sorting is simply for readability purposes;  this program
+// does not require the reserved words to be sorted in any particular order.
+// However, to keep the "rsvd.txt" file easy to maintain and modify, it would
+// be a good idea for any new reserved words to be inserted into the file at
+// the appropriate position.
+//
+//	There is one restriction on the reserved words appearing in the "rsvd.txt"
+// file- this code assumes that reserved words are no more than 12 characters
+// long.  If you need to add longer reserved words to HLA's list, you will
+// need to study this code very carefully and make all the changes necessary
+// to handle longer reserved words (sorry, this code was not written with an
+// eye towards allowing longer reserved words).
+//
+// Remember, all reserved words appearing in the "rsvd.txt" file may only
+// contain lower case alphabetic and numeric characters.
+//
+//
+//-----------------
+//
+// Note that compile-time language reserved words (those beginning with "#")
+// and compile-time function identifiers (those beginning with "@") are not
+// handled by this code.  The HLA lexer directly handles "#" reserved words
+// (since there are so few of them) and a separate program deals with
+// generating the code to match HLA compile-time function identifiers.
+//
+//---------------------------------------------------------------------------
+//
+// This code is released to the public domain.
+// Randall L. Hyde 7/12/2001
+//
+// Modification History:
+//
+//	7/12/2001 (RLH)-
+//
+//		Created initial version of rw.hla
+//
+//	7/18/2001 (RLH)-
+//
+//		Added support for subtokens and reorganized the rsvd.txt file
+//		to make it easier to work with
+
+
+
+
+
+program makestrs;
+#include( "stdlib.hhf" )
+#include( "w.hhf" )
+#include( "../hash.hhf" )
+const
+	// MaxLength is the maximum ID length this code supports.
+	// Note that changing this to a larger value is *not* the
+	// only change needed to support longer IDs.
+
+	MaxLength	:= 12;
+
+	// MaxRW is the maximum total number of IDs this program allows.
+	// As this is being written, there are less than 500 reserved words.
+	// Bump this number up if you decide to add more than 1024 (which
+	// would be hard to believe).
+
+	MaxRW		:= 1024;
+	rwsSize		:= MaxRW;
+	
+static
+	HashNumber	:dword;	// Loop index value that cycles from 0..255
+	MaxIndex	:uns32;	// Number of strings with the same Hash function value.	
+	LblNum		:uns32;	// Used to emit cmp sequence labels for collisions.
+	strCnt		:uns32;	// Counts the number of collisions in a hash bucket.
+
+	s			:string[ 1024 ];	// Reserved word strings read from the file.
+	subs		:string[ 1024 ];	// Subtoken strings read from the file.
+
+	
+	// "indexes" is the number of strings of each length read from the file.
+
+	indexes		:uns32[ MaxLength ];
+	
+	// subsrws and rws are arrays of pointers.  The row index is the length
+	// of the string.  Each row holds however many strings there are that
+	// have the length specified by the row index.  Note that "indexes[i]"
+	// holds the number of strings of length "i" in these two arrays.
+
+	subsrws		:string[ MaxLength, rwsSize ];
+	rws			:string[ MaxLength, rwsSize ];
+
+	// Hashes holds the hash table function values.
+
+	Hashes		:uns8[ MaxLength, rwsSize ];
+	
+	// HasHash contains true if a particular entry in a row of the
+	// hash table is not empty.
+
+	HasHash		:boolean[ 256 ];
+
+	// CollisionCnt is used to count the number of collisions to
+	// a particular hash table entry. Just for gathering statistics.
+	// Collisions is used to count the number of cells that have
+	// "n" collisions.
+
+	CollisionCnt	:uns32[ 256 ];
+	Collisions		:uns32[256];
+
+	// "f" is the input file (rsvd.txt) and the remaining file
+	// variables are for the "jmptbl.hhf", "cmpcode.hla", and
+	// "rwtokens.hhf" files.
+
+	f			:file;
+	jmpTbl		:file;
+	cmpCode		:file;
+	Token		:file;
+	
+	// TokenCnt- Used to hold the current token constant value.
+	
+	TokenCnt	:dword;
+
+	// SpreadTable- Maps legal ID/RW chars to six bits:
+
+	SpreadTable: byte[256] := SpreadTable_c;	// From "hash.hhf"
+
+
+	// myTrim-
+	//
+	//	Version of str.trim that works with the string types
+	// this code processes.  "Trims" all whitespace before
+	// and after the specified string.
+
+	procedure mytrim( s:string in eax ); @returns( "eax" );
+	begin mytrim;
+
+		push( ebx );
+		push( ecx );
+		mov( (type str.strRec [eax]).length, ebx );
+		forever
+
+			dec( ebx );
+			breakif((type int32 ebx) < 0 );
+			mov( [eax+ebx], ch );
+			breakif( ch not in { ' ', stdio.tab } );
+
+		endfor;
+		inc( ebx );
+		mov( ebx, (type str.strRec [eax]).length );
+		pop( ecx );
+		pop( ebx );
+
+	end mytrim;
+
+
+	// EmitCmp-
+	//
+	//	This procedure emits the code for a single comparison sequence to
+	// the "cmpcode.hla" output file.
+	//
+	//	Inputs-
+	//
+	//		id-
+	//			This is the string holding the reserved word.  All alphabetic
+	//			characters in this string must be lower case.  All non-alpha
+	//			characters must be numeric.
+	//
+	//		len-
+	//			Length of the identifier string.
+	//
+	//		subtype-
+	//			String specifying the subtoken value (without preceding
+	//			"tc_").
+	//
+	//		HashNumber-
+	//			Hash value for this entry.
+	//
+	//		LblNum-
+	//			Suffix for the label that precedes this code.  Usually zero,
+	//			though may be higher if this is the second or later string
+	//			of a "hash bucket" list (i.e., if collisions have occurred).
+	//
+	//		LastInList-
+	//			True if there are no collisions in this hash table entry
+	//			or this is the last entry in the hash bucket list.
+
+	procedure EmitCmp
+	( 
+		id			:string; 
+		len			:uns32; 
+		subtype		:string;
+		HashNumber	:uns32; 
+		LblNum		:uns32;
+		LastInList	:boolean
+	);
+		@nodisplay;
+
+	static
+		RWLenJmpTbl: dword; @nostorage;
+			dword	&len2, &len3, &len4, &len5, &len6, &len7;
+			dword	&len8, &len9, &len10, &len11, &len12;
+
+	begin EmitCmp;
+			 
+		push( eax );
+		push( ebx );
+
+
+		// Note: len is really the string length minus one.  Adjust for
+		// that here so that the labels we emit make sense.
+
+		inc( len );
+		cmpCode.put
+		( 
+			"Len", 
+			len,
+			"_Hash",
+			HashNumber,
+			'_',
+			LblNum,
+			":" nl
+		);
+
+
+		mov( len, eax );
+
+		mov( LblNum, ebx );
+		inc( ebx );
+		sub( 2, eax );
+		cmp( eax, 10 );
+		ja BadReservedWord;
+		jmp( RWLenJmpTbl[ eax*4] );
+
+			// Emit the compare sequences for strings of length two here:
+
+			len2:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( ax, rwstr( """, id, """, 0, 2 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+			// Emit the compare sequences for strings of length three here:
+
+			len3:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( ax, rwstr( """, id, """, 0, 2 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( bl, rwstr( """, id, """, 2, 1 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( bl, rwstr( """, id, """, 2, 1 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+			// Emit the compare sequences for strings of length four here:
+
+			len4:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+			// Emit the compare sequences for strings of length five here:
+
+			len5:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( bl, rwstr( """, id, """, 4, 1 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( bl, rwstr( """, id, """, 4, 1 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+			// Emit the compare sequences for strings of length six here:
+
+			len6:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( bx, rwstr( """, id, """, 4, 2 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( bx, rwstr( """, id, """, 4, 2 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+			// Emit the compare sequences for strings of length seven here:
+
+			len7:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( bx, rwstr( """, id, """, 4, 2 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( cl, rwstr( """, id, """, 6, 1 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( bx, rwstr( """, id, """, 4, 2 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( cl, rwstr( """, id, """, 6, 1 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+
+
+			// Emit the compare sequences for strings of length eight here:
+
+			len8:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+			// Emit the compare sequences for strings of length nine here:
+
+			len9:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( cl, rwstr( """, id, """, 8, 1 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( cl, rwstr( """, id, """, 8, 1 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+
+
+			// Emit the compare sequences for strings of length ten here:
+
+			len10:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( cx, rwstr( """, id, """, 8, 2 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( cx, rwstr( """, id, """, 8, 2 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+
+
+			// Emit the compare sequences for strings of length eleven here:
+
+			len11:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( cx, rwstr( """, id, """, 8, 2 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( dl, rwstr( """, id, """, 10, 1 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( cx, rwstr( """, id, """, 8, 2 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( dl, rwstr( """, id, """, 10, 1 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+
+
+			// Emit the compare sequences for strings of length twelve here:
+
+			len12:
+				cmpCode.put
+				(
+					stdio.tab,
+					"cmp( eax, rwstr( """, id, """, 0, 4 ));" nl,
+					stdio.tab
+				);
+				if( LastInList ) then
+
+					cmpCode.put
+					(
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl,
+
+						stdio.tab,
+						"cmp( ecx, rwstr( """, id, """, 8, 4 ));" nl,
+						stdio.tab,
+						"jne IsAnID;" nl
+					);
+					   
+				else
+
+					cmpCode.put
+					(
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( ebx, rwstr( """, id, """, 4, 4 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl,
+
+						stdio.tab,
+						"cmp( ecx, rwstr( """, id, """, 8, 4 ));" nl,
+						stdio.tab,
+						"jne Len",
+						len,
+						"_Hash",
+						HashNumber,
+						'_',
+						(type uns32 ebx),
+						";" nl
+					);
+
+				endif;
+				jmp SwitchDone;
+
+
+
+
+
+
+
+
+		BadReservedWord:
+
+			stdout.put
+			( 
+				"Bad reserved word.  Length exceeds 12 or is less than 2:'",
+				id,
+				"'" nl
+			);
+			jmp	ExitCmpCode;
+			
+		SwitchDone:
+			cmpCode.put
+			(
+				stdio.tab,
+				"mov( tkn_",
+				id,
+				", eax );" nl,
+				stdio.tab,
+				"mov( ",
+				subtype,
+				"_tc, ebx );" nl,
+				stdio.tab,
+				"jmp rwDone;"
+				nl
+				nl
+			);
+
+
+
+
+		ExitCmpCode:
+			pop( ebx );
+			pop( eax );
+
+	end EmitCmp;
+
+
+	// ExtractTypeLexeme-
+	//
+	//	This procedure takes the input string, which must be a line from
+	// the "rsvd.txt" file, and extracts the two words on that line (the
+	// first word is the subtoken ID, the second is the reserved word).
+	// This function then frees the storage associated with the original
+	// string and returns pointers to the newly allocated strings.
+	//
+	//	Input
+	//
+	//		s-
+	//			String read from the rsvd.txt file.  This string must contain
+	//			exactly two distinct words separated by whitespace.  Nothing
+	//			else but whitespace may appear on the line.  Note that the
+	//			rsvd.txt file may contain blank lines.  The calling code must
+	//			filter out blank lines and not call this function if the
+	//			input line is empty.
+	//
+	//	Returns
+	//
+	//		EAX-	
+	//			Pointer to newly allocated string holding the subtoken.
+	//
+	//		ECX-
+	//			Pointer to newly allocated string holding the reserved word.
+
+	procedure ExtractTypeLexeme( s:string ); @nodisplay;
+	var
+		tokens: dword[ 64 ];
+
+	begin ExtractTypeLexeme;
+
+		str.tokenize( s, tokens, 64 );
+		if( eax <> 2 ) then
+
+			stdout.put
+			( 
+				"Error processing input file: too many lexemes on line" nl 
+			);
+			mov( str.a_cpy( "???"), eax );
+			mov( str.a_cpy( "???"), ecx );
+			
+		else
+
+			mov( tokens[0], eax );
+			mov( tokens[4], ecx );
+			
+		endif;
+		strfree( s );
+
+	end ExtractTypeLexeme;
+
+begin makestrs;
+
+
+	f.create();
+	f.open( "rw\rsvd.txt", fileio.r );
+
+	Token.create();
+	Token.openNew( "rwtokens.hhf" );
+
+	Token.put
+	(
+		"// rwtokens.hhf-" nl
+		"//    This include file provides definitions for all the" nl
+		"//    token constants corresponding to HLA v2.x reserved words"  nl
+		"//" nl
+		"// Note: This file is generated by machine.  Do not modify this" nl
+		"//       file by hand.  If you want to add or change HLA reserved" nl
+		"//       words, please see the documentation for the ""rw""" nl
+		"//       program that accompanies the HLA v2.x source listings." nl
+		nl
+		"const" nl
+		nl	
+	);
+
+	// Quickly read all the input reserved words into the "s" array.
+	// While we're at it, generate the enum constants for the rwTokens.hhf file.
+
+	mov( 0, ebx );
+	mov( $100, TokenCnt );
+	while( !f.eof() ) do
+
+		f.a_gets();
+		mytrim( (type string eax ));
+
+		// If the input line is not blank, then assume it has exactly two
+		// words on the line.  Extract and save these items.
+
+		if( (type str.strRec [eax]).length <> 0 ) then
+
+			ExtractTypeLexeme( eax );
+			mov( eax, subs[ ebx*4 ] );	// Save subtokens here.
+			mov( ecx, s[ ebx*4 ] );		// Save reserved words here.
+			inc( ebx );
+
+			// Write the reserved word entry to the rwTokens.hhf file:
+
+			Token.put
+			( 
+				stdio.tab,  
+				"tkn_", 
+				(type string ecx):-13, 
+				":= $",
+				TokenCnt,
+				";" nl 
+			);
+			inc( TokenCnt );
+
+		endif;
+
+	endwhile;
+
+
+	// Finish up the rwTokens.hhf file:
+
+	Token.put
+	( 
+		stdio.tab, "tkn_endTknList   := $", TokenCnt, ";" nl
+	);
+	Token.close(); 
+	f.close();
+
+	// Initialize an array holding the number of strings for each RW length:
+
+	cld();
+	lea( edi, indexes );
+	mov( MaxLength, ecx );
+	mov( 0, eax );
+	rep.stosd();
+
+	// Okay, separate the strings by length and place them in the "rws" array.
+	// Each row of rws contains all the strings read from rsvd.txt of that
+	// particular length (i.e., the row index).
+
+	mov( 0, ecx );
+	for( mov( 0, ecx ); ecx < ebx; inc( ecx )) do
+
+		mov( s[ ecx*4 ], edx );
+		mov( (type str.strRec [edx]).length, eax );
+		assert( eax in 1..MaxLength );
+
+		// We'll assume that there are no zero length strings.  Although
+		// there are currently no reserved words of length one, such a
+		// reserved word could be added in the future, so allow for that
+		// here.
+		//
+		//	Use 0..11 as the index for lengths 1..12:
+
+		dec( eax );
+
+		// "indexes" is counting the number of strings with the length
+		// specified by the index into "indexes".  Bump the corresponding
+		// index up by one.
+
+		mov( indexes[ eax*4 ], esi );	// Save index for this word in ESI.
+		inc( indexes[ eax*4 ] );		// Bump up to the next ID.
+		intmul( rwsSize, eax );
+		add( eax, esi );
+		mov( edx, rws[ esi*4 ] );		// Save a pointer to the string.
+
+		mov( subs[ ecx*4 ], edx );		// Save a pointer to the subtype string.
+		mov( edx, subsrws[ esi*4 ] );
+
+	endfor;
+
+	// Compute the hash value for all strings in the table
+	// (number of different string lengths and strings of each length).
+	// EBX = Length of string we're currently processing.
+
+	for( mov( 0, ebx ); ebx<MaxLength; inc( ebx )) do
+
+		// Get the number of strings whose length is "EBX" and save in
+		// EDX for later use:
+
+		mov( indexes[ ebx*4 ], edx );
+		stdout.put( "Length: ", (type uns32 ebx), " count: ", (type uns32 edx), nl);
+		
+		// Okay, for each string of the current length that we are processing,
+		// compute and save the hash value for that string.
+		//
+		// ECX = Index into rws of the string we're currently processing.
+
+		for( mov( 0, ecx ); ecx < edx; inc( ecx )) do
+
+			intmul( rwsSize, ebx, esi );
+			add( ecx, esi );
+			push( ebx );
+			push( esi ); 	// Save index value for Hashes.
+			mov( rws[esi*4],esi );
+
+			// Compute and save the hash value for the current reserved word.
+
+			xor( ebx, ebx );
+			xor( eax, eax );
+			for( mov( 0, edi ); edi < (type str.strRec [esi]).length; inc( edi )) do
+
+				// The following label is for documentation purposes:
+
+				ComputeHashFunctionHere:
+
+				// Hash function (leaves eight-bit hash value in AL):
+
+				mov( [esi+edi], al );
+				rol( 3, bx );
+				xor( SpreadTable[eax], bl );
+
+			endfor;
+			xor( bh, bl );				// RW hash values are eight bits
+			pop( esi );					// Retrieve index into Hashes.
+			mov( bl, Hashes[ esi ] );	// Save Hash value for later.
+			pop( ebx );
+
+		endfor;
+
+	endfor;
+
+
+
+
+
+
+
+	// Okay, now generate the code to recognize all these reserved words.
+
+	jmpTbl.create();
+	jmpTbl.openNew( "JmpTbl.hla" );
+	cmpCode.create();
+	cmpCode.openNew( "CmpCode.hla" );
+
+	cmpCode.put
+	(
+		"// cmpCode.hla (include file to scan HLA v2.x reserved words)" nl
+		nl
+		"// Note: The following code is emitted by machine. " nl
+		"//       Do not modify this code by hand.  Instead, see the" nl
+		"//       documentation for the ""rw"" (reserved words) program" nl
+		"//       that accompanies the HLA v2.x source code to determine" nl
+		"//       how to add new reserved words to the HLA language." nl
+		nl
+	);
+
+	jmpTbl.put
+	(
+		"// jmpTbl.hla-" nl
+		"//     This include file contains the jump table for the" nl
+		"//     'switch' statement that compares strings against" nl
+		"//     HLA v2.x reserved words in the lexer/scanner." nl
+		"//     The entries in this table are indexed by the length" nl
+		"//     (one dimension) and the hash value for the string (the" nl
+		"//     second dimension)." nl
+		"//" nl
+		"// Note: This code is generated by machine.  Do not modify" nl
+		"//       by hand.  See the description of the ""rw"" program" nl
+		"//       supplied with the HLA v2.x source listings if you want" nl
+		"//       to modify the reserved words in the HLA language (which" nl
+		"//       is the only reason you'd want to modify these tables)." nl
+	); 
+
+
+
+
+	// The following loop processes all the strings of a specified length
+	// on each iteration.  It steps through the rws and Hashes arrays to
+	// emit the jump table and the cmp code sequence for these strings.
+	//
+	// EBX = Length of string (minus one) we're currently processing.
+	//
+	//
+	//	Begin by emitting the declaration for the table.  Note that
+	//	you must change the following if you add identifiers with more
+	//	than 12 characters to the reserved word list.
+
+	jmpTbl.put
+	(
+		nl
+		nl
+		"static(4)" nl
+		nl 
+		"rwJmpTbl: dword[ 13, 256 ]; @nostorage;" nl
+		"jmpTbl_len0: dword[ 256 ] := 256 dup [&idNotRW];" nl 
+	);
+
+	// Initialize the "Collisions" array to all zeros:
+
+	mov( 256, ecx );		
+	lea( edi, Collisions );	
+	xor( eax, eax );		
+	rep.stosd();
+
+
+	for( mov( 0, ebx ); ebx<MaxLength; inc( ebx )) do
+
+		// Initialize the "HasHash" array to all false:
+
+		mov( 256, ecx );		// Mark all the hash values as unused
+		lea( edi, HasHash );	//  so we can determine which hash table
+		xor( eax, eax );		//  entries to fill in later.
+		rep.stosb();
+
+		// Initialize the "CollisionCnt" array to all zeros:
+
+		lea( edi, CollisionCnt );
+		mov( 256, ecx );
+		rep.stosd();
+
+
+		// Ugly O(n**2) algorithm here.  But this program doesn't
+		// execute that often, so who cares?
+		//
+		// For each HASH value in the range 0..$FF emit a chain of
+		// cmp sequences that test all the strings that collide in
+		// the hash table.
+
+		mov( indexes[ ebx*4 ], MaxIndex );		
+		for( mov( 0, HashNumber ); HashNumber <= $FF; inc( HashNumber )) do
+
+
+			// Count the number of cmp sequences needed for strings with
+			// the current hash number.
+
+			mov( 0, strCnt );
+			for( mov( 0, ecx ); ecx < MaxIndex; inc( ecx )) do
+
+				// Compute index into Hashes table.
+
+				intmul( rwsSize, ebx, esi );
+				add( ecx, esi );
+				mov( Hashes[ esi ], al );	// Retrieve hash for this str.
+				if( al = (type byte HashNumber) ) then
+
+					inc( strCnt );
+
+				endif;
+
+			endfor;
+
+
+			// Okay, for each string of the current length whose hash value
+			// is equal to HashNumber, emit a cmp sequence:
+
+			if( strCnt <> 0 ) then
+
+				mov( 0, LblNum );
+				for( mov( 0, ecx ); ecx < MaxIndex; inc( ecx )) do
+
+					// Compute index into Hashes table.
+
+					intmul( rwsSize, ebx, esi );
+					add( ecx, esi );
+					movzx( Hashes[ esi ], eax );	// Retrieve hash for this str.
+					if( al = (type byte HashNumber) ) then
+
+						// Mark the current string as used:
+
+						mov( true, HasHash[ eax ] );
+
+						// Bump up the collision counter:
+
+						inc( CollisionCnt[ eax*4 ] );
+
+						// Retrieve the pointer to the current string:
+
+						mov( rws[ esi*4 ], edx );
+
+						// Retrieve the pointer to the subtype:
+
+						mov( subsrws[ esi*4 ], edi );
+
+						// Determine if this is the last string in the list:
+
+						dec( strCnt );
+						setz( al );
+						EmitCmp( edx, ebx, edi, HashNumber, LblNum, al );
+						inc( LblNum );
+
+						// If we've polished off all the strings with
+						// this hash value, no need to continue the loop.
+
+						breakif( strCnt = 0 );
+
+					endif;
+
+				endfor;
+				
+			endif;	
+
+		endfor;
+
+		// For statistical purposes, compute the number of
+		// buckets with "n" collisions:
+
+		for( mov( 0, ecx ); ecx < 256; inc( ecx )) do
+
+			mov( CollisionCnt[ ecx*4 ], eax );
+			assert( eax < 256 );
+			inc( Collisions[ eax*4 ] );
+
+		endfor;
+
+		// Emit the JmpTbl entries for the current string size.
+		// Note that there currently aren't any IDs of length zero (obviously)
+		// so we'll skip that table entirely.
+		//
+		//	Remember, EBX actually contains the length minus one at this point.
+
+		
+		lea( eax, [ebx+1] );
+		jmpTbl.put
+		( 
+			nl nl 
+			"jmpTbl_len", 
+			(type uns32 eax), 
+			": dword[256] := " nl
+			"[" nl
+		);
+		for( mov( 0, ecx ); ecx < 256; inc( ecx )) do
+
+			// Emit a newline for each four addresses we emit.
+			// This keeps lines to less than about 80 characters.
+
+			test( $3, cl );
+			if( @z ) then
+
+				jmpTbl.put( nl, stdio.tab );
+
+			endif;
+
+			// If this particular hash value has an entry, emit the
+			// address of the corresponding entry in the "switch" statement
+			// that we are generating.  Otherwise simply emit the address
+			// of the generic "It's not a reserved word" entry.
+
+			if( HasHash[ ecx ] = true ) then
+
+				inc( ebx );  // Adjust so EBX matches true string length.
+				jmpTbl.put
+				( 
+					"&Len", 
+					(type uns32 ebx), 
+					"_Hash", 
+					(type uns32 ecx), 
+					"_0" 
+				);
+				dec( ebx );
+
+			else
+
+				jmpTbl.put( "&idNotRW" );
+
+			endif;
+
+			// Output a comma for all but the last entry.
+
+			if( ecx <> 255 ) then
+
+				jmpTbl.put( ", " );
+
+			endif;
+
+		endfor;
+		jmpTbl.put( nl "];" nl );
+		
+	endfor;
+
+	// Print the number of times we've had 'n' or more collisions
+	// in a given bucket:
+
+	stdout.put( "# of unused entries: ", Collisions[0*4], nl );
+	stdout.put( "# of buckets with no collisions: ", Collisions[ 1*4 ], nl );
+	for( mov( 2, ecx ); ecx < 256; inc( ecx )) do
+
+		if( Collisions[ ecx*4 ] <> 0 ) then
+
+			stdout.put
+			(
+				"# of hash buckets with ",
+				(type uns32 ecx),
+				" collisions: ",
+				Collisions[ ecx*4 ],
+				nl
+			);
+
+		endif;
+
+	endfor;
+
+
+
+	jmpTbl.close();
+
+	cmpCode.put
+	(
+		nl
+		nl
+		"// End of HLA reserved word scanner include file."
+		nl
+	);
+	cmpCode.close();
+
+end makestrs;
+
+
+	
+		

@@ -1,0 +1,3776 @@
+// hlacompiler.hhf-
+//
+//	Include files for the HLA compiler.
+
+#includeonce( "excepts.hhf" )
+#includeonce( "os.hhf" )
+
+
+?Win32 := true;
+// Set the following to true to emit each procedure name as a string
+// immediately before the procedure's code (for debugging purposes).
+
+?emitProcNames := true;
+
+// Set ex.NDEBUG to true (NoDEBUG) in order to disable all assertions 
+// and canAccesses. Set it to false to enable all assertions
+// and canAccess tests.
+
+?ex.NDEBUG := false;
+
+#if( os.linux )
+
+	#includeonce( "linux.hhf" )
+
+#endif
+
+#includeonce( "hash.hhf" )
+
+
+
+// The following macro is used to check a memory address to see if
+// it can be accessed (byte at the specified address):
+
+const
+	canAccess	:text := 
+		"?ex.linenumber := @linenumber; "
+		"?ex.filename := @filename; "
+		"_canAccess";
+
+#macro _canAccess( _adrs_ ):_msg_;
+
+	#if( !ex.NDEBUG )
+	
+		readonly
+
+			_msg_:string := 
+					"(" + string( ex.filename )
+				+	", #" + string( ex.linenumber )
+				+	") Illegal Access: " 
+				+	@string:_adrs_;
+
+		endreadonly;
+
+		try
+
+			test( 0, (type byte _adrs_) );
+
+		  anyexception
+
+			mov( _msg_, ex.AssertionStr );
+			raise( ex.AssertionFailed );
+
+		endtry;
+
+	#endif
+
+#endmacro
+
+// Exception codes defined by HLA v2.0:
+
+namespace ex;
+const
+	hlaerr		:dword := 1024;
+	
+end ex;
+	
+const
+	attrEAX		:text := "(type attr_t [eax])";
+	attrEBX		:text := "(type attr_t [ebx])";
+	attrECX		:text := "(type attr_t [ecx])";
+	attrEDX		:text := "(type attr_t [edx])";
+	
+	symEAX		:text := "(type symNode_t [eax])";
+	symEBX		:text := "(type symNode_t [ebx])";
+	symECX		:text := "(type symNode_t [ecx])";
+	symEDX		:text := "(type symNode_t [edx])";
+
+	tokenEAX	:text := "(type token_t [eax])";
+	tokenEBX	:text := "(type token_t [ebx])";
+	tokenECX	:text := "(type token_t [ecx])";
+	tokenEDX	:text := "(type token_t [edx])";
+
+	staticEAX	:text := "(type staticExpr_t [eax])";
+	staticEBX	:text := "(type staticExpr_t [ebx])";
+	staticECX	:text := "(type staticExpr_t [ecx])";
+	staticEDX	:text := "(type staticExpr_t [edx])";
+
+	segEAX		:text := "(type segItem_t [eax])";
+	segEBX		:text := "(type segItem_t [ebx])";
+	segECX		:text := "(type segItem_t [ecx])";
+	segEDX		:text := "(type segItem_t [edx])";
+	segESI		:text := "(type segItem_t [esi])";
+
+	hashEAX		:text := "(type hashTable_t [eax])";
+	hashEBX		:text := "(type hashTable_t [ebx])";
+	hashECX		:text := "(type hashTable_t [ecx])";
+
+	valueEBX	:text := "(type attr_t [ebx])";
+
+	sectionEBX	:text := "(type IMAGE_SECTION_HEADER [ebx])";
+
+	relocEAX	:text := "(type IMAGE_RELOCATION [eax])";
+	relocEBX	:text := "(type IMAGE_RELOCATION [ebx])";
+	relocECX	:text := "(type IMAGE_RELOCATION [ecx])";
+	relocEDX	:text := "(type IMAGE_RELOCATION [edx])";
+
+	coffListEBX	:text := "(type CoffSymbolList [ebx])";
+
+	userSegEAX	:text := "(type userSegmentList_t [eax])";
+	userSegEBX	:text := "(type userSegmentList_t [ebx])";
+	userSegECX	:text := "(type userSegmentList_t [ecx])";
+	userSegEDX	:text := "(type userSegmentList_t [edx])";
+	userSegESI	:text := "(type userSegmentList_t [esi])";
+
+
+		   
+// HLAputError- similar to stdout.put macro, except this will
+// not display any text if the "reportErrors" global variable
+// contains false.
+
+#macro HLAputerror( _parameters_[] ):_parmStr_, _parmIndex_;
+
+	#if( @elements( _parameters_ ) >= 1 )
+	
+		// Build a parameter list for stdout.put:
+		
+		?_parmStr_ := _parameters_[0];
+		#for( _parmIndex_ := 1 to @elements( _parameters_ )-1 )
+		
+			?_parmStr_ += ", " + _parameters_[_parmIndex_];
+			
+		#endfor
+
+		// If we're quiet (not reporting errors), then skip the following code:
+
+		if( reportErrors ) then
+
+			stdout.put( @text( _parmStr_ ));
+		
+		endif;	// reportError
+	
+	#endif
+
+#endmacro;
+	
+
+const
+	HLAerror		:text :=
+						"hlaErrorPrefix( @filename, @linenumber ); HLAputerror";
+
+	HLAwarning		:text :=
+						"hlaWarnPrefix( @filename, @linenumber ); HLAputerror";
+
+	HLAerror2		:text := "HLAputerror";
+	
+	
+	// The following lex level constants should be far greater than
+	// any reasonable lex level to expect in a program.
+	//
+	//
+	// classLexLevel is the lex level value to use for classes:
+	
+	classLexLevel	:= -999;
+	
+	// recLexLevel is the lex level to use for records:
+	
+	recLexLevel		:= -67;
+	
+	// unionLexLevel is the lex level to use for unions:
+	
+	unionLexLevel	:= -127;
+
+	// safe_malloc should be changed to check for NULL return value:
+
+	safe_malloc		:text := "malloc";
+
+	// Maximum number of *nested* include files, macros, and pushback strings
+	// that we will allow:
+
+	MaxNestedIncludes	:uns32 := 16_384;
+
+	// MaxTknQ is the maximum number of entries in the token queue (used to
+	// hold inherited attributes created by the lexer):
+
+	maxTknQ 	:= 256;  // Warning: lex function assumes that this is 256!
+	
+	// maxCTstk is the maximum number of entries in the compile-time
+	// stack (to handle nested compile-time statements). Because recursive
+	// macros can create some problems (deeply nested invocations), this 
+	// stack should be fairly large.
+
+	maxCTstk	:= 256;	// Allow 256 nested compile-time statements.
+	
+	// maxMacroStk is the maximum number of nested macros we will allow.
+	// This value should be less than or equal to MaxNestedIncludes.
+	
+	maxMacroStk	:= MaxNestedIncludes;
+		
+	
+	// Hash table sizes:
+	//
+	//	nsHashSize - 	# of entries in a namespace hash table.
+	//	mpHashSize - 	# of entries in the main program's/unit's hash table
+	//	recHashSize- 	# of entries in a record/union hash table
+	//	clsHashSize-	# of entries in a class hash table
+	//	procHashSize-	# of entries in a procedure/iterator/method hash table
+	//
+	// These values should be a power of two, although the code below rounds
+	// them up if they are not.
+	
+val
+	nsHashSize	:dword := 65536;
+	mpHashSize	:dword := 4096;
+	recHashSize	:dword := 16;
+	clsHashSize	:dword := 256;
+	procHashSize:dword := 16;
+	
+	// Do not edit the following. They are computed via the above constants.
+	// They also round the above values to the next greater power of two.
+	
+	#macro cntBits( i ):n,bitCnt;
+	
+		?n := i;
+		?bitCnt := 0;
+		#while( n <> 0 )
+		
+			?bitCnt += (n & 1);
+			?n := n >> 1;
+			
+		#endwhile
+		bitCnt
+		
+	#endmacro	
+	
+	#macro roundUp2( m );
+		
+		#if( cntBits( m ) <> 1 )
+		
+			?m:dword := 1 << dword(@log( m*2 )/@log(2));
+			
+		#endif
+		
+	#endmacro
+	
+	// Make sure all the above constants are a power of two.
+	// (Note that values that are a power of two have exactly one set bit)
+	
+	roundUp2( nsHashSize );
+	roundUp2( mpHashSize );
+	roundUp2( recHashSize );
+	roundUp2( clsHashSize );
+	roundUp2( procHashSize );
+	
+	// Create the bit masks for these hash table sizes.
+	// As each size is a power of two, we can easily compute
+	// the mask by subtracting one from the size's value.
+	
+	nsHashMask 		:dword := nsHashSize - 1;
+	mpHashMask 		:dword := mpHashSize - 1;
+	recHashMask		:dword := recHashSize - 1;
+	clsHashMask		:dword := clsHashSize - 1;
+	procHashMask	:dword := procHashSize - 1;
+				 
+
+const
+
+#includeonce( "rwtokens.hhf" )
+#includeonce( "ctltokens.hhf" )
+#includeonce( "fTokens.hhf" )
+
+const
+	tkn_andOp			:= tkn_endFTknList;	// Continue where fTokens leaves off.
+	tkn_orOp			:= tkn_andOp + 1;
+	tkn_lessEqual		:= tkn_orOp + 1;
+	tkn_notEqual		:= tkn_lessEqual + 1;
+	tkn_logNot			:= tkn_notEqual + 1;
+	tkn_greaterEqual	:= tkn_logNot + 1;
+	tkn_divOp			:= tkn_greaterEqual + 1;
+	tkn_modOp			:= tkn_divOp + 1;
+	tkn_shlOp			:= tkn_modOp + 1;
+	tkn_shrOp			:= tkn_shlOp + 1;
+	tkn_aShrOp			:= tkn_shrOp + 1;
+	tkn_inOp			:= tkn_aShrOp + 1;
+
+	tkn_localID			:= tkn_inOp + 1;
+	tkn_globalID		:= tkn_localID + 1;
+	tkn_undefID			:= tkn_globalID + 1;
+
+	tkn_colonColon		:= tkn_undefID + 1;
+	tkn_dotDot			:= tkn_colonColon + 1;
+	tkn_assign			:= tkn_dotDot + 1;
+	tkn_subAssign		:= tkn_assign + 1;
+	tkn_addAssign		:= tkn_subAssign + 1;
+	tkn_poundBrace		:= tkn_addAssign + 1;
+	tkn_poundParen		:= tkn_poundBrace + 1;
+	tkn_poundPound		:= tkn_poundParen + 1;
+	tkn_poundColon		:= tkn_poundPound + 1;
+	tkn_bracePound		:= tkn_poundColon + 1;
+	tkn_parenPound		:= tkn_bracePound + 1;
+
+	tkn_numConst		:= tkn_parenPound + 1;
+	tkn_charConst		:= tkn_numConst + 1;
+	tkn_strConst		:= tkn_charConst + 1;
+	tkn_boolConst		:= tkn_strConst + 1;
+	tkn_realConst		:= tkn_boolConst + 1;
+		
+	tkn_EOF				:= tkn_realConst	+ 1;
+
+	// This must be one greater than the highest token value:
+
+	tkn_EndTknValues		:= tkn_EOF + 1;
+
+#macro isPrimTypeTkn( tkn );
+	( tkn>= tkn_boolean && tkn <= tkn_xcset && tkn <> tkn_enum)
+#endmacro
+
+
+
+// parseDeclarationType allowableTypes parameter values.
+// The allowableTypes is a bitmap specifying a powerset
+// of allowable items.
+
+const
+	AllowArrays		:dword := @{0};
+	AllowRecords	:dword := @{1};
+	AllowUnions		:dword := @{2};
+	AllowEnums		:dword := @{3};
+	AllowPointers	:dword := @{4};
+	AllowProcedures	:dword := @{5};
+
+// parseProcs procedure option types:
+
+	optCdecl		:dword := @{0};
+	optPascal		:dword := @{1};
+	optStdcall		:dword := @{2};
+	optUse			:dword := @{3};
+	optReturns		:dword := @{4};
+	optPreserves	:dword := @{5};
+	optLeave		:dword := @{6};
+	optEnter		:dword := @{7};
+	optDisplay		:dword := @{8};
+	optAlignStack	:dword := @{9};
+	optFrame		:dword := @{10};
+
+	optStrs			:string[] :=
+		[
+			"@cdecl",
+			"@pascal",
+			"@stdcall",
+			"@use",
+			"@returns",
+			"@preserves",
+			"@leave/@noleave",
+			"@enter/@noenter",
+			"@display/@nodisplay",
+			"@alignstack/@noalignstack",
+			"@frame/@noframe"
+		];
+
+	numProcOpts := @elements( optStrs );
+
+
+
+
+type
+	// Code emission types:
+
+	outputCodeType_t:
+		enum
+		{
+			COFF_output,
+			ELF_output,
+			MASM_output,
+			GAS_output,
+			HLA_output,
+			LST_output
+		};
+	pChar:	pointer to char;
+
+	// Pointer to a symbol table entry:
+
+	symNodePtr_t:	pointer to symNode_t;
+
+	// Pointer to an attribute type:
+
+	attrPtr_t:		pointer to attr_t;
+
+	// Pointer to a static expression object:
+
+	staticExprPtr_t	:pointer to staticExpr_t;
+
+
+	// Include file stuff data structures.
+
+	fileInfo_t:
+		record
+			
+			shortFileName	:string;
+			fullFileName	:string;
+			baseFileName	:string;
+			fileMapHandle	:dword;
+			BOF				:pChar;
+			EOF				:pChar;
+
+		endrecord;
+
+	fileList_t:
+		record inherits( fileInfo_t )
+
+			next			:pointer to fileList_t;
+
+		endrecord;
+
+
+	fileInfoPtr_t	:pointer to fileInfo_t;
+	fileListPtr_t	:pointer to fileList_t;
+
+	// Items pushed on the include stack:
+
+	incRecType_t	:enum
+					{ 
+						irt_include, 
+						irt_text, 			   
+						irt_macro,			// These declarations must 
+						irt_keyword, 		// appear in this order.
+						irt_terminator 
+					};
+
+	includeInfo_t:
+		record inherits( fileInfo_t )
+
+			// Line number in file containing #include, text expansion,
+			// or macro invocation:
+
+			lineNumber		:uns32;
+			   
+			// Text pointer just beyond the #include, text symbol, or
+			// macro symbol:
+			cursor			:pChar;
+
+			// copy of the compile-time language stack pointer so
+			// we can do checks upon returning from an expansion.
+			ctSP			:int32;
+
+			// If this is a macro, then macroSyms points at the
+			// start of the locals symbols (linear list) for the
+			// macro being expanded.
+			 
+			macroSyms	:symNodePtr_t;
+			
+			// If this is a macro, and it is a context-free macro
+			// (containing optional keyword sections and a terminator
+			// section), then keyTerms points into the locals (linear)
+			// list where the first keyword macro appears (or where the
+			// terminator macro appears, if there are no keyword macros).
+			// This pointer contains NULL if the macro isn't a context-
+			// free macro.
+			
+			keyTerms	:symNodePtr_t;
+
+			// incRecType tells us if this is an include file,
+			// a text expansion, or some type of macro expansion.
+
+			incRecType	:incRecType_t;
+
+			// active is meaningful if this is a #macro expansion.
+			// It tells us whether this particular macro is still
+			// expanding (or is sitting around waiting for a #keyword
+			// or #terminator).
+
+			active	:boolean;
+
+			align( 4 );
+
+		endrecord;
+
+	// Constants that specify the type of token the lexer is
+	// returning:
+
+	tokenClass_t:
+		enum
+		{
+			EOF_tc,		//0
+			ID_tc,		//1
+			instr_tc,	//2
+			rw_tc,		//3
+			func_tc,	//4
+			stmt_tc,	//5
+			ctStmt_tc,	//6
+			type_tc,	//7
+			notOp_tc,	//8		Operator token class must appear
+			mulOp_tc,	//9		 in this order
+			addOp_tc,	//10
+			relOp_tc,	//11
+			andOp_tc,	//12
+			orOp_tc,	//13
+			punct_tc,	//14
+			const_tc,	//15
+			regmmx_tc,	//16
+			regsse_tc,	//17
+			regfpu_tc,	//18
+			regseg_tc,	//19
+			regdbg_tc,	//20
+			regctrl_tc,	//21
+
+			// Note: reg8_tc, reg16_tc, and reg32_tc must be last
+			// in this list (to make checking for an integer register
+			// easier).
+
+			reg8_tc,	//22
+			reg16_tc,	//23
+			reg32_tc,	//24
+			reg64_tc	//25
+		};
+
+
+
+	// callSeq_t-
+	//
+	//	This defines the various calling sequences and parameter passing
+	// orders.
+
+	callSeq_t:
+		enum
+		{
+			pascal_cs,		//0
+			stdcall_cs,		//1
+			cdecl_cs		//2
+		};
+
+
+
+
+	// Symbol table related type declarations.
+	//
+	//	pType_t: Primitive type information found
+	// in the symbol table and used for variant
+	// type info.
+	//
+	//	Note: the numeric values for this enumerated
+	// type were chosen such that smaller values can
+	// be promoted to larger values within the same
+	// group and across selected groups (e.g., Byte_pt
+	// promotes all the way through Int128_pt).
+
+	pType_t : 
+		enum
+		{ 
+
+			Byte_pt,			//0
+			Word_pt,			//1
+			DWord_pt,			//2
+			QWord_pt,			//3
+			TByte_pt,			//4
+			LWord_pt,			//5
+
+			Uns8_pt,			//6
+			Uns16_pt,			//7
+			Uns32_pt,			//8
+			Uns64_pt,			//9
+			Uns128_pt,			//10
+
+			Int8_pt,			//11
+			Int16_pt,			//12
+			Int32_pt,			//13
+			Int64_pt,			//14
+			Int128_pt,			//15
+						
+			Real32_pt,			//16
+			Real64_pt, 			//17
+			Real80_pt,			//18
+			Real128_pt,			//19
+			 
+			Boolean_pt,			//20 
+			Enum_pt,			//21
+
+			Char_pt, 			//22
+			XChar_pt,			//23
+			Unicode_pt,			//24
+
+			Utf8_pt,			//25
+			String_pt,			//26
+			UString_pt,			//27
+			
+			Cset_pt,			//28
+			XCset_pt,			//29   Last scalar value for a primitive type!
+
+			Thunk_pt,			//30
+
+			Deferred_pt,		//31   Used to tell HLA to use symType as type.
+
+
+			Array_pt,			//32   These are the composite types and they
+			Record_pt,			//33   only appear in Type declarations.
+			Union_pt,			//34
+			Class_pt,			//35
+			Pointer_pt,			//36
+			Farptr_pt,			//37
+			Procptr_pt,			//38
+
+			AnonRec_pt,			//39	These mark the beginning and end
+			EndAnonRec_pt,		//40	of anonymous records and unions
+			AnonUnion_pt,		//41	in other records/unions.
+			EndAnonUnion_pt,	//42
+
+			Namespace_pt,		//43
+			Symboltbl_pt,		//44
+			Segment_pt,			//45
+			
+			Label_pt,			//46
+			Proc_pt,			//47
+			Method_pt,			//48
+			ClassProc_pt,		//49
+			ClassIter_pt,		//50
+			Iterator_pt,		//51
+			Program_pt,			//52
+			
+			Macro_pt,			//53
+			Text_pt,			//54
+			Variant_pt,			//55
+			Placeholder_pt,		//56
+			Undefined_pt,		//57	Temporary type for fwd/undefined syms.
+			Error_pt			//58	Used to denote a cascading error.
+		};
+		
+const
+	firstpType	:= Byte_pt;
+	lastpScalar	:= XCset_pt;
+	lastpType	:= Error_pt;
+	numpTypes	:= uns32( Error_pt ) + 1;
+	
+static
+	typeChkMap	:pType_t [ numpTypes, numpTypes ];	@external;
+
+		
+	// Some macros that make it easy to test for certain
+	// pType ranges:
+	
+	#macro isUns( reg );
+		(reg >= Uns8_pt && reg <= Uns128_pt)
+	#endmacro
+
+	#macro isUnsHex( reg );
+		(reg >= Byte_pt && reg <= Uns128_pt)
+	#endmacro
+
+	#macro isHex( reg );
+		(reg >= Byte_pt && reg <= LWord_pt)
+	#endmacro
+
+	#macro isInt( reg );
+		(reg >= Int8_pt && reg <= Int128_pt)
+	#endmacro
+
+	#macro isNumber( reg );
+		(reg >= Byte_pt && reg <= Int128_pt)
+	#endmacro
+
+
+	#macro isSmallNum( reg );
+		(
+				(reg>=Byte_pt && reg<=DWord_pt)
+			||	(reg>=Uns8_pt && reg<=Uns32_pt)
+			||	(reg>=Int8_pt && reg<=Int32_pt)
+		)
+
+	#endmacro
+
+	#macro isReal( reg );
+		(reg >= Real32_pt && reg <= Real80_pt)
+	#endmacro
+
+	#macro isChar( reg );
+		(reg = Char_pt || reg = XChar_pt)
+	#endmacro
+
+	#macro isPrimitive( reg );
+		( reg >= firstpType && reg <= lastpScalar )
+	#endmacro
+
+	#macro isProcedure( reg );
+		(
+				reg = Procptr_pt
+			||	reg in Proc_pt..Iterator_pt
+		)
+	#endmacro
+
+
+
+	// Here are the identifier class types.
+	// Classification differentiates symbols on the basis of whether
+	// they are constants, values, types, vars, parameters, static objects,
+	// etc.
+
+type
+	classType_t:
+		enum 
+		{ 
+			None_ct,		//0
+			Constant_ct,	//1
+			Value_ct, 		//2
+			Type_ct, 		//3
+			Var_ct,			//4
+			Parm_ct,		//5
+			Static_ct,		//6
+			Label_ct,		//7
+			Proc_ct,		//8
+			Iterator_ct,	//9
+			ClassProc_ct,	//10
+			ClassIter_ct,	//11
+			Method_ct,		//12
+			Macro_ct,		//13
+			Keyword_ct,		//14
+			Terminator_ct,	//15
+			Program_ct, 	//16
+			Namespace_ct,	//17
+			Symboltbl_ct,	//18
+			Segment_ct,		//19
+			Register_ct,	//20
+			Memory_ct,		//21 - Used only for expr attributes.
+			Placeholder_ct	//22 - Used for proc, namespace, etc., placeholders.
+		};
+
+
+	#macro isConstant( _classType_ );
+		( _classType_ >= Constant_ct && _classType_ <= Value_ct )
+	#endmacro
+
+	#macro isVariable( _classType_ );
+		( _classType_ >= Var_ct && _classType_ <= Static_ct )
+	#endmacro
+	
+	#macro isStatic( _classType_ );
+		( _classType_ >= Static_ct && _classType_ <= Method_ct )
+	#endmacro
+	
+	#macro isproc( _classType_ );
+		( _classType_ >= Proc_ct && _classType_ <= Method_ct )
+	#endmacro
+
+	
+
+	// parmClass_t-
+	//
+	//	This type specifies the parameter passing mechanism:
+
+	parmClass_t:
+		enum
+		 {
+			notp_pc,		//0		(not a parameter)
+			valp_pc,		//1		(pass by value)
+			refp_pc,		//2		(pass by reference)
+			untyped_pc,		//3		(untyped pass by reference)
+			vrp_pc,			//4		(pass by value/result)
+			result_pc,		//5		(pass by result)
+			name_pc,		//6		(pass by name)
+			lazy_pc			//7		(pass by lazy evaluation)			
+		};
+
+	// register_t
+	//
+	//	Specifies whether a parameter is passed in a register
+	// and, if so, what register.  This data type is also used
+	// throughout the assembler to represent register values.
+	
+	register_t:
+		enum
+		{
+			_none,			//0		(not a register)
+			_AL,			//1
+			_AH,			//2
+			_BL,			//3
+			_BH,			//4
+			_CL,			//5
+			_CH,			//6
+			_DL,			//7
+			_DH,			//8
+			_DIB,			//9
+			_SIB,			//10
+			_BPB,			//11
+			_SPB,			//12
+			_R8B,			//13
+			_R9B,			//14
+			_R10B,			//15
+			_R11B,			//16
+			_R12B,			//17
+			_R13B,			//18
+			_R14B,			//19
+			_R15B,			//20
+
+			_AX,			//21
+			_BX,			//22
+			_CX,			//23
+			_DX,			//24
+			_DI,			//25
+			_SI,			//26
+			_BP,			//27
+			_SP,			//28
+			_R8W,			//29
+			_R9W,			//30
+			_R10W,			//31
+			_R11W,			//32
+			_R12W,			//33
+			_R13W,			//34
+			_R14W,			//35
+			_R15W,			//36
+
+			_EAX,			//37
+			_EBX,			//38
+			_ECX,			//39
+			_EDX,			//40
+			_EDI,			//41
+			_ESI,			//42
+			_EBP,			//43
+			_ESP,			//44
+			_R8D,			//45
+			_R9D,			//46
+			_R10D,			//47
+			_R11D,			//48
+			_R12D,			//49
+			_R13D,			//50
+			_R14D,			//51
+			_R15D,			//52
+
+			_RAX,			//53
+			_RBX,			//54
+			_RCX,			//55
+			_RDX,			//56
+			_RDI,			//57
+			_RSI,			//58
+			_RBP,			//59
+			_RSP,			//60
+			_R8,			//61
+			_R9,			//62
+			_R10,			//63
+			_R11,			//64
+			_R12,			//65
+			_R13,			//66
+			_R14,			//67
+			_R15,			//68
+			_ST0,			//69
+			_ST1,			//70
+			_ST2,			//71
+			_ST3,			//72
+			_ST4,			//73
+			_ST5,			//74
+			_ST6,			//75
+			_ST7,			//76
+
+			_MM0,			//77
+			_MM1,			//78
+			_MM2,			//79
+			_MM3,			//80
+			_MM4,			//81
+			_MM5,			//82
+			_MM6,			//83
+			_MM7,			//84
+
+			_XMM0,			//85
+			_XMM1,			//86
+			_XMM2,			//87
+			_XMM3,			//88
+			_XMM4,			//89
+			_XMM5,			//90
+			_XMM6,			//91
+			_XMM7,			//92
+			_XMM8,			//93
+			_XMM9,			//94
+			_XMM10,			//95
+			_XMM11,			//96
+			_XMM12,			//97
+			_XMM13,			//98
+			_XMM14,			//99
+			_XMM15,			//100
+
+			_DR0,			//101
+			_DR1,			//102
+			_DR2,			//103
+			_DR3,			//104
+			_DR4,			//105
+			_DR5,			//106
+			_DR6,			//107
+			_DR7,			//108
+			_DR8,			//109
+			_DR9,			//110
+			_DR10,			//111
+			_DR11,			//112
+			_DR12,			//113
+			_DR13,			//114
+			_DR14,			//115
+			_DR15,			//116
+
+			_CR0,			//117
+			_CR1,			//118
+			_CR2,			//119
+			_CR3,			//120
+			_CR4,			//121
+			_CR5,			//122
+			_CR6,			//123
+			_CR7,			//124
+			_CR8,			//125
+			_CR9,			//126
+			_CR10,			//127
+			_CR11,			//128
+			_CR12,			//129
+			_CR13,			//130
+			_CR14,			//131
+			_CR15,			//132
+
+			_CSEG,			//133
+			_DSEG,			//134
+			_ESEG,			//135
+			_FSEG,			//136
+			_GSEG,			//137
+			_SSEG,			//138
+			_RIP			//139
+		};
+		
+	#macro _isReg8(reg);
+		((reg >= _AL) && (reg <= _DH))
+	#endmacro
+						
+	#macro _extIsReg8(reg);
+		((reg >= _AL) && (reg <= _R15B))
+	#endmacro					
+							
+	#macro _isReg16(reg);
+		((reg >= _AX) && (reg <= _SP))
+	#endmacro
+						
+	#macro _extIsReg16(reg);
+		((reg >= _AX) && (reg <= _R15W))
+	#endmacro					
+							
+	#macro _isReg32(reg);
+		((reg >= _EAX) && (reg <= _ESP))
+	#endmacro
+						
+	#macro _extIsReg32(reg);
+		((reg >= _EAX) && (reg <= _R15D))
+	#endmacro					
+						
+	#macro _extIsReg64(reg);
+		((reg >= _RAX) && (reg <= _R15D))
+	#endmacro					
+						
+	#macro _extIsRegAdrs(reg);
+		(((reg >= _RAX) && (reg <= _ESP)) || (reg = _RIP))
+	#endmacro					
+							
+	#macro _isRegFPU(reg);
+		((reg >= _ST0) && (reg <= _ST7))
+	#endmacro
+							
+	#macro _isRegMMX(reg);
+		((reg >= _MM0) && (reg <= _MM7))
+	#endmacro
+							
+	#macro _isRegXMM(reg);
+		((reg >= _XMM0) && (reg <= _XMM7))
+	#endmacro
+							
+	#macro _extIsRegXMM(reg);
+		((reg >= _XMM0) && (reg <= _XMM15))
+	#endmacro
+							
+	#macro _isRegDBG(reg);
+		((reg >= _DR0) && (reg <= _DR7))
+	#endmacro
+							
+	#macro _extIsRegDBG(reg);
+		((reg >= _DR0) && (reg <= _DR15))
+	#endmacro
+							
+	#macro _isRegCR(reg);
+		((reg >= _CR0) && (reg <= _CR7))
+	#endmacro
+							
+	#macro _extIsRegCR(reg);
+		((reg >= _CR0) && (reg <= _CR15))
+	#endmacro
+							
+	#macro _isRegSEG(reg);
+		((reg >= _CSEG) && (reg <= _SSEG))
+	#endmacro
+
+	#macro _isExtReg(reg);
+		(
+				((reg >= _DIB) && (reg <= _R15B))
+			||	((reg >= _R8W) && (reg <= _R15W))
+			||	((reg >= _R8D) && (reg <= _R15D))
+			||	((reg >= _RAX) && (reg <= _R15))
+			||	((reg >= _XMM8) && (reg <= _XMM15))
+			||	((reg >= _DR8) && (reg <= _DR15))
+			||	((reg >= _CR8) && (reg <= _CR15))
+			||	(reg >= _RIP)
+		)
+	#endmacro
+						
+	// preserveReg_t- This is a bitmap type that specifies which
+	// registers a procedure promises to preserve.  The following
+	// constants are the bits associated with this bitmap.
+	
+	preserveReg_t	:dword;
+	
+const
+			preserveNone :=0;
+			preserveAL	:= @{0};
+			preserveAH	:= @{1};
+			preserveBL	:= @{2};
+			preserveBH	:= @{3};
+			preserveCL	:= @{4};
+			preserveCH	:= @{5};
+			preserveDL	:= @{6};
+			preserveDH	:= @{7};
+			preserveAX	:= @{8};
+			preserveBX	:= @{9};
+			preserveCX	:= @{10};
+			preserveDX	:= @{11};
+			preserveDI	:= @{12};
+			preserveSI	:= @{13};
+			preserveBP	:= @{14};
+			preserveSP	:= @{15};
+			preserveEAX	:= @{16};
+			preserveEBX	:= @{17};
+			preserveECX	:= @{18};
+			preserveEDX	:= @{19};
+			preserveEDI	:= @{20};
+			preserveESI	:= @{21};
+			preserveEBP	:= @{22};
+			preserveESP	:= @{23};
+	
+type
+
+
+	// staticExpr_t
+	//
+	//	This record describes an item in a static (constant) expression
+	// object. This is used to handle forward references for static
+	// expressions of the form "&ID1[expr1] {-&ID2[expr2]}"
+	//
+	// This is used to create a linked list of (possibly forward-referenced)
+	// symbols so we can check for unresolved forward references at the end
+	// of each declaration scope.
+	//
+	//	Next-
+	//		Points at the next item in a forward reference list. Unused
+	//		if this particular record is not part of a fwd ref list.
+	//
+	//	Prev-
+	//		Points at the previous item in a forward reference doubly-linked
+	//		list. Unused if this particular record is not on a fwd ref list.
+	//
+	//	trueName-
+	//		A string with the symbol's name. May be the empty string for
+	//		certain pointer constants that don't have a symbol associated
+	//		with them (e.g., "@pointer( 0 )" );
+	//
+	//	lcName-
+	//		A string with the symbol's name, all lower case. Same issues
+	//		as for trueName.
+	//
+	//	hashValue-
+	//		Needed for when we look up the symbol when leaving a declaration
+	//		scope. This is the hash function value for the current symbol.
+	//
+	//	lineNumber-
+	//		The line number of the statment that referenced this symbol
+	//		so we can report the source of the reference if it turns out
+	//		to be an undefined forward reference.
+	//
+	//	symbol-
+	//		Pointer to the symbol table record for this symbol. NULL if the
+	//		symbol is currently undefined.
+	//
+	//	seg-
+	//		Pointer to the symbol table record for the segment to which this
+	//		symbol belongs. The value of this field is undefined if the
+	//		current symbol is not defined (i.e., 'symbol' contains NULL).
+	//
+	//	lexLevel-
+	//		Lexical level at which this symbol was *used*. HLA uses this
+	//		field when resolving undefined symbols to determine if there
+	//		is an error when leaving a definition scope.
+
+	staticExpr_t:
+		record
+
+			next		:staticExprPtr_t;
+			prev		:staticExprPtr_t;
+			trueName	:string;
+			lcName		:string;
+			hashValue	:dword;
+			lineNumber	:uns32;
+			symbol		:symNodePtr_t;
+			seg			:symNodePtr_t;
+			lexLevel	:int32;
+
+		endrecord;
+
+
+	// adrsMode_t-
+	//	Enumerated constant the specifies the generic addressing mode to use.
+	// Most of these values are generic to instruction operands. The proc_c,
+	// pgm_c, endp_c, optFlags_c, label_c, and alignment_c values are used to
+	// denote special intermediate code records; see the instrOperand_t type
+	// (in codegen.hhf) for details.
+
+	adrsMode_t:
+		enum
+		{
+			implied_c,			// implied_c must be item #0!
+			immediate_c,		// Constant-only (immediate) addressing mode
+			memoryMode_c,		// Memory variable addressing mode
+			register_c,			// Integer register (8, 16, 32, or 64 bits)
+			regfpu_c,			// FPU register
+			regmmx_c,			// MMX register
+			regsse_c,			// XMM register (including XMM8..XMM15)
+			regseg_c,			// Segment registers
+			regdr_c,			// DBG register (including DR8..DR15)
+			regcr_c,			// CTL register (including CR8..CR15)
+			label_c,			// Statement label
+			proc_c,				// Procedure/iterator/method label
+			pgm_c,				// Program label
+			endp_c,				// End of procedure/iterator/method/program
+			optFlags_c,			// Used to denote optimization flags 
+			alignment_c			// Alignment records in intermediate code
+		};
+
+
+	// memAdrsMode_t-
+	//		Enumerated constant that specifies the basic addressing
+	//		mode for a memory operand.
+	//
+	//		constOnly_c		(0)	if displacement-only expression,
+	//		base32_c		(1)	if [reg32 {+displacement}]
+	//		index32_c		(2)	if [reg32*scale {+displacement}]
+	//		baseindex32_c 	(3)	if [reg32+reg32*scale {+displacement}]
+	//
+	//		base64_c		(4)	if [reg64 {+displacement}]
+	//		index64_c		(5)	if [reg64*scale {+displacement}]
+	//		baseindex64_c	(6)	if [reg64+reg64*scale {+displacement}]
+
+
+	memAdrsMode_t:
+		enum
+		{
+			constOnly_c,
+
+			base32_c,
+			index32_c,
+			baseindex32_c,
+
+			base64_c,
+			index64_c,
+			baseindex64_c
+		};
+
+	// immOperand_t-
+	//
+	//	Data type used to represent an immediate operand for an instruction.
+	immOperand_t:
+		record
+
+			// An immediate value can take one of two forms:
+			//
+			//	1.  constant
+			//	2.  &basePtrConst - &minusThisAdrs + constant
+			//
+			// In the second form, the two symbols must both
+			// be defined and in the same segment.
+			//
+			// Case (1) is used if basePtrConst contains NULL
+			// (minusThisAdrs will also contain NULL).
+			//
+			// Case (2) is used if basePtrConst is not NULL
+			// (in which case minusThisAdrs will also be non-NULL)
+			dispBaseAdrs 	:staticExprPtr_t;
+			dispMinusAdrs	:staticExprPtr_t;
+			union
+				constant	:dword;
+				constant64	:qword;
+			endunion;
+		endrecord;
+
+	// memOperand_t-
+	//
+	//	Data type used to represent a memory address for an instruction
+	// operand.
+
+	memOperand_t:
+		record inherits( immOperand_t );
+
+			// Static base address in memory:
+
+			staticSym			:symNodePtr_t;
+
+			// Other addressing mode info
+
+			baseReg				:register_t;
+			indexReg			:register_t;
+			segReg				:register_t;
+			scale				:uns8;
+			align(4);
+
+		endrecord;
+
+	// value_t
+	//
+	//	This data type defines the data type that constants
+	// can take in an HLA source file.
+
+	value_t:
+		record // This is a record so we can inherit it.
+
+			union
+
+				byte_vt		:byte;
+				word_vt		:word;
+				dword_vt	:dword;
+				qword_vt	:qword;
+				tbyte_vt	:tbyte;
+				lword_vt	:lword;
+
+				int8_vt		:int8;
+				int16_vt	:int16;
+				int32_vt	:int32;
+				int64_vt	:qword;
+				int128_vt	:int128;
+				
+				uns8_vt		:uns8;
+				uns16_vt	:uns16;
+				uns32_vt	:uns32;
+				uns64_vt	:qword;
+				uns128_vt	:uns128;
+				
+				real32_vt	:real32;
+				real64_vt	:real64;
+				real80_vt	:real80;
+				real128_vt	:real128;
+				
+				boolean_vt	:boolean;
+				char_vt		:char;
+				xchar_vt	:byte;
+				unicode_vt	:word;
+				cset_vt		:cset;
+				xcset_vt	:cset[2];
+
+				arrayValues_vt	:attrPtr_t;
+
+				// Strings need some extra information.
+				// During compilation, the string_vt/ustring_vt fields
+				// point at the HLA-compatible string representing the
+				// string's data. When we build the object output,
+				// however, we will need a dummy symbol table entry that
+				// we can refer to symbolically (using an auto-generated
+				// name).  The stringData_vt and ustringData_vt fields
+				// serve this purpose.
+
+				record
+
+					string_vt		:string;
+					stringData_vt	:symNodePtr_t;
+
+				endrecord;
+
+				record
+					ustring_vt		:string;
+					ustringData_vt	:symNodePtr_t;
+
+				endrecord;
+
+				// For records, fieldValues_vt points at the list
+				// of field values. For unions, this pointer points
+				// at a single field value and curField_vt specifies
+				// which field is the current field in the union.
+				
+				record
+
+					fieldValues_vt	:attrPtr_t;
+					curField_vt		:symNodePtr_t;
+
+				endrecord;
+
+				// Pointer constants use the following fields to fully denote
+				// the constant.										  
+				//
+				//	Note: legal pointer constants take the following form:
+				//
+				//	&basePtrConst{[expr1]} { - &minusThisAdrs{[expr2]}}
+				//
+				//	(the braces surround optional items.)
+				//
+				// E.g.,
+				//
+				//	&basePtrConst[4] - &minusThisAdrs[2]
+				//
+
+				p	:immOperand_t;
+
+				// Memory references use the following fields:
+
+				m	:memOperand_t;
+							   
+			endunion;
+			align(4);
+
+		endrecord;
+
+
+	// attr_t: token attribute type.  Whenever the
+	// expression parser returns a value, the type and
+	// value information for that value has this type.
+
+	attr_t:
+		record inherits( value_t );
+
+			union
+
+				numElements	:uns32;
+				numFields	:uns32;
+				
+			endunion;
+
+
+			// SymType, pType, and symClass-
+			//
+			//	These fields maintain the type of the attribute value.
+
+
+			union
+			
+				symType		:symNodePtr_t;
+				
+				// The anon union record uses the following field to
+				// point at the "field" symbol table entry for the
+				// current field of the anon union.
+				
+				itsField	:symNodePtr_t;
+			
+			endunion;
+			
+			pType			:pType_t;
+			symClass		:classType_t;
+			// Note: the compiler assumes that @size( attr_t ) is
+			// evenly divisible by four.
+			
+			align(4);
+
+		endrecord;
+
+	
+	// The following type is used to store token attributes by the lexer:
+
+	tokenPtr_t	:pointer to token_t;
+	token_t:
+		record
+			
+			tknValue	:dword;
+			tknClass	:dword;
+			lexemeStart	:dword;
+			endLexeme	:dword;
+
+			// The following fields are only used as lexer attributes
+			// for identifiers that the lexer returns to the parser.
+			//
+			//	trueName-
+			//		Pointer to string with original ID.
+			//
+			//	lcName-
+			//		Pointer to string with lower case version of name.
+			//
+			//	symNode-
+			// 		Pointer to symbol table entry for this identifier.
+			//		NULL if the ID is undefined.
+			//
+			// attr-
+			//		Value associated with this token 
+			//		(if there is a constant value)
+			//
+			// Note: attr's usage is mutually exclusive with the symbol
+			// entries.  The selection is made by isID.
+			//
+			//	alloc-
+			//		True if storage for lcName and trueName has been
+			//		allocated on the heap just for this record.
+			//		False if trueName and lcName pointer values come
+			//		from a symbol table node.
+			//
+			//	isID-
+			//		If true, specifies that the trueName, lcName, and
+			//		symNode fields are active.  If false, then
+			//		the attr field is active.
+
+			alloc		:boolean;
+			isID		:boolean;
+			hasAttr		:boolean;
+			align( 4 );
+
+			union
+
+				// The following record is used if "isID" is true
+				// (meaning that the token is an identifier rather than
+				// a constant expression).
+				//
+				//	trueName/lcName - String representation of identifier
+				//
+				//	symNode		- Pointer to symbol table entry for identifier
+				//
+				//	hashValue	- lexer hash function result for identifier
+				//
+				//	undefSym	- For undefined symbols (symNode=NULL), this
+				//					field will contain a non-NULL value if
+				//					there is an entry in the "undefined
+				//					symbols" symbol table (used to track
+				//					forward references).
+				//
+				//	linkPtr		- Points at the "link" field where someone
+				//					can store the address of a symNode_t
+				//					object to link it into the undefSym list.
+				//					Valid only if symNode is NULL.
+
+				record
+
+					trueName	:string;
+					lcName		:string;
+					symNode		:symNodePtr_t;
+					hashValue	:dword;
+					undefSym	:symNodePtr_t;
+					linkPtr		:symNodePtr_t;
+
+				endrecord;
+
+				attr		:attr_t;
+
+			endunion;
+
+			align( 4 );
+			
+		endrecord;
+
+
+	//////////////////////////////////////////////////////////////////////////
+	//
+	// Segitem - Specifies a "segment record" which is a data structure
+	//			 associated with the STATIC, STORAGE, READONLY, and SEGMENT
+	//			 sections. This defines a list of items to emit to these
+	//			 segments in the object file.
+	
+	segItemEnum_t	:enum
+					{ 
+						firstEntry_c,	// Emitted for STORAGE, STATIC, etc. 
+						alignRecord_c,	// Emitted for ALIGN directive. 
+						symbolRecord_c,	// Emited for a symbol declaration.
+						dataRecord_c,	// Emitted for a raw data item.
+						codeRecord_c	// Emitted for an instruction.
+					}; 
+					
+	segItemPtr_t	:pointer to segItem_t;
+	segItem_t:
+		record
+		
+			nextSegItem	:segItemPtr_t;	// Forms a doubly-link linear
+			prevSegItem	:segItemPtr_t;	// list of segment items.
+			segItemType	:dword;			// Really segItemEnum_t
+			offset		:dword;			// Offset into dseg
+
+			fileName	:string;		// Point of declaration in the source
+			lineNumber	:string;		//  file, in case we have to report
+										//  an error.
+			union
+
+				alignedOn:				// Used for firstEntry/alignRecord
+					record
+			
+						min	:dword;
+						max	:dword;
+			
+					endrecord;
+
+				valList:			// Used for dataRecord
+					record
+			
+						elementCnt	:uns32;
+						valPtr		:attrPtr_t;
+						valType		:symNodePtr_t;	
+
+					endrecord;
+				symPtr	:symNodePtr_t;	// Used for symbolRecord
+			
+			endunion;
+			
+		endrecord;
+
+	// The following data structures are used to sort static data entries
+	// prior to emission to the data segment.
+	//
+	// segItemList_t is a list of objects (or alignment records) found in
+	// a segment declaration section (e.g., STATIC).
+
+	segItemListPtr_t: pointer to segItemList_t;
+
+	segItemList_t:
+		record
+			alignment		:dword;			// Alignment of entire section
+			size			:dword;			// Size of entire section.
+			firstItem		:segItemPtr_t;	// Ptr to section records.
+			itemCount		:dword;			// # of records in section.
+		endrecord;
+
+	// segItemArray_t is a data structure that specifies all the items
+	// in a given segment (e.g., STATIC, READONLY, etc.)
+
+	segItemArrayPtr_t	:pointer to segItemArray_t;
+	segItemArray_t:
+		record
+			count			:uns32;
+			size			:dword;					// 
+			elementZero		:segItemListPtr_t;		// Ptr to allocated storage
+			theArray		:segItemListPtr_t[1];	// Array of pointers to
+		endrecord;									//  each array element.
+
+
+////////////////////////////////////////////////////////////////////////////
+//
+// COFF Constants and Structures:
+//
+// The following declarations were taken from the w.hhf header file
+// and cleaned up a bit.  They were stuck here to make them easier to find.
+
+const
+	IMAGE_DOS_SIGNATURE            		:= $5A4D;
+	IMAGE_OS2_SIGNATURE            		:= $454E;
+	IMAGE_OS2_SIGNATURE_LE         		:= $454C;
+	IMAGE_VXD_SIGNATURE            		:= $454C;
+	IMAGE_NT_SIGNATURE             		:= $4550;
+	IMAGE_SIZEOF_FILE_HEADER       		:= 20;
+	IMAGE_FILE_RELOCS_STRIPPED     		:= $0001;
+	IMAGE_FILE_EXECUTABLE_IMAGE    		:= $0002;
+	IMAGE_FILE_LINE_NUMS_STRIPPED  		:= $0004;
+	IMAGE_FILE_LOCAL_SYMS_STRIPPED 		:= $0008;
+	IMAGE_FILE_AGGRESIVE_WS_TRIM   		:= $0010;
+	IMAGE_FILE_LARGE_ADDRESS_AWARE 		:= $0020;
+	IMAGE_FILE_BYTES_REVERSED_LO   		:= $0080;
+	IMAGE_FILE_32BIT_MACHINE       		:= $0100;
+	IMAGE_FILE_DEBUG_STRIPPED      		:= $0200;
+	IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP	:= $0400;
+	IMAGE_FILE_NET_RUN_FROM_SWAP   		:= $0800;
+	IMAGE_FILE_SYSTEM              		:= $1000;
+	IMAGE_FILE_DLL                 		:= $2000;
+	IMAGE_FILE_UP_SYSTEM_ONLY      		:= $4000;
+	IMAGE_FILE_BYTES_REVERSED_HI   		:= $8000;
+	IMAGE_FILE_MACHINE_UNKNOWN     		:= 0;
+	IMAGE_FILE_MACHINE_I386        		:= $014c;
+	IMAGE_FILE_MACHINE_R3000       		:= $0162;
+	IMAGE_FILE_MACHINE_R4000       		:= $0166;
+	IMAGE_FILE_MACHINE_R10000      		:= $0168;
+	IMAGE_FILE_MACHINE_WCEMIPSV2   		:= $0169;
+	IMAGE_FILE_MACHINE_ALPHA       		:= $0184;
+	IMAGE_FILE_MACHINE_POWERPC     		:= $01F0;
+	IMAGE_FILE_MACHINE_SH3         		:= $01a2;
+	IMAGE_FILE_MACHINE_SH3E        		:= $01a4;
+	IMAGE_FILE_MACHINE_SH4         		:= $01a6;
+	IMAGE_FILE_MACHINE_ARM         		:= $01c0;
+	IMAGE_FILE_MACHINE_THUMB       		:= $01c2;
+	IMAGE_FILE_MACHINE_IA64        		:= $0200;
+	IMAGE_FILE_MACHINE_MIPS16      		:= $0266;
+	IMAGE_FILE_MACHINE_MIPSFPU     		:= $0366;
+	IMAGE_FILE_MACHINE_MIPSFPU16   		:= $0466;
+	IMAGE_FILE_MACHINE_ALPHA64     		:= $0284;
+	IMAGE_FILE_MACHINE_AXP64       		:=  IMAGE_FILE_MACHINE_ALPHA64;
+	IMAGE_SIZEOF_ROM_OPTIONAL_HEADER 	:= 56;
+	IMAGE_SIZEOF_STD_OPTIONAL_HEADER 	:= 28;
+	IMAGE_SIZEOF_NT_OPTIONAL32_HEADER 	:= 224;
+	IMAGE_SIZEOF_NT_OPTIONAL64_HEADER 	:= 240;
+	IMAGE_NT_OPTIONAL_HDR32_MAGIC  		:= $10b;
+	IMAGE_NT_OPTIONAL_HDR64_MAGIC  		:= $20b;
+	IMAGE_ROM_OPTIONAL_HDR_MAGIC   		:= $107;
+	IMAGE_SUBSYSTEM_UNKNOWN        		:= 0;
+	IMAGE_SUBSYSTEM_NATIVE         		:= 1;
+	IMAGE_SUBSYSTEM_WINDOWS_GUI    		:= 2;
+	IMAGE_SUBSYSTEM_WINDOWS_CUI    		:= 3;
+	IMAGE_SUBSYSTEM_OS2_CUI        		:= 5;
+	IMAGE_SUBSYSTEM_POSIX_CUI      		:= 7;
+	IMAGE_SUBSYSTEM_NATIVE_WINDOWS 		:= 8;
+	IMAGE_SUBSYSTEM_WINDOWS_CE_GUI 		:= 9;
+	IMAGE_DLLCHARACTERISTICS_WDM_DRIVER := $2000;
+//const	IMAGE_DIRECTORY_ENTRY_EXPORT 	:= 0;
+	IMAGE_DIRECTORY_ENTRY_ARCHITECTURE 	:= 7;
+	IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT 	:= 13;
+	IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR := 14;
+	IMAGE_SCN_TYPE_NO_PAD          		:= $00000008;
+	IMAGE_SCN_CNT_CODE             		:= $00000020;
+	IMAGE_SCN_CNT_INITIALIZED_DATA 		:= $00000040;
+	IMAGE_SCN_CNT_UNINITIALIZED_DATA 	:= $00000080;
+	IMAGE_SCN_LNK_OTHER            		:= $00000100;
+	IMAGE_SCN_LNK_INFO             		:= $00000200;
+	IMAGE_SCN_LNK_REMOVE           		:= $00000800;
+	IMAGE_SCN_LNK_COMDAT           		:= $00001000;
+	IMAGE_SCN_NO_DEFER_SPEC_EXC    		:= $00004000;
+	IMAGE_SCN_GPREL                		:= $00008000;
+	IMAGE_SCN_MEM_FARDATA          		:= $00008000;
+	IMAGE_SCN_MEM_PURGEABLE        		:= $00020000;
+	IMAGE_SCN_MEM_16BIT            		:= $00020000;
+	IMAGE_SCN_MEM_LOCKED           		:= $00040000;
+	IMAGE_SCN_MEM_PRELOAD          		:= $00080000;
+	IMAGE_SCN_ALIGN_1BYTES         		:= $00100000;
+	IMAGE_SCN_ALIGN_2BYTES         		:= $00200000;
+	IMAGE_SCN_ALIGN_4BYTES         		:= $00300000;
+	IMAGE_SCN_ALIGN_8BYTES         		:= $00400000;
+	IMAGE_SCN_ALIGN_16BYTES        		:= $00500000;
+	IMAGE_SCN_ALIGN_32BYTES        		:= $00600000;
+	IMAGE_SCN_ALIGN_64BYTES        		:= $00700000;
+	IMAGE_SCN_ALIGN_128BYTES       		:= $00800000;
+	IMAGE_SCN_ALIGN_256BYTES       		:= $00900000;
+	IMAGE_SCN_ALIGN_512BYTES       		:= $00A00000;
+	IMAGE_SCN_ALIGN_1024BYTES      		:= $00B00000;
+	IMAGE_SCN_ALIGN_2048BYTES      		:= $00C00000;
+	IMAGE_SCN_ALIGN_4096BYTES      		:= $00D00000;
+	IMAGE_SCN_ALIGN_8192BYTES      		:= $00E00000;
+	IMAGE_SCN_LNK_NRELOC_OVFL      		:= $01000000;
+	IMAGE_SCN_MEM_DISCARDABLE      		:= $02000000;
+	IMAGE_SCN_MEM_NOT_CACHED       		:= $04000000;
+	IMAGE_SCN_MEM_NOT_PAGED        		:= $08000000;
+	IMAGE_SCN_MEM_SHARED           		:= $10000000;
+	IMAGE_SCN_MEM_EXECUTE          		:= $20000000;
+	IMAGE_SCN_MEM_READ             		:= $40000000;
+	IMAGE_SCN_MEM_WRITE            		:= $80000000;
+	IMAGE_SCN_SCALE_INDEX          		:= $00000001;
+	IMAGE_SYM_UNDEFINED            		:= 0;
+	IMAGE_SYM_ABSOLUTE             		:= -1;
+	IMAGE_SYM_DEBUG                		:= -2;
+	IMAGE_SYM_TYPE_NULL            		:= $0000;
+	IMAGE_SYM_TYPE_VOID            		:= $0001;
+	IMAGE_SYM_TYPE_CHAR            		:= $0002;
+	IMAGE_SYM_TYPE_SHORT           		:= $0003;
+	IMAGE_SYM_TYPE_INT             		:= $0004;
+	IMAGE_SYM_TYPE_LONG            		:= $0005;
+	IMAGE_SYM_TYPE_FLOAT           		:= $0006;
+	IMAGE_SYM_TYPE_DOUBLE          		:= $0007;
+	IMAGE_SYM_TYPE_STRUCT          		:= $0008;
+	IMAGE_SYM_TYPE_UNION           		:= $0009;
+	IMAGE_SYM_TYPE_ENUM            		:= $000A;
+	IMAGE_SYM_TYPE_MOE             		:= $000B;
+	IMAGE_SYM_TYPE_BYTE            		:= $000C;
+	IMAGE_SYM_TYPE_WORD            		:= $000D;
+	IMAGE_SYM_TYPE_UINT            		:= $000E;
+	IMAGE_SYM_TYPE_DWORD           		:= $000F;
+	IMAGE_SYM_TYPE_PCODE           		:= $8000;
+	IMAGE_SYM_DTYPE_NULL           		:= 0;
+	IMAGE_SYM_DTYPE_POINTER        		:= 1;
+	IMAGE_SYM_DTYPE_FUNCTION       		:= 2;
+	IMAGE_SYM_DTYPE_ARRAY          		:= 3;
+	IMAGE_SYM_CLASS_END_OF_FUNCTION 	:= 1;
+	IMAGE_SYM_CLASS_NULL           		:= $0000;
+	IMAGE_SYM_CLASS_AUTOMATIC      		:= $0001;
+	IMAGE_SYM_CLASS_EXTERNAL       		:= $0002;
+	IMAGE_SYM_CLASS_STATIC         		:= $0003;
+	IMAGE_SYM_CLASS_REGISTER       		:= $0004;
+	IMAGE_SYM_CLASS_EXTERNAL_DEF   		:= $0005;
+	IMAGE_SYM_CLASS_LABEL          		:= $0006;
+	IMAGE_SYM_CLASS_UNDEFINED_LABEL 	:= $0007;
+	IMAGE_SYM_CLASS_MEMBER_OF_STRUCT 	:= $0008;
+	IMAGE_SYM_CLASS_ARGUMENT       		:= $0009;
+	IMAGE_SYM_CLASS_STRUCT_TAG     		:= $000A;
+	IMAGE_SYM_CLASS_MEMBER_OF_UNION 	:= $000B;
+	IMAGE_SYM_CLASS_UNION_TAG      		:= $000C;
+	IMAGE_SYM_CLASS_TYPE_DEFINITION 	:= $000D;
+	IMAGE_SYM_CLASS_UNDEFINED_STATIC 	:= $000E;
+	IMAGE_SYM_CLASS_ENUM_TAG       		:= $000F;
+	IMAGE_SYM_CLASS_MEMBER_OF_ENUM 		:= $0010;
+	IMAGE_SYM_CLASS_REGISTER_PARAM 		:= $0011;
+	IMAGE_SYM_CLASS_BIT_FIELD      		:= $0012;
+	IMAGE_SYM_CLASS_FAR_EXTERNAL   		:= $0044;
+	IMAGE_SYM_CLASS_BLOCK          		:= $0064;
+	IMAGE_SYM_CLASS_FUNCTION       		:= $0065;
+	IMAGE_SYM_CLASS_END_OF_STRUCT  		:= $0066;
+	IMAGE_SYM_CLASS_FILE           		:= $0067;
+	IMAGE_SYM_CLASS_SECTION        		:= $0068;
+	IMAGE_SYM_CLASS_WEAK_EXTERNAL  		:= $0069;
+	N_BTMASK                       		:= $000F;
+	N_TMASK                        		:= $0030;
+	N_TMASK1                       		:= $00C0;
+	N_TMASK2                       		:= $00F0;
+	N_BTSHFT                       		:= 4;
+	N_TSHIFT                       		:= 2;
+	IMAGE_SIZEOF_AUX_SYMBOL        		:= 18;
+	IMAGE_COMDAT_SELECT_NODUPLICATES 	:= 1;
+	IMAGE_COMDAT_SELECT_ANY        		:= 2;
+	IMAGE_COMDAT_SELECT_SAME_SIZE  		:= 3;
+	IMAGE_COMDAT_SELECT_EXACT_MATCH 	:= 4;
+	IMAGE_COMDAT_SELECT_ASSOCIATIVE 	:= 5;
+	IMAGE_COMDAT_SELECT_LARGEST    		:= 6;
+	IMAGE_COMDAT_SELECT_NEWEST     		:= 7;
+	IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY 	:= 1;
+	IMAGE_WEAK_EXTERN_SEARCH_LIBRARY 	:= 2;
+	IMAGE_WEAK_EXTERN_SEARCH_ALIAS 		:= 3;
+	IMAGE_SIZEOF_RELOCATION        		:= 10;
+	IMAGE_REL_I386_ABSOLUTE        		:= $0000;
+	IMAGE_REL_I386_DIR16           		:= $0001;
+	IMAGE_REL_I386_REL16           		:= $0002;
+	IMAGE_REL_I386_DIR32           		:= $0006;
+	IMAGE_REL_I386_DIR32NB         		:= $0007;
+	IMAGE_REL_I386_SEG12           		:= $0009;
+	IMAGE_REL_I386_SECTION         		:= $000A;
+	IMAGE_REL_I386_SECREL          		:= $000B;
+	IMAGE_REL_I386_REL32           		:= $0014;
+	IMAGE_SIZEOF_LINENUMBER        		:= 6;
+	IMAGE_SIZEOF_BASE_RELOCATION   		:= 8;
+	IMAGE_REL_BASED_ABSOLUTE       		:= 0;
+	IMAGE_REL_BASED_HIGH           		:= 1;
+	IMAGE_REL_BASED_LOW            		:= 2;
+	IMAGE_REL_BASED_HIGHLOW        		:= 3;
+	IMAGE_REL_BASED_HIGHADJ        		:= 4;
+	IMAGE_REL_BASED_MIPS_JMPADDR   		:= 5;
+	IMAGE_REL_BASED_SECTION        		:= 6;
+	IMAGE_REL_BASED_REL32          		:= 7;
+	IMAGE_REL_BASED_MIPS_JMPADDR16 		:= 9;
+	IMAGE_REL_BASED_IA64_IMM64     		:= 9;
+	IMAGE_REL_BASED_DIR64          		:= 10;
+	IMAGE_REL_BASED_HIGH3ADJ       		:= 11;
+	IMAGE_ARCHIVE_START_SIZE       		:= 8;
+	IMAGE_ARCHIVE_START            		:=  "!<arch>" #$a;
+	IMAGE_ARCHIVE_END              		:=  "`"  #$a;
+	IMAGE_ARCHIVE_PAD              		:=  "" #$a;
+	IMAGE_ARCHIVE_LINKER_MEMBER    		:=  "/               ";
+	IMAGE_ARCHIVE_LONGNAMES_MEMBER 		:=  "//              ";
+	IMAGE_SIZEOF_ARCHIVE_MEMBER_HDR 	:= 60;
+	IMAGE_ORDINAL_FLAG32           		:= $80000000;
+	IMAGE_RESOURCE_NAME_IS_STRING  		:= $80000000;
+	IMAGE_RESOURCE_DATA_IS_DIRECTORY 	:= $80000000;
+	IMAGE_DEBUG_TYPE_UNKNOWN       		:= 0;
+	IMAGE_DEBUG_TYPE_COFF          		:= 1;
+	IMAGE_DEBUG_TYPE_CODEVIEW      		:= 2;
+	IMAGE_DEBUG_TYPE_FPO           		:= 3;
+	IMAGE_DEBUG_TYPE_MISC          		:= 4;
+	IMAGE_DEBUG_TYPE_EXCEPTION     		:= 5;
+	IMAGE_DEBUG_TYPE_FIXUP         		:= 6;
+	IMAGE_DEBUG_TYPE_OMAP_TO_SRC   		:= 7;
+	IMAGE_DEBUG_TYPE_OMAP_FROM_SRC 		:= 8;
+	IMAGE_DEBUG_TYPE_BORLAND       		:= 9;
+	IMAGE_DEBUG_TYPE_RESERVED10    		:= 10;
+	FRAME_FPO                      		:= 0;
+	FRAME_TRAP                     		:= 1;
+	FRAME_TSS                      		:= 2;
+	FRAME_NONFPO                   		:= 3;
+	SIZEOF_RFPO_DATA               		:= 16;
+	IMAGE_DEBUG_MISC_EXENAME       		:= 1;
+	IMAGE_SEPARATE_DEBUG_SIGNATURE 		:= $4944;
+	IMAGE_SEPARATE_DEBUG_FLAGS_MASK 	:= $8000;
+	IMAGE_SEPARATE_DEBUG_MISMATCH  		:= $8000;
+
+const
+	IMAGE_NUMBER_OF_DIRECTORY_ENTRIES := 16;
+
+type 	
+	IMAGE_DATA_DIRECTORY: 
+		record
+
+			VirtualAddress	:dword;
+			isize			:dword;
+
+		endrecord;
+
+type 	
+	IMAGE_OPTIONAL_HEADER: 
+		record
+
+			Magic						:word;
+			MajorLinkerVersion			:byte;
+			MinorLinkerVersion			:byte;
+			SizeOfCode					:dword;
+			SizeOfInitializedData		:dword;
+			SizeOfUninitializedData		:dword;
+			AddressOfEntryPoint			:dword;
+			BaseOfCode					:dword;
+			BaseOfData					:dword;
+			ImageBase					:dword;
+			SectionAlignment			:dword;
+			FileAlignment				:dword;
+			MajorOperatingSystemVersion	:word;
+			MinorOperatingSystemVersion	:word;
+			MajorImageVersion			:word;
+			MinorImageVersion			:word;
+			MajorSubsystemVersion		:word;
+			MinorSubsystemVersion		:word;
+			Win32VersionValue			:dword;
+			SizeOfImage					:dword;
+			SizeOfHeaders				:dword;
+			CheckSum					:dword;
+			Subsystem					:word;
+			DllCharacteristics			:word;
+			SizeOfStackReserve			:dword;
+			SizeOfStackCommit			:dword;
+			SizeOfHeapReserve			:dword;
+			SizeOfHeapCommit			:dword;
+			LoaderFlags					:dword;
+			NumberOfRvaAndSizes			:dword;
+			DataDirectory: 
+				IMAGE_DATA_DIRECTORY[ IMAGE_NUMBER_OF_DIRECTORY_ENTRIES ];
+
+		endrecord;
+type 	
+	IMAGE_FILE_HEADER: 
+		record
+
+			Machine					:word;
+			NumberOfSections		:word;
+			TimeDateStamp			:dword;
+			PointerToSymbolTable	:dword;
+			NumberOfSymbols			:dword;
+			SizeOfOptionalHeader	:word;
+			Characteristics			:word;
+
+		endrecord;
+
+const
+	IMAGE_SIZEOF_SHORT_NAME	:= 8;
+	IMAGE_SIZEOF_SYMBOL		:= 18;
+
+type 
+	IMAGE_SECTION_HEADER_Ptr: pointer to IMAGE_SECTION_HEADER;
+		
+	IMAGE_SECTION_HEADER: 
+		record
+
+			_Name					:char[ IMAGE_SIZEOF_SHORT_NAME ];
+			union
+
+				PhysicalAddress	:dword;
+				VirtualSize		:dword;
+
+			endunion;
+
+			VirtualAddress			:dword;
+			SizeOfRawData			:dword;
+			PointerToRawData		:dword;
+			PointerToRelocations	:dword;
+			PointerToLinenumbers	:dword;
+			NumberOfRelocations		:word;
+			NumberOfLinenumbers		:word;
+			Characteristics			:dword;
+
+		endrecord;
+
+	sectionHeaderListPtr	:pointer to sectionHeaderList;
+	sectionHeaderList:
+		record
+
+			next	:sectionHeaderListPtr;
+			section	:IMAGE_SECTION_HEADER;
+
+		endrecord;
+
+
+
+type 	
+	IMAGE_LINENUMBER: 
+		record
+
+			Type1:union	//  Type1
+
+				// Symbol table index of function name if Linenumber is 0.
+
+				SymbolTableIndex	:dword;	
+
+				// Virtual address of line number.
+
+				VirtualAddress		:dword; 	
+			
+			endunion;
+			Linenumber	:word;	// Line number.
+
+		endrecord;
+
+
+type 	
+	IMAGE_SYMBOL: 
+		record
+			union
+
+				ShortName	:byte[8];
+				_Name: record
+
+					_Short	:dword;     // if 0, use LongName
+					_Long	:dword;     // offset into string table
+
+				endrecord;
+				LongName	:dword[2];
+
+			endunion;
+			Value				:dword;
+			SectionNumber		:word;
+			_Type				:word;
+			StorageClass		:byte;
+			NumberOfAuxSymbols	:byte;
+
+		endrecord;
+
+
+type 	
+	IMAGE_AUX_SYMBOL: 
+		union
+
+			Sym:record
+
+				TagIndex	:dword;  // struct, union, or enum tag index
+				misc:union
+
+					LnSz:record
+
+						Linenumber	:word;	// declaration line number
+						Size1		:word;	//size of struct, union, or enum
+
+					endrecord;
+					TotalSize	:dword;
+
+				endunion;
+				FcnAry:union
+
+					Function:record	//  Function if ISFCN, tag, or .bb
+
+						PointerToLinenumber		:dword;
+						PointerToNextFunction	:dword;
+
+					endrecord;
+
+					array: record	//  Array if ISARY, up to 4 dimensions
+
+						Dimension	:word[4];
+
+					endrecord;
+
+				endunion;
+				TvIndex	:word;		// tv index
+				
+			endrecord;
+
+		file_Name	:byte[IMAGE_SIZEOF_SYMBOL];
+
+		Section: record
+
+			Length1				:dword;		// section length
+			NumberOfRelocations	:word;		// number of relocation entries
+			NumberOfLinenumbers	:word;		// number of line numbers
+			CheckSum			:dword;		// checksum for communal
+			Number				:dword;		// section number to associate with
+			Selection			:byte;		// communal selection type
+			unused				:byte;		// Padding to 18 bytes
+
+		endrecord;
+
+	endunion;
+
+
+	CoffSymbols:
+		union
+
+			symbol		:IMAGE_SYMBOL;
+			auxSymbol	:IMAGE_AUX_SYMBOL;
+
+		endunion;
+
+	CoffSymbolListPtr :pointer to CoffSymbolList;
+	CoffSymbolList:
+		record
+
+			next	:CoffSymbolListPtr;
+			size	:dword;
+			syms	:CoffSymbols[1];	// Variable sized array
+
+		endrecord;
+
+
+
+type
+	relocPtr_t	:pointer to IMAGE_RELOCATION; 	
+	IMAGE_RELOCATION: 
+		record
+
+			union
+			  
+				VirtualAddress	:dword;
+
+	 			// Set to the real count when 
+	 			// IMAGE_SCN_LNK_NRELOC_OVFL is set
+
+				RelocCount		:dword;
+
+			endunion;
+
+			SymbolTableIndex	:dword;
+			_Type				:word;
+
+		endrecord;
+
+
+
+
+
+	//////////////////////////////////////////////////////////////////////////
+	//
+	// userSegmentList_t
+	//
+	//	This is a linked list that holds the list of user-defined segments.
+
+	userSegmentListPtr_t	:pointer to userSegmentList_t;
+	userSegmentList_t:
+		record
+
+			next			:userSegmentListPtr_t;
+			theSegment		:symNodePtr_t;
+			segList			:segItemArrayPtr_t;
+			segRaw			:dword;
+			segSize			:dword;
+			segReloc		:dword;
+			segRelocSize	:dword;
+			segSection		:IMAGE_SECTION_HEADER;
+
+		endrecord;
+
+	//////////////////////////////////////////////////////////////////////////
+	//
+	// hashTable_t
+	//
+	//	This is a structure for a symbol table hash table.
+	//
+	//	Fields:
+	//		mask-		Bit mask to AND with a hash function value to limit
+	//					the size of the hash table to some power of two.
+	//
+	//		hashTable-	Array of symNode_t pointers. Table size must be
+	//					a power of two and mask must contain an appropriate
+	//					value to limit indexes into this table to the
+	//					specified power of two.
+	//
+	//	Note that hashTable_t objects are allocated dynamically and have
+	// varying sizes, depending on the actual number of hash table entries.
+	// Note that @size(hashTable_t) does *not* return the actual size of
+	// a particular hash table (unless it just happens to have a single
+	// entry.
+
+	hashTable_t:
+		record
+			mask		:dword;
+			owner		:dword;
+			hashTable	:symNodePtr_t[1];
+		endrecord;
+
+	hashTablePtr_t	:pointer to hashTable_t;
+
+
+
+
+	//////////////////////////////////////////////////////////////////////////
+	//
+	// Actual symbol table entry is defined here.
+
+	
+	symNode_t:
+		record
+
+			// Pointers used to maintain the symbol table.
+			//
+			//	left, right 	- Pointers used to maintain a binary
+			//						search tree in a standard symbol table.
+			//
+			//	next			- Used to maintain a linear list of symbols
+			//						for various purposes, including sub-
+			//						symbol tables, records, unions, and
+			//						in the undefined symbols table.
+			//
+			//	prev			- Used to maintain a doubly-linked list
+			//						in the undefined symbols table.
+
+			left		:symNodePtr_t;
+			union
+				right		:symNodePtr_t;
+				prev		:symNodePtr_t;
+			endunion;
+
+			next		:symNodePtr_t;
+
+			// Pointers to the identifier string.
+			// Note that "name" is all lowercase for doing case-insensitive
+			// comparisons.
+
+			lcName		:string;
+			trueName	:string;
+
+
+			// The following entries hold the type & class information.
+			// Type is a pointer to a symbol table entry.  pType is an
+			// ordinal value that is useful for quickly and easily
+			// checking for predefined  types;  it isn't strictly
+			// necessary, but it does make certain operations more
+			// convenient.
+			//
+			// For scalar objects, symType points at the object's type.
+			//
+			// For array types, baseType points at the base type of the array.
+			// For pointer types, baseType points at the base type.
+			//
+			// For labels, that are equated to other labels, the equateLabel
+			//	field points back at the label to which the current symbol
+			//	is equated.  This field contains NULL if the current label
+			//	is not equated to another label.
+
+			union
+				
+				symType		:symNodePtr_t;	// pointer to symbol's type.
+				baseType	:symNodePtr_t;	// pointer to array element type.
+				equateLabel	:symNodePtr_t;	// pointer to equated label.
+				
+			endunion;
+
+			// For procedures, namespaces, and other objects that have a
+			// local symbol table associated with them, localHash points 
+			// at the root node of the local symbol table (binary tree)
+			// for the object.  For record/union/class types, this 
+			// field points at the local symbol table holding the fields 
+			// for this structure.
+
+			localHash	:hashTablePtr_t;	// pointer to local syms (tree).
+
+
+			// seg - pointer to the symbol table entry for the
+			// segment that owns this symbol.  NULL for VAR
+			// and non-variable objects.  Valid for static, readonly,
+			// storage, and segment variables.
+			//
+			// segList- for segments, this is a pointer to the
+			//			list of objects to be emitted in the segment.
+			//
+			// If this is an object with a local symbol table (e.g.,
+			// namespace, record, union, class, program, unit, procedure,
+			// iterator, or method), then linearSyms points at
+			// the first symbol in the linear list of symbols that make
+			// up the local symbols for that object.
+
+
+			seg			:symNodePtr_t;
+			segList		:segItemPtr_t;
+			linearSyms	:symNodePtr_t;
+
+
+
+			//	"offset" serves the following purposes:
+			//
+			//	For VAR objects, this field holds the offset into the
+			//		activation record for the variable.
+			//
+			//	For fields of UNIONs and RECORDs, this field holds the
+			//		offset of the field into the structure.
+			//
+			//	For VAR fields and METHODs/ITERATORs of CLASSes, this 
+			//		field holds the offset of the variable (or method/iterator
+			//		pointer) into the class structure.
+			//
+			//	For static objects, this is the offset into the
+			//		declaration section for that object.
+			//
+			// "address" serves the following purposes 
+			//
+			//	For LABELs, PROCEDUREs, and non-CLASS ITERATORS:
+			//
+			//		this field holds the address of the start of the inter-
+			//		mediate code associated with the function.
+			
+			union
+						
+				offset		:int32;
+				address		:dword;			// ptr to intermediate code, TBD.
+
+			endunion;
+
+			//
+			// equateList - forms a linear list of all labels that are
+			// equated to another label and that other label has yet to
+			// be defined.  HLA uses this list to resolve forward label
+			// references.
+			//
+			// endSegList-	this is only used by segments. It is a pointer
+			//				to the last entry in the segList (to make
+			//				adding items to the list easy).
+
+			union
+	
+				equateList	:symNodePtr_t;
+				endSegList	:segItemPtr_t;
+				
+			endunion;
+
+			// If this is an object with a local symbol table (e.g.,
+			// namespace, record, union, class, program, unit, procedure,
+			// iterator, or method), then lastLinear points at
+			// points at the last symbol in the object's
+			// local symbol table.
+
+			lastLinear	:symNodePtr_t;
+
+			// Pointer to the object whose sub-symbol table contains
+			// the current symbol table entry.
+
+			owner:		symNodePtr_t;
+
+			// LexLevel holds the current lex level at the time of the
+			// symbol's definition.  Negative lex levels are reserved
+			// for records, unions, and classes.
+
+			lexLevel	:int32;
+
+
+			//	ObjectSize holds the size of this item, in bytes.
+
+			objectSize	:int32;
+
+
+			// COFFSymIndex-
+			//	For COFF files, an index into the COFF symbol table
+			// for this symbol (-1 if it's not in the COFF symbol table)
+
+			COFFSymIndex	:int32;
+
+			// SectionNum-
+			//
+			//	For COFF files, this is the COFF file section number.
+
+			sectionNum		:int16;
+
+			// pType holds the "primitive type" enumeration value that lets
+			// 		us quickly check for built-in types.  
+			//
+			// SymClass determines the classification of this symbol.
+			//	Typical classifications include cConstant, cType, 
+			//	cVar, cMacro, cProc, cStatic, etc.
+			//
+			// isExternal contains true if this symbol is an external symbol.
+			//
+			// isPublic is true if this is a public symbol.
+			//
+			// isReferenced is true if this is an external symbol that has
+			// been referenced in the source file.
+			//
+			// isForward contains true if the symbol is forward declared and
+			//	has not yet been defined.
+			//
+			// isPrivate is true if this symbol is private to the subtable
+			//  it appears within an cannot be inherited.
+			//
+			// isReadOnly is used by segment declarations and variables
+			//  declared in those segments. It is set to true if this
+			//  is a readonly segment object, or is a variable within
+			//  a readonly segment.
+			//
+			// For parameter objects (SymClass=cParm), the pClass
+			//	field specifies how the parameter is passed.
+			//
+			// For parameter objects, inReg specifies which register (if any)
+			//	the parameter is passed in.
+			//
+			// For class types, the "thisReg" field specifies the register
+			//	(which must be a 32-bit register) that HLA will use for
+			//	the "THIS" pointer when invoking aclass method, iterator, 
+			//	or procedure.
+			//
+			// For class types, the "vmtReg" field specifies the register
+			//	(which must be a 32-bit register) that holds the VMT pointer
+			//	when invoking a class method or iterator. 
+
+			pType		:pType_t;		// Primitive type value.
+			symClass	:classType_t;
+			isExternal	:boolean;
+			isPublic	:boolean;
+			isReferenced:boolean;
+			isForward	:boolean;
+			isPrivate	:boolean;
+			isReadOnly	:boolean;
+			union
+				inReg		:register_t;
+				thisReg		:register_t;
+			endunion;
+			union
+				pClass		:parmClass_t;
+				vmtReg		:register_t;
+			endunion;
+
+			align(4);
+
+
+			// If the object has an external name (or we're emiting assembly
+			// code and the object has a name within the emitted assembly
+			// file), that external name is kept in the following string:
+
+			externName	:string;
+
+
+
+			//
+			// For segments-
+			//
+			// segData- this points at a segItemArray_t that specifies
+			//			the binary data for this segment.
+			//
+			// For static objects (SEGMENT/STATIC/READONLY/STORAGE vars):
+			//
+			//	"isVolatile" and "isNoStorage" serve the following purpose
+			//
+			//		isVolatile is true if the @volatile option was specified
+			//		isNoStorage is true if the @nostorage option was specified
+			//		isInitialized is true if the object has an initializer.
+
+			union
+
+				segData		:segItemArrayPtr_t;	// ptr to segment's binary data.
+				record
+					isVolatile		:boolean;
+					isNoStorage		:boolean;
+					isInitialized	:boolean;
+				endrecord;
+
+			endunion;
+			
+			// The fields contained within the following record are
+			// valid only for Type_ct objects.  Note that an object
+			// may only be a structure (record/class/union) or an
+			// array, it cannot be both.  However, we can't use
+			// a union here because we have to test numElements
+			// value to see if it's an array;  likewise, we need
+			// to test fields (for NULL) to see if we have a record.
+			// Therefore, these fields cannot overlay one another.
+			
+			// If this is a record, union, or class object, then
+			// "inhType" contains a pointer to structure from
+			// which this object inherits any fields (NULL if there
+			// are no inherited fields).  
+			//
+			// The "fieldCnt" field specifies the total
+			// number of fields  in the structure.
+
+			inhType			:symNodePtr_t;
+			fieldCnt		:int32;
+
+			// If this is an array object, the following
+			// entry specifies the number of elements in
+			// the array.  If this is a scalar object,
+			// then the following field will contain
+			// zero.  It contains a positive integer for
+			// any array object.
+
+			numElements		:uns32;
+
+			// If this symbol table entry is a field of a
+			// record or union, then the following entry
+			// provides a "field number" that specifies the
+			// index into some corresponding "va.fieldValues_vt" 
+			// (above) array of field items.
+
+			fieldIndex		:uns32;
+			
+			
+			// fwd holds a link to the next symbol table entry
+			// that references a fwd declaration.  This is a temporary
+			// field used to process forward pointer declarations.
+			
+			fwd			:symNodePtr_t;
+
+
+
+			// For procedures, methods, and iterators, the following
+			// fields contain important information about the program 
+			// unit (procedure, iterator, or method).
+
+			cproc:record
+
+				// returnsStr is the string to substitute for the
+				// call when instruction composition occurs.
+
+				returnsStr	:string;
+				
+				// If this is a class procedure, iterator, or method,
+				// then the following entry points at the class to
+				// which this program unit belongs:
+
+				baseClass	:symNodePtr_t;
+				
+				// parmSize holds the number of bytes of parameter
+				// data for this program unit.  Note that this value
+				// is always an even multiple of four.
+
+				parmSize	:uns32;
+				
+				// localSize holds the number of bytes of local
+				// variables for this program unit.
+				
+				localSize	:uns32;
+				
+				// preserves-
+				//
+				//	Lists the registers that this particular
+				// procedure promises to preserve (this is a
+				// bitmap of preserveReg_t values).
+				
+				preserves	:dword;
+				
+				// The following specifies the parameter order (calling
+				// sequence) for this program unit.
+
+				callSeq		:callSeq_t;
+
+
+				// hasFrame is true if this function emits code
+				// to generate a stack frame and the code to
+				// clean up the stack frame.
+
+				hasFrame	:boolean;
+
+				// hasDisplay is true if this function allocates
+				// storage for a display in the activation record
+				// (if hasFrame is also true, then the function
+				// actually emits the code to build the display).
+
+				hasDisplay	:boolean;
+
+				// alignsStack is true if this procedure will emit
+				// code to dword-align the stack upon entry.  Note
+				// that hasFrame must also be true for this to occur.
+
+				alignsStack	:boolean;
+
+				// useEnter is true if this procedure emits an ENTER
+				// instruction when building the stack frame. It
+				// contains false if the procedure entry code builds
+				// the stack frame manually;
+
+				useEnter	:boolean;
+
+				// useLeave is true if this procedure emits a LEAVE
+				// instruction when cleaning up the stack frame,
+				// it contains false if the procedure manually
+				// cleans up the stack frame.
+
+				useLeave	:boolean;
+
+				
+				// Uses- specifies a register that is available
+				// for processing parameters on a call.
+				
+				uses		:register_t;
+
+			endrecord;
+			
+			align( 4 );
+
+			// For macros, here is where the relevant information
+			// is kept so we can do a macro expansion.
+			
+			macro :record
+			
+				textStart		:dword;
+				textEnd			:dword;
+				macroParms		:symNodePtr_t;
+				locals			:symNodePtr_t;
+				keywords		:symNodePtr_t;
+				terminator		:symNodePtr_t;
+				macroSyms		:symNodePtr_t;
+				fullFileName	:string;
+				filename		:string;
+//				fileHandle		:dword;
+				fileMapHandle	:dword;
+				lineNumber		:uns32;
+			
+			endrecord;
+			// v holds the value of a constant symbol.  This is similar
+			// to an attr_t object except the type information is
+			// kept elsewhere in the symbol table entry rather than as
+			// part of v.
+			//
+			// This field also holds the initial value for symbols declared
+			// in the SEGMENT, STATIC, and READONLY sections.
+
+			va			:attr_t;
+
+			align( 4 );
+
+		endrecord;
+
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Array dimension data structures:
+
+
+	dimPtr_t	:pointer to dimensions_t;
+	dimensions_t:
+		record
+			arity	:uns32;
+			dims	:uns32[1];	// Dynamically allocated.
+		endrecord;
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Forward reference lists:
+
+	ptrToFwdPtrList_t	:pointer to fwdPtrList_t;
+	fwdPtrList_t:
+		record
+		
+			next			:ptrToFwdPtrList_t;
+			prev			:ptrToFwdPtrList_t;
+			symbolList		:symNodePtr_t;
+			fwdRef			:string;
+			fwdReflc		:string;
+			hashValue		:dword;
+			ptrOwner		:symNodePtr_t;
+			ptrHashTable	:hashTablePtr_t;
+			expectedClass	:classType_t;
+			align(4);
+		endrecord;
+
+
+	ptrToFwdProcList_t	:pointer to fwdProcList_t;
+	fwdProcList_t:
+		record
+
+			next		:ptrToFwdProcList_t;
+			prev		:ptrToFwdProcList_t;
+			procSym		:symNodePtr_t;
+			classSym	:symNodePtr_t;
+			lexLevel	:int32;
+
+		endrecord;
+	
+
+
+	////////////////////////////////////////////////////////////////////
+	//
+	// External/public symbols list:
+
+	ptrToExtList_t	:pointer to extList_t;
+	extList_t:
+		record
+
+			next		:ptrToExtList_t;
+			extSym		:symNodePtr_t;
+			theClass	:symNodePtr_t;
+			isPublic	:boolean;
+
+		endrecord;
+	
+
+
+
+// The following is the compile-time statement stack definition:
+
+	ctStack_t:
+		record
+
+			token		:dword;
+			textPtr		:dword;
+			lineNumber	:uns32;
+			fileName	:string;
+
+			// #FOR loop fields:
+
+			ctlVar		:symNodePtr_t;
+			increment	:int32;
+			endValue	:int32;
+			object		:attrPtr_t;
+			composite	:attr_t;
+
+		endrecord;
+		
+		
+		
+/****************************************************************************/
+
+
+// External static declarations
+
+static
+	VerboseCompile		:boolean;				@external;
+	testMode			:boolean;				@external;
+	doDumpInternalCode	:boolean;				@external;
+	ForceString			:boolean;				@external;
+	rwIsID				:boolean[ tkn_endTknList - 256 ];	@external;
+	hashValue			:dword;					@external;
+	tknQ				:token_t[ maxTknQ ];	@external;
+	endTknQ				:dword; 				@external;
+
+	ctStack				:ctStack_t[ maxCTstk ];	@external;
+	ctSP				:int32;					@external;
+	rtnCTtkns			:boolean;				@external;
+	openWriteHandle		:dword;					@external;
+	openReadHandle		:dword;				   	@external;
+	lastWasEOF			:boolean;				@external;
+	
+	tknHead				:tokenPtr_t;			@external;
+	tknTail				:tokenPtr_t;			@external;
+	pendingReset		:boolean;				@external;
+	reportErrors		:boolean;				@external;
+	errorCount			:uns32;					@external;
+
+	tknCnt				:uns32;					@external;
+	tknReuse			:uns32;					@external;
+
+	lineNumber			:uns32;					@external;
+	totalLineCount		:uns32;					@external;
+
+	filename			:string;				@external;
+	fullFileName		:string;				@external;
+	baseFileName		:string;				@external;
+	objFileName			:string;				@external;
+	fileHandle			:dword;					@external;
+	fileMapHandle		:dword;					@external;
+	objFileHandle		:dword;					@external;
+	BOF					:pChar;					@external;
+	EOF					:pChar;					@external;
+	optStaticPlacement	:boolean;				@external;
+	optBranchDisp		:boolean;				@external;
+	optInstrSize		:boolean;				@external;
+	outputCodeType		:outputCodeType_t;		@external;
+	fileList			:fileListPtr_t;			@external;
+
+	includeStk			:includeInfo_t[ MaxNestedIncludes ]; @external;
+	includeSP			:int32;					@external;
+	
+	GoodRWID			:cset;					@external;
+	GoodID				:cset;					@external;
+	HexDigits			:cset;					@external;
+	_HexDigits			:cset;					@external;
+	LegalCharLiteral	:cset;					@external;
+	goodNumDelimiters	:cset;					@external;
+	WhiteSpace			:cset;					@external;
+	pTypeStrs			:string[ numpTypes ];	@external;
+	pToT				:symNodePtr_t [numpTypes]; @external;
+	tknToT				:symNodePtr_t[32];		@external;
+	builtinPtrs			:dword [ tkn_thunk - tkn_boolean + 1 ]; @external;
+	classTypeStrs		:string[ uns32( Placeholder_ct ) + 1 ]; @external;
+
+	startLexeme			:dword;					@external;
+	endLexeme			:dword;					@external;
+
+	curLexLevel			:int32;					@external;
+	curEnumSize			:uns32;					@external;
+	startLclOffs		:dword;					@external;
+	startParmsOffs		:dword;					@external;
+	labelCntr			:dword;					@external;
+	
+	symbolTableRoot		:symNodePtr_t;			@external;
+	curHashTable		:symNodePtr_t;			@external;
+	curOwner			:symNodePtr_t;			@external;
+	undefSymTable		:symNodePtr_t[256];		@external;
+	curObject			:string;				@external;
+	
+	fwdPtrList			:ptrToFwdPtrList_t;		@external;
+	fwdProcList			:ptrToFwdProcList_t;	@external;
+	fwdStaticConstList	:staticExprPtr_t;		@external;
+	endStaticConstList	:staticExprPtr_t;		@external;
+	extList				:ptrToExtList_t;		@external;
+
+	defaultFrame		:boolean;				@external;
+	defaultDisplay		:boolean;				@external;
+	defaultStackAlign	:boolean;				@external;
+	defaultEnter		:boolean;				@external;
+	defaultLeave		:boolean;				@external;
+	traceCode			:boolean;				@external;
+	traceProcs			:boolean;				@external;
+	prefixProcs			:boolean;				@external;
+	doBound				:boolean;				@external;
+	doInto				:boolean;				@external; 
+	intelSyntax			:boolean;				@external;
+
+	minVarAlign			:dword;					@external;
+	maxVarAlign			:dword;					@external;
+	tempVarAlign		:dword;					@external;
+	anonTypeCntr		:uns32;					@external;
+	anonType			:string;				@external;
+	curOffset			:dword;					@external;
+	minRecAlign			:dword;					@external;
+	maxRecAlign			:dword;					@external;
+
+
+	rootNode			:symNode_t;				@external;
+	rootNode2			:symNode_t;				@external;
+	rootHashTable		:hashTable_t;			@external;
+	rootMask			:dword;					@external;
+	rootOwner			:dword;					@external;
+
+	boolean_ste			:symNode_t;				@external;
+	uns8_ste			:symNode_t;				@external;
+	uns16_ste			:symNode_t;				@external; 
+	uns32_ste			:symNode_t;				@external; 
+	uns64_ste			:symNode_t;				@external; 
+	uns128_ste			:symNode_t;				@external;
+	byte_ste			:symNode_t;				@external;
+	word_ste			:symNode_t;				@external;
+	dword_ste			:symNode_t;				@external;
+	qword_ste			:symNode_t;				@external;
+	tbyte_ste			:symNode_t;				@external;
+	lword_ste			:symNode_t;				@external;
+	int8_ste			:symNode_t;				@external;
+	int16_ste			:symNode_t;				@external;
+	int32_ste			:symNode_t;				@external; 
+	int64_ste			:symNode_t;				@external; 
+	int128_ste			:symNode_t;				@external;
+	char_ste			:symNode_t;				@external;
+	xchar_ste			:symNode_t;				@external;
+	unicode_ste			:symNode_t;				@external;
+	real32_ste			:symNode_t;				@external;
+	real64_ste			:symNode_t;				@external;
+	real80_ste			:symNode_t;				@external;
+	real128_ste			:symNode_t;				@external;
+	utf8_ste			:symNode_t;				@external;
+	string_ste			:symNode_t;				@external;
+	ustring_ste			:symNode_t;				@external;
+	cset_ste			:symNode_t;				@external;
+	xcset_ste			:symNode_t;				@external;
+	text_ste			:symNode_t;				@external;
+	enum_ste			:symNode_t;				@external;
+	pointer_ste			:symNode_t;				@external;
+	procptr_ste			:symNode_t;				@external;
+	farptr_ste			:symNode_t;				@external;
+	thunk_ste			:symNode_t;				@external; 
+	procedure_ste 		:symNode_t;				@external; 
+	macro_ste	 		:symNode_t;				@external; 
+	undefined_ste		:symNode_t;				@external; 
+	array_ste			:symNode_t;				@external;	 
+	record_ste			:symNode_t;				@external;
+	union_ste			:symNode_t;				@external; 
+	class_ste			:symNode_t;				@external;
+	
+	true_stp			:symNodePtr_t;			@external;
+	false_stp			:symNodePtr_t;			@external;
+	
+const
+	codeSegmentNumber		:= 1; 
+	dataSegmentNumber 		:= 2; 
+	bssSegmentNumber		:= 3; 
+	readonlySegmentNumber	:= 4; 
+	userSegmentNumber		:= 5;	// User section numbers start at 5
+	 
+
+static
+	dataSegment				:symNodePtr_t;				@external; 
+	bssSegment				:symNodePtr_t;				@external; 
+	readonlySegment			:symNodePtr_t;				@external; 
+	codeSegment				:symNodePtr_t;				@external; 
+	constSegment			:symNodePtr_t;				@external; 
+	segmentSTE				:symNodePtr_t;				@external;
+	userSegmentsList		:userSegmentListPtr_t;		@external;
+
+	
+	dataSegmentList			:segItemArrayPtr_t;			@external;
+	bssSegmentList			:segItemArrayPtr_t;			@external;
+	roSegmentList			:segItemArrayPtr_t;			@external;
+	codeSegmentList			:segItemArrayPtr_t;			@external;
+	constSegmentList		:segItemArrayPtr_t;			@external;
+		
+	COFF_file_Header		:IMAGE_FILE_HEADER;			@external;
+	Section_Headers			:IMAGE_SECTION_HEADER_Ptr;	@external;
+	Section_Header_Cnt		:uns32;						@external;
+	Section_Header_Size		:uns32;						@external;
+	
+	dataSegmentRaw			:dword;						@external;
+	dataSegmentSize			:dword;						@external;
+	dataSegmentReloc		:dword;						@external;
+	dataSegmentRelocSize	:dword;						@external;
+	
+	bssSegmentRaw			:dword;						@external;
+	bssSegmentSize			:dword;						@external;
+	bssSegmentReloc			:dword;						@external;
+	bssSegmentRelocSize		:dword;						@external;
+	
+	roSegmentRaw			:dword;						@external;
+	roSegmentSize			:dword;						@external;
+	roSegmentReloc			:dword;						@external;
+	roSegmentRelocSize		:dword;						@external;
+	
+	codeSegmentRaw			:dword;						@external;
+	codeSegmentSize			:dword;						@external;
+	codeSegmentReloc		:dword;						@external;
+	codeSegmentRelocSize	:dword;						@external;
+	
+	constSegmentRaw			:dword;						@external;
+	constSegmentSize		:dword;						@external;
+	constSegmentReloc		:dword;						@external;
+	constSegmentRelocSize	:dword;						@external;
+	
+	
+	
+	
+	
+	
+
+/****************************************************************************/
+
+// External procedure declarations:
+
+procedure quitHLA; @external;
+procedure pushIncStk; @external;
+procedure popIncStack; @external;
+procedure getIncStack; @external;
+procedure lex( Cursor:dword in esi ); @external;
+procedure fastLex( Cursor:dword in esi ); @external;
+procedure usage; @external;
+procedure resetTknQ; @external;
+//procedure reuseTkn( var tkn:token_t in eax ); @external;
+procedure reuseLastTkn; @external;
+
+procedure matchTkn( Cursor:dword in ESI; token:dword in EAX ); 
+	@returns( "@nc" );
+	@external; 
+
+procedure matchTknCls( Cursor:dword in ESI; tokenCls:dword in EBX ); 
+	@returns( "@nc" );
+	@external; 
+	
+procedure matchLParen; 			@external;
+procedure matchRParen; 			@external;
+procedure matchRBracket;		@external;
+procedure matchRBracketOrParen;	@external;
+procedure matchColon; 			@external;
+procedure matchSemicolon;		@external;
+procedure matchComma;			@external;
+procedure mustMatchSemicolon;	@external;
+procedure mustMatchRParen; 		@external;
+
+procedure CheckRW( src:dword in esi ); @returns( "eax" ); @external;
+procedure CheckFunc( src:dword in esi ); @returns( "eax" ); @external;
+procedure CheckCTL( src:dword in esi ); @returns( "eax" ); @external;
+procedure getHexConst( cursor:dword in esi; var attr:attr_t in ebx ); @external;
+procedure getBinConst( cursor:dword in esi; var attr:attr_t in ebx ); @external;
+procedure getDecConst( cursor:dword in esi; var attr:attr_t in ebx ); @external;
+procedure getStrConst( var attr:attr_t ); @external;
+procedure getCsetConst( var attr:attr_t );	@external;
+procedure getBitSet( cursor:dword in esi; var attr:attr_t ); @external;
+procedure getElement( var elementCnt: uns32; terminalChar:dword ); @external;
+procedure getArrayConst( var array:attr_t ); @external;
+procedure getRecordConst
+( 
+	recValues		:attrPtr_t; 
+	theType			:symNodePtr_t
+);	@external;
+procedure getUnionConst
+( 
+	var unValues	:attr_t; 
+		theType		:symNodePtr_t 
+);	@external;
+procedure getMemoryObject
+( 
+	var returnedAttr	:attr_t; 
+	var	baseSym			:symNode_t;
+	var	fullSym			:string 
+); @external;
+
+procedure parseIndex( var displacement:immOperand_t );	@external;
+
+procedure doConstCoercion( var attr:attr_t; theType:symNodePtr_t );
+	@external; 
+procedure constCoercion( var attr:attr_t; theType:symNodePtr_t );
+	@external; 
+procedure reSync; @external;
+procedure resyncOnSemicolon; @external;
+procedure pushBackStr( s:string ); @external;
+procedure pushBackMacro( macSym:symNodePtr_t ); @external;  
+
+procedure lexemeToStr( beginLexeme:dword; endLexeme:dword ); 
+	@returns( "eax" );
+	@external; 
+
+procedure unicodeToAnsi( theString:string ); @external;
+procedure unicodeToUtf8( theString:string ); @external;
+procedure utf8ToAnsi( theString:string ); @external;
+procedure ansiToUnicode( theString:string ); @external;
+procedure checkUtf8( theString:string ); @external;
+procedure utf8ToUnicode( theString:string ); @external;
+procedure utf8Len( utf8Str:string ); @external;
+procedure byteToCharUTF8( utf8Str:string; byteIndex:dword ); @external;
+procedure utf8Index( utf8Str:string; charIndex:dword );	@external;
+procedure utf8Index2( utf8Str:string; charIndex:dword; startIndex:dword );
+	@external;
+procedure getTypeID; @returns( "@nc" ); @external;
+procedure getUndefTypeID( typeSym:symNodePtr_t ); @returns( "@nc" ); @external;
+procedure getTypeOfID; @returns( "@nc" ); @external;
+procedure getSemicolon; @external;
+procedure freeAttr( var attr:attr_t ); @external;
+procedure freeTkn( var token:token_t ); @external;
+procedure getBaseIsoType( t: symNodePtr_t in eax ); 
+	@returns( "eax" ); 
+	@external;
+
+procedure getArrayBaseType( t: symNodePtr_t in eax ); 
+	@returns( "eax" ); 
+	@external;
+
+procedure processConstID
+( 
+	var	baseConst		:attr_t;
+	var baseSym			:symNode_t;
+	var attr			:attr_t;
+	var	baseName		:string 
+); 
+	@returns( "ecx" ); 
+	@external;
+
+procedure parseDotName
+(
+	var	baseSym	:symNode_t;
+	var	fullSym	:string
+); @external;
+
+
+procedure handleCompileTimeFuncs( whichFunc:dword; var attr:attr_t ); @external;
+procedure doAtText; @external;
+
+procedure getNumElements( var arrayType:symNode_t ); 
+	@returns( "eax" );
+	@external;
+
+procedure unsToReal( var uns:attr_t; realType:pType_t ); @external;
+procedure intToReal( var i:attr_t; realType:pType_t ); @external;
+
+procedure multiply( var src:attr_t; var dest:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure divide( var src:attr_t; var dest:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure modulo( var src:attr_t; var dest:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure fDivision( var src:attr_t; var dest:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure shiftLeft( var cnt:attr_t; var value:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure shiftRight( var cnt:attr_t; var value:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure aShiftRight( var cnt:attr_t; var value:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure addition( var src:attr_t; var dest:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure subtract( var src:attr_t; var dest:attr_t );
+	@returns( "@nc" );
+	@external;
+					  
+procedure lessThan( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure lessEqual( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure equals( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure notEquals( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure greaterThan( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure greaterEqual( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure charInSet( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure logicalAnd( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure logicalOr( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure logicalXor( var rightOp:attr_t; var leftOp:attr_t );
+	@returns( "@nc" );
+	@external;
+
+procedure setSmallestSize( var operand:attr_t ); @external;
+
+procedure coerceOperands
+( 
+	var	left:attr_t; 
+	var	right:attr_t; 
+		op:dword 
+);
+	@returns( "@nc" );
+	@external;
+
+procedure deepCopy
+( 
+	var	v:attr_t; 
+		pType:pType_t; 
+	var	symType:symNode_t; 
+	var	attr:attr_t 
+);
+	@external;
+
+
+
+procedure makeCompatible( theType: symNodePtr_t;  var theValue:attr_t );
+	@returns( "@nc" );
+	@external;
+
+
+procedure makeReal80( var attr: attr_t );
+	@returns( "@nc" );
+	@external;
+
+
+procedure expr( var attr:attr_t ); @returns( "@nc" ); @external; 
+procedure constExpr( var attr:attr_t ); @returns( "@nc" ); @external; 
+procedure testExpr( var attr:attr_t ); @returns( "@nc" ); @external; 
+procedure memory( var attr:attr_t ); @external;
+procedure testMemory( var attr:attr_t ); @returns( "@nc" ); @external; 
+
+
+
+
+
+procedure hlaErrorPrefix( srcFilename:string; linenum:int32 ); @external;
+procedure hlaWarnPrefix( srcFilename:string; linenum:int32 ); @external;
+procedure pTypePrint( p:pType_t ); @external;
+procedure printPassBy( passBy:parmClass_t ); @external;
+procedure printInReg( inReg:register_t ); @external;
+procedure dumpLexeme; @external;
+procedure dumpQLexeme; @external;
+procedure dumpAttr( var attr:attr_t ); @external;
+procedure dumpTkn( var tkn:token_t ); @external;
+
+procedure dumpSyms( symptr:symNodePtr_t; Level:uns32; spacer:boolean ); 	
+	@external;
+
+procedure dumpSegs; @external;
+procedure dumpSymbol
+( 
+	symbol		:symNodePtr_t; 
+	Level		:uns32; 
+	staticValue	:boolean;
+	dummyProc	:boolean 
+); @external;
+
+procedure printValue( pType:dword; symType: symNodePtr_t; var v:attr_t );
+	@external;
+
+procedure addFileToList( theFile:string; fullPath:string );	
+	@returns( "eax" );
+	@external;
+	
+procedure mapFile( theFile:string );	@external;
+
+
+procedure compile; @external;
+procedure pgmDcls; @external;
+procedure procDcls; @external;
+procedure unitDcls; @external;
+procedure parseStmts; @external;
+procedure preOptimizer; @external;
+procedure coffGen; @external;
+procedure elfGen; @external;
+procedure gasGen; @external;
+procedure hlaGen; @external;
+procedure lstGen; @external;
+procedure masmGen; @external;
+procedure postOptimizer; @external;
+procedure nativeCodeGen; @external;
+
+procedure parseVal( isPrivate:boolean; isQuestion:boolean ); @external;
+procedure parseConst( isPrivate:boolean ); @external;
+procedure parseType; @external;
+procedure parseVar; @external;
+procedure parseStatic( isPrivate:boolean ); @external;
+procedure parseStorage( isPrivate:boolean ); @external;
+procedure parseReadOnly( isPrivate:boolean ); @external;
+procedure parseSegment( isPrivate:boolean ); @external;
+procedure parseClassProto( classSym:symNodePtr_t ); @external;
+
+procedure buildStaticList( theSegment:symNodePtr_t; segNumber:uns32 ); 
+	@external;
+procedure parseMethodProto( classSym:symNodePtr_t; valres methodOffset:uns32 );
+	@external;
+
+procedure parseIteratorProto
+( 
+			classSym:symNodePtr_t; 
+	valres	methodOffset:uns32 
+);
+	@external;
+	
+procedure parseProc; @external;
+procedure parseMethod; @external;
+procedure parseIterator; @external;
+procedure parseNamespace; @external;
+procedure buildEnumType( var anonType:symNode_t ); @returns( "eax" ); @external;
+
+procedure parseRecord( symType : symNodePtr_t ); @external;
+procedure parseUnion( symType : symNodePtr_t ); @external;
+procedure parseClass( symType : symNodePtr_t ); @external;
+procedure makeLabel( lbl:string );  @returns( "eax" ); @external;
+procedure optionalBounds; @returns( "eax" ); @external;
+
+procedure strDup2( s:string; extend:dword ); @external;
+
+
+type
+	enterProc_t	:
+		procedure
+		 (
+				trueName	:string;
+				lcName		:string;
+				hashValue	:dword;
+				externName	:string;
+				symNode		:symNodePtr_t;
+				pType		:pType_t;
+				symType		:symNodePtr_t;
+				owner		:symNodePtr_t;
+				address		:dword;
+				theSeg		:symNodePtr_t;
+			var	va			:attr_t;
+			var	leaf		:symNodePtr_t
+		 );
+
+
+
+procedure parseProcType
+( 
+	trueName	:string;
+	lcName		:string;
+	hashValue	:dword;
+	symClass	:classType_t;
+	offset		:dword;
+	pClass		:parmClass_t;
+	startOffs	:int32;
+	theSeg		:symNodePtr_t;
+	enterSym	:enterProc_t;
+	initialVal	:boolean 
+);
+	@returns( "eax" );
+	@external;
+	
+procedure parseDeclarationType
+(
+	result	theType		:symNodePtr_t;
+	result	fwdData		:tokenPtr_t;
+			allowableTypes	:dword 
+);
+	@returns( "@nc" );
+	@external;
+
+procedure optStaticAlign( var theSegment:symNode_t ); @external;
+
+
+procedure staticDclTypes
+(
+	staticID	:string;
+	staticlcID	:string;
+	staticHash	:dword;
+	externType	:symNodePtr_t;
+	theSegment	:symNodePtr_t;
+	isPrivate	:boolean;
+	enterSym	:enterProc_t
+);
+	@external;
+
+
+procedure makeUndefID( var sym: token_t in ecx ); @external;
+procedure addFwdPtr
+( 
+		symEntry	:symNodePtr_t; 
+	var	tkn			:token_t;
+		symClass	:classType_t
+); @external;
+
+procedure chkFwdPtrList; @external;
+
+procedure addFwdProc
+( 
+	symEntry	:symNodePtr_t; 
+	theClass	:symNodePtr_t;
+	curLexLevel	:dword 
+); @external;
+
+procedure addFwdStaticExpr( staticExprPtr:staticExprPtr_t ); @external;
+procedure chkFwdProcList; @external;
+
+procedure chkFwdStaticExpr; @external;
+
+procedure addExtSym( symEntry:symNodePtr_t; theClass:symNodePtr_t ); @external;
+procedure setPublic( symEntry:symNodePtr_t ); @external;
+
+
+procedure lookupLocal
+( 
+	symbol		:string;
+	lcName		:string;
+	hashValue	:dword 
+); 
+	@returns( "eax" ); 
+	@external;
+
+
+procedure lookupLocalIn
+( 
+	symbol			:string;
+	lcName			:string;
+	hashValue		:dword; 
+	hashTableToUse	:hashTablePtr_t 
+); 
+	@returns( "eax" ); 
+	@external;
+
+
+procedure undefLookup
+( 
+	hashValue	:dword;
+	symbol		:string 
+); 
+	@returns( "eax" ); 
+	@external;
+
+procedure computeHash( id:string in eax ); 
+	@returns( "eax" );
+	@external;
+
+procedure computeLeaf
+( 
+	symbol		:string;
+	lcName		:string;
+	hashValue	:dword 
+); 
+	@returns( "ebx" ); 
+	@external;
+
+
+procedure lookupGlobal
+( 
+	symbol		:string;
+	lcName		:string;
+	hashValue	:dword 
+); 
+	@returns( "eax" );
+	@external;
+
+procedure iLookupGlobal
+( 
+	lcName		:string;
+	hashValue	:dword 
+);
+	@returns( "eax" );
+	@external;
+	
+procedure lookupGlobalIn
+( 
+	symbol			:string;
+	lcName			:string;
+	hashValue		:dword; 
+	hashTableToUse	:hashTablePtr_t 
+); 
+	@returns( "eax" ); 
+	@external;
+
+
+	 
+
+
+procedure enterLabel
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		equate		:symNodePtr_t;
+		externName	:string;
+		address		:dword;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+ 
+procedure enterConst
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var constVal	:attr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+ 
+procedure enterVal
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+procedure enterNewVal
+(
+		symbol		:string;
+		lcName		:string;
+		hashValue	:dword;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+procedure setVal
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		symType		:symNodePtr_t;
+	var	constVal	:attr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+ 
+
+
+procedure enterType
+(
+		symbol		:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		theType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+
+procedure enterVar
+(
+		trueName	:string;
+		lcName		:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		offset		:int32;
+		pClass		:parmClass_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+
+procedure enterStatic
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+procedure enterReadonly
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+procedure enterStorage
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+procedure enterSegment
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		symNode		:symNodePtr_t;
+		pType		:pType_t;
+		symType		:symNodePtr_t;
+		owner		:symNodePtr_t;
+		address		:dword;
+		theSeg		:symNodePtr_t;
+	var	va			:attr_t;
+	var	leaf		:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+
+procedure enterSegmentID
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		isReadOnly	:boolean
+);	
+	@returns( "eax" );
+	@external;
+
+
+
+
+procedure enterNamespace
+(
+		symbol			:string;
+		lcName			:string;
+		hashValue		:dword;
+		symNode			:symNodePtr_t
+);	
+	@returns( "eax" );
+	@external;
+
+
+
+procedure createLocalHashTable( theProc:symNodePtr_t );
+	@external;
+	
+procedure createLocalProc( theProc:symNodePtr_t; procHash:dword );
+	@external;
+
+procedure enterProc
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		externName	:string;
+		pType		:pType_t;
+		owner		:symNodePtr_t;
+		baseClass	:symNodePtr_t;
+		address		:dword;
+	var	leaf		:symNodePtr_t
+);
+	@returns( "eax" );
+	@external;
+
+
+procedure enterMacro
+(
+		trueName	:string;
+		lcName		:string;
+		hashValue	:dword;
+		owner		:symNodePtr_t;
+		classType	:classType_t;
+	var	leaf		:symNodePtr_t
+);
+	@returns( "eax" );
+	@external;
+
+
+procedure doPoundIF;			@external;
+procedure doPoundElseIf;		@external;
+procedure doPoundElse;			@external;
+procedure doPoundEndIf;			@external;
+procedure doPoundFor;			@external;
+procedure doPoundForEach;		@external;
+procedure doPoundEndFor;		@external;
+procedure doPoundWhile;			@external;
+procedure doPoundEndWhile;		@external;
+procedure doPoundMacro;			@external;
+procedure doPoundKeyword;		@external;
+procedure doPoundTerminator;	@external;
+procedure doPoundEndMacro;		@external;
+procedure doPoundTemplate;		@external;
+procedure doPoundEndTemplate;  	@external;
+procedure doPoundASM;		   	@external;
+procedure doPoundEndASM;		@external;
+procedure doPoundEmit;			@external;
+procedure doPoundText;			@external;
+procedure doPoundEndText;		@external;
+procedure doPoundError;			@external;
+procedure doPoundPrint;			@external;
+procedure doPoundOpenRead;		@external;
+procedure doPoundCloseRead;		@external;
+procedure doPoundOpenWrite;		@external;
+procedure doPoundCloseWrite;	@external;
+procedure doPoundWrite;			@external;
+procedure doPoundSystem;		@external;
+
+
+procedure byteFunc( var attr:attr_t );		@external;
+procedure wordFunc( var attr:attr_t );		@external;
+procedure dwordFunc( var attr:attr_t );		@external;
+procedure qwordFunc( var attr:attr_t );		@external;
+procedure tbyteFunc( var attr:attr_t );		@external;
+procedure lwordFunc( var attr:attr_t );		@external;
+procedure uns8Func( var attr:attr_t );		@external;
+procedure uns16Func( var attr:attr_t );		@external;
+procedure uns32Func( var attr:attr_t );		@external;
+procedure uns64Func( var attr:attr_t );		@external;
+procedure uns128Func( var attr:attr_t );	@external;
+procedure int8Func( var attr:attr_t );		@external;
+procedure int16Func( var attr:attr_t );		@external;
+procedure int32Func( var attr:attr_t );		@external;
+procedure int64Func( var attr:attr_t );		@external;
+procedure int128Func( var attr:attr_t );	@external;
+procedure real32Func( var attr:attr_t );	@external;
+procedure real64Func( var attr:attr_t );	@external;
+procedure real80Func( var attr:attr_t );	@external;
+procedure booleanFunc( var attr:attr_t );	@external;
+procedure charFunc( var attr:attr_t );		@external;
+procedure xcharFunc( var attr:attr_t );		@external;
+procedure unicodeFunc( var attr:attr_t );	@external;
+procedure stringFunc( var attr:attr_t );	@external;
+procedure ustringFunc( var attr:attr_t );	@external;
+procedure utf8Func( var attr:attr_t );		@external;
+procedure csetFunc( var attr:attr_t );		@external;
+procedure xcsetFunc( var attr:attr_t );		@external;
+
+procedure ctString( var attr:attr_t );		@external;
+procedure ctUtf8( var attr:attr_t );		@external;
+
+
+
+procedure zeroAttr( var attr:attr_t );		@external;
+procedure defaultAttr( var attr:attr_t );	@external;
+procedure dummyAttr( var attr:attr_t );		@external;
+procedure getRightParen; @returns( "eax" );	@external;
+procedure checkValID( var tkn:token_t );	@external;
+procedure getString( var attr:attr_t );		@external;
+procedure getChar( var attr:attr_t );		@external;
+procedure getCset( var attr:attr_t );		@external;
+procedure getUnsigned( var attr:attr_t );	@external;
+procedure getIDorExpr( var attr:attr_t );	@external;
+
+procedure getInteger( var attr:attr_t );	@external;
+
+
+//----------------------------------------------------------------------------
+//
+// raiseErr - raises ex.hlaerr if condition is true
+
+#macro raiseErr( condition );
+	if( condition ) then raise( ex.hlaerr ); endif
+#endmacro
+
+
+//----------------------------------------------------------------------------
+// pushABCD-
+//	Pushes the EAX, EBX, ECX, and EDX registers
+//
+// popABCD-
+//	Pops EAX, EBX, ECX, and EDX (in reverse order) 
+//
+// pushBCD-
+//	Pushes the EBX, ECX, and EDX registers
+//
+// popBCD-
+//	Pops EBX, ECX, and EDX (in reverse order)
+
+
+#macro pushABCD;
+	push( eax );
+	push( ebx );
+	push( ecx );
+	push( edx );
+#endmacro
+
+#macro popABCD;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+	pop( eax );
+#endmacro
+
+#macro pushBCD;
+	push( ebx );
+	push( ecx );
+	push( edx );
+#endmacro
+
+#macro popBCD;
+	pop( edx );
+	pop( ecx );
+	pop( ebx );
+#endmacro
+
+
+//----------------------------------------------------------------------------
+//
+// The following is used to inject debugging information (specifically, the
+// procedure's name) into the code stream.	But only if "emitProcNames" is
+// defined and set equal to true.
+
+#macro cproc( _procName_ ):_dummyProc_, _unique_, _index_;
+	?_index_ :int32 := @rindex( _procName_, 0, "." );
+	#if( _index_ <> -1 )
+	
+		?_unique_ :string := 
+				@string( _dummyProc_ )
+			+	@substr
+				(
+					_procName_, 
+					_index_ + 1,
+					@length( _procName_ ) - _index_
+				);
+				
+	#else
+	
+		?_unique_ :string := @string( _dummyProc_ ) + _procName_;
+				
+	#endif
+	?_dummyProc_ :text :=  _unique_;
+
+	#if( @defined( emitProcNames ))
+	
+		#if( emitProcNames )
+	
+			procedure _dummyProc_; @noframe; align(16);
+			begin _dummyProc_;
+				byte _procName_, 0;
+				align(16);
+				
+			end _dummyProc_;
+			
+		#endif
+		
+	#endif
+	
+#endmacro 
+/****************************************************************************/
+
+
+// rwstr( str, start, len )
+//
+//	This macro generates an unsX value from the string "str" by
+// starting at position "start" and grabbing "len" characters
+// (i.e., substr).  It treats the first character as the L.O. byte
+// and following characters in the string as successive H.O. bytes
+// of the UNS8, UNS16, or UNS32 value (size depends upon the value
+// of len).  Note that len = 1, 2, or 4 are the only legitimate
+// values.
+//
+//	Statements in the cmpcode.hla include file use this macro
+// to convert reserved word strings to an eight, sixteen,
+// or thirty-two bit constant value that the code can compare against
+// one of the 80x86 registers.
+
+#macro rwstr( str, start, len ):chrIndex, chrLen, chrVal;
+	?chrIndex := start;
+	?chrLen := 0;
+	?chrVal := 0;
+	#while( chrLen < len )
+
+		?chrVal := chrVal + 
+			uns8( char( @substr( str, chrIndex, 1 ))) << (chrLen * 8 );
+		?chrLen := chrLen + 1;
+		?chrIndex := chrIndex + 1;
+
+	#endwhile
+	chrVal
+
+#endmacro;
+
+
+
+// funcstr( str, start, len )
+//
+//	This macro generates an unsX value from the string "str" by
+// starting at position "start" and grabbing "len" characters
+// (i.e., substr).  It treats the first character of the substring
+//  as the H.O. byte and following characters in the substring as 
+// successive L.O. bytes of the UNS8, UNS16, or UNS32 value 
+// (size depends upon the value of len).  Note that len = 1, 2, or 4 
+// are the only legitimate values.
+//
+//	Statements in the cmpfunc.hla include file use this macro
+// to convert reserved word strings to an eight, sixteen,
+// or thirty-two bit constant value that the code can compare against
+// one of the 80x86 registers.
+
+#macro funcstr( str, start, len ):chrIndex, chrLen, chrVal;
+	?chrIndex := start;
+	?chrVal := 0;
+	?chrLen := len;
+	#while( chrLen > 0 )
+
+		?chrVal := chrVal + 
+			uns8( char( @substr( str, chrIndex, 1 ))) << ((chrLen-1) * 8 );
+		?chrLen := chrLen - 1;
+		?chrIndex := chrIndex + 1;
+
+	#endwhile
+	chrVal
+
+#endmacro;
+
+
+

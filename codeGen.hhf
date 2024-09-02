@@ -1,0 +1,1224 @@
+// codegen.h
+//
+//	Constants and other declarations needed by the code generator.
+
+
+const
+	intCodeEAX	:text := "(type internalCode_t [eax])";
+	intCodeEBX	:text := "(type internalCode_t [ebx])";
+	intCodeECX	:text := "(type internalCode_t [ecx])";
+	intCodeEDX	:text := "(type internalCode_t [edx])";
+
+	instOpEAX	:text := "(type instrOperand_t [eax])";
+	instOpEBX	:text := "(type instrOperand_t [ebx])";
+	instOpECX	:text := "(type instrOperand_t [ecx])";
+	instOpEDX	:text := "(type instrOperand_t [edx])";
+
+	binMemOpEAX	:text := "(type binaryMemoryOperand_t [eax])";
+	binMemOpEBX	:text := "(type binaryMemoryOperand_t [ebx])";
+	binMemOpECX	:text := "(type binaryMemoryOperand_t [ecx])";
+	binMemOpEDX	:text := "(type binaryMemoryOperand_t [edx])";
+
+
+
+	// Maximum number of bytes in an x86 instruction:
+
+	maxInstrSize_c := 15;
+
+
+
+const
+
+	// Possible instruction prefixes.
+	//
+	// Group one prefixes:
+
+	lockPrefix_c		:= @{0};		// $F0
+	repPrefix_c			:= @{1};		// $F3
+	repePrefix_c		:= @{2};		// $F3
+	repnePrefix_c		:= @{3};		// $F2
+
+	g1Prefixes_c		:= lockPrefix_c | repPrefix_c | 
+							repePrefix_c | repnePrefix_c;
+
+	// Group two prefixes:
+
+	csegPrefix_c		:= @{4};		// $2E
+	dsegPrefix_c		:= @{5};		// $3E
+	esegPrefix_c		:= @{6};		// $26
+	fsegPrefix_c		:= @{7};		// $64
+	gsegPrefix_c		:= @{8};		// $65
+	ssegPrefix_c		:= @{9};		// $36
+	brTknPrefix_c		:= @{10};		// $2E	-- Same as CSEG
+	brNotTknPrfx_c		:= @{11};		// $3E	-- Same as DSEG
+
+	g2Prefixes_c		:=		csegPrefix_c	
+							|	dsegPrefix_c	
+							|	esegPrefix_c	
+							|	fsegPrefix_c	
+							|	gsegPrefix_c	
+							|	ssegPrefix_c	
+							|	brTknPrefix_c	
+							|	brNotTknPrfx_c;
+	
+
+
+	// Group three prefix:
+
+	sizePrefix_c		:= @{12};		// $66
+
+	// Group four prefix:
+
+	adrsPrefix_c		:= @{13};		// $67
+
+
+	// Prefix values:
+
+	lock_c		:= $F0;
+	rep_c		:= $F3;
+	repe_c		:= $F3;
+	repne_c		:= $F2;
+
+	cseg_c		:= $2E;
+	dseg_c		:= $3E;
+	eseg_c		:= $26;
+	fseg_c		:= $64;
+	gseg_c		:= $65;
+	sseg_c		:= $36;
+
+	brTaken_c	:= $2E;
+	brNotTaken_c:= $3E;
+
+	oprndSize_c	:= $66;
+	adrsSize_c	:= $67;
+
+
+	// Optimization Flags (used by _setopt records):
+
+	immediateOpt_c		:=	@{0};	// Use shortest immediate forms
+	branchOpt_c			:=	@{1};	// Optimize branch displacements
+	hllOpt_c			:=	@{2};	// Optimize HLL statements
+
+
+	// variableState_t values:
+	//
+	// srcVariable 
+	//		This bit is set if the source operand's value can
+	// 		change across different phases (passes) of the assembly. It's
+	// 		zero if the source operand's value is fixed and will not
+	//		change on the next pass through the object code.
+	//
+	// destVariable
+	//		Same idea as srcVariable above, but for the destination operand.
+	//
+	// cntVariable
+	//		Same idea as above, but for the cnt field of shifts, rotates,
+	//		and other instructions that take a small immediate operand. 
+
+	srcVariable		:= @{0};
+	destVariable	:= @{1};
+	cntVariable		:= @{2};
+
+
+
+	// Encodings for registers.
+
+	rex_std_c		:= %0100_0000__0000_0000__0000_0000;
+	rex_ext_c			:= %0100_0100__0000_0000__0000_0000;
+	
+	mod_reg_c			:= %1100_0000;
+
+	al_encoding_c		:= mod_reg_c | %000;
+	ax_encoding_c		:= mod_reg_c | %000;
+	eax_encoding_c		:= mod_reg_c | %000;
+	rax_encoding_c		:= rex_std_c | mod_reg_c | %000;
+	r8_encoding_c		:= rex_ext_c | mod_reg_c | %000;
+
+	cl_encoding_c		:= mod_reg_c | %001;
+	cx_encoding_c		:= mod_reg_c | %001;
+	ecx_encoding_c		:= mod_reg_c | %001;
+	rcx_encoding_c		:= rex_std_c | mod_reg_c | %001;
+	r9_encoding_c		:= rex_ext_c | mod_reg_c | %001;
+
+	dl_encoding_c		:= mod_reg_c | %010;
+	dx_encoding_c		:= mod_reg_c | %010;
+	edx_encoding_c		:= mod_reg_c | %010;
+	rdx_encoding_c		:= rex_std_c | mod_reg_c | %010;
+	r10_encoding_c		:= rex_ext_c | mod_reg_c | %010;
+
+	bl_encoding_c		:= mod_reg_c | %011;
+	bx_encoding_c		:= mod_reg_c | %011;
+	ebx_encoding_c		:= mod_reg_c | %011;
+	rbx_encoding_c		:= rex_std_c | mod_reg_c | %011;
+	r11_encoding_c		:= rex_ext_c | mod_reg_c | %011;
+
+	ah_encoding_c		:= mod_reg_c | %100;
+	sp_encoding_c		:= mod_reg_c | %100;
+	esp_encoding_c		:= mod_reg_c | %100;
+	rsp_encoding_c		:= rex_std_c | mod_reg_c | %100;
+	spb_encoding_c		:= rex_std_c | mod_reg_c | %100;
+	r12_encoding_c		:= rex_ext_c | mod_reg_c | %100;
+
+	ch_encoding_c		:= mod_reg_c | %101;
+	bp_encoding_c		:= mod_reg_c | %101;
+	ebp_encoding_c		:= mod_reg_c | %101;
+	rbp_encoding_c		:= rex_std_c | mod_reg_c | %101;
+	bpb_encoding_c		:= rex_std_c | mod_reg_c | %101;
+	r13_encoding_c		:= rex_ext_c | mod_reg_c | %101;
+
+	dh_encoding_c		:= mod_reg_c | %110;
+	si_encoding_c		:= mod_reg_c | %110;
+	esi_encoding_c		:= mod_reg_c | %110;
+	rsi_encoding_c		:= rex_std_c | mod_reg_c | %110;
+	sib_encoding_c		:= rex_std_c | mod_reg_c | %110;
+	r14_encoding_c		:= rex_ext_c | mod_reg_c | %110;
+
+	bh_encoding_c		:= mod_reg_c | %111;
+	di_encoding_c		:= mod_reg_c | %111;
+	edi_encoding_c		:= mod_reg_c | %111;
+	rdi_encoding_c		:= rex_std_c | mod_reg_c | %111;
+	dib_encoding_c		:= rex_std_c | mod_reg_c | %111;
+	r15_encoding_c		:= rex_ext_c | mod_reg_c | %111;
+
+	mm0_encoding_c		:= mod_reg_c | %000;
+	mm1_encoding_c		:= mod_reg_c | %001;
+	mm2_encoding_c		:= mod_reg_c | %010;
+	mm3_encoding_c		:= mod_reg_c | %011;
+	mm4_encoding_c		:= mod_reg_c | %100;
+	mm5_encoding_c		:= mod_reg_c | %101;
+	mm6_encoding_c		:= mod_reg_c | %110;
+	mm7_encoding_c		:= mod_reg_c | %111;
+
+	st0_encoding_c		:= mod_reg_c | %000;
+	st1_encoding_c		:= mod_reg_c | %001;
+	st2_encoding_c		:= mod_reg_c | %010;
+	st3_encoding_c		:= mod_reg_c | %011;
+	st4_encoding_c		:= mod_reg_c | %100;
+	st5_encoding_c		:= mod_reg_c | %101;
+	st6_encoding_c		:= mod_reg_c | %110;
+	st7_encoding_c		:= mod_reg_c | %111;
+
+	xmm0_encoding_c		:= mod_reg_c | %000;
+	xmm1_encoding_c		:= mod_reg_c | %001;
+	xmm2_encoding_c		:= mod_reg_c | %010;
+	xmm3_encoding_c		:= mod_reg_c | %011;
+	xmm4_encoding_c		:= mod_reg_c | %100;
+	xmm5_encoding_c		:= mod_reg_c | %101;
+	xmm6_encoding_c		:= mod_reg_c | %110;
+	xmm7_encoding_c		:= mod_reg_c | %111;
+	xmm8_encoding_c		:= rex_ext_c | mod_reg_c | %000;
+	xmm9_encoding_c		:= rex_ext_c | mod_reg_c | %001;
+	xmm10_encoding_c	:= rex_ext_c | mod_reg_c | %010;
+	xmm11_encoding_c	:= rex_ext_c | mod_reg_c | %011;
+	xmm12_encoding_c	:= rex_ext_c | mod_reg_c | %100;
+	xmm13_encoding_c	:= rex_ext_c | mod_reg_c | %101;
+	xmm14_encoding_c	:= rex_ext_c | mod_reg_c | %110;
+	xmm15_encoding_c	:= rex_ext_c | mod_reg_c | %111;
+
+	dr0_encoding_c		:= mod_reg_c | %000;
+	dr1_encoding_c		:= mod_reg_c | %001;
+	dr2_encoding_c		:= mod_reg_c | %010;
+	dr3_encoding_c		:= mod_reg_c | %011;
+	dr4_encoding_c		:= mod_reg_c | %100;
+	dr5_encoding_c		:= mod_reg_c | %101;
+	dr6_encoding_c		:= mod_reg_c | %110;
+	dr7_encoding_c		:= mod_reg_c | %111;
+	dr8_encoding_c		:= rex_ext_c | mod_reg_c | %000;
+	dr9_encoding_c		:= rex_ext_c | mod_reg_c | %001;
+	dr10_encoding_c		:= rex_ext_c | mod_reg_c | %010;
+	dr11_encoding_c		:= rex_ext_c | mod_reg_c | %011;
+	dr12_encoding_c		:= rex_ext_c | mod_reg_c | %100;
+	dr13_encoding_c		:= rex_ext_c | mod_reg_c | %101;
+	dr14_encoding_c		:= rex_ext_c | mod_reg_c | %110;
+	dr15_encoding_c		:= rex_ext_c | mod_reg_c | %111;
+
+	cr0_encoding_c		:= mod_reg_c | %000;
+	cr1_encoding_c		:= mod_reg_c | %001;
+	cr2_encoding_c		:= mod_reg_c | %010;
+	cr3_encoding_c		:= mod_reg_c | %011;
+	cr4_encoding_c		:= mod_reg_c | %100;
+	cr5_encoding_c		:= mod_reg_c | %101;
+	cr6_encoding_c		:= mod_reg_c | %110;
+	cr7_encoding_c		:= mod_reg_c | %111;
+	cr8_encoding_c		:= rex_ext_c | mod_reg_c | %000;
+	cr9_encoding_c		:= rex_ext_c | mod_reg_c | %001;
+	cr10_encoding_c		:= rex_ext_c | mod_reg_c | %010;
+	cr11_encoding_c		:= rex_ext_c | mod_reg_c | %011;
+	cr12_encoding_c		:= rex_ext_c | mod_reg_c | %100;
+	cr13_encoding_c		:= rex_ext_c | mod_reg_c | %101;
+	cr14_encoding_c		:= rex_ext_c | mod_reg_c | %110;
+	cr15_encoding_c		:= rex_ext_c | mod_reg_c | %111;
+
+	eseg_encoding_c		:= %000;
+	cseg_encoding_c		:= %001;
+	sseg_encoding_c		:= %010;
+	dseg_encoding_c		:= %011;
+	fseg_encoding_c		:= %100;
+	gseg_encoding_c		:= %101;
+
+
+
+	
+type
+	variableState_t	:byte;		
+	lineNumRecPtr_t	:pointer to lineNumRec_t;
+	lineNumRec_t:
+		record
+			lineNumber	:dword;
+			filename	:string;
+		endrecord;
+
+
+	binaryMemoryOperand_t:
+		record inherits( memOperand_t )
+
+			modRM		:byte;
+			SIB			:byte;
+			REX			:byte;
+			align(4);
+
+		endrecord;
+
+
+	instrOperand_t:
+		record
+
+			size		:uns8;			// Size of the operand (mem/reg)
+			length		:uns8;			// Length of operand's encoding
+			mode		:adrsMode_t;	// Particular mode this operand uses
+			align(4);
+
+			union
+
+				// If the operand is an immediate value, the following
+				// field holds its value:
+
+				immVal				:immOperand_t;
+
+				// If the operand is a memory location, then following
+				// field holds the associated address:
+
+				memAdrs				:binaryMemoryOperand_t; 
+
+				// If the operand is a register operand, the following
+				// field specifies which register:
+
+				register			:register_t;
+				
+				// The following is used by _label records:
+
+				labelEntry			:symNodePtr_t;
+
+				// The following is used by _setopt records:
+
+				optimizationFlags	:dword;
+
+				// The following is used by _proc and _endp records:
+
+				record
+
+					procPtr				:symNodePtr_t;
+					procAlign			:dword;
+
+				endrecord;
+
+				// The following is used by _pgm records:
+
+				pgmID					:string;
+
+				// The following is used by _align records:
+
+				alignment			:dword;
+					
+			endunion;
+
+		endrecord;
+
+		
+
+	internalCodePtr_t	:pointer to internalCode_t;
+
+	internalCode_t:
+		record
+		
+			next		:internalCodePtr_t;	// Ptr to next instr
+			prev		:internalCodePtr_t;	// Ptr to prev instr
+			nextVar		:internalCodePtr_t;	// Ptr to next var-length instr
+			varDist		:dword;				// Distance from last varlen instr
+
+			// Code segment offset (normal use):
+
+			offset		:dword;
+				
+			length		:dword;		// Instruction length, in bytes
+			prefixes	:word;		// Prefixes attached to this instruction.
+			instrTkn	:word;		// really instrTkns_t
+
+			// Here's where we describe the main operands:
+
+			srcOperand	:instrOperand_t;
+			destOperand	:instrOperand_t;
+
+			// cntOperand:
+			//
+			//	If 0..n, an 8 or 16-bit immediate value used as a count
+			// or other small immediate value for shifts, rotates, INT, RET,
+			// and so on.
+			//
+			// If -1, this signifies that this field is unused.
+			// If -2, this signifies the use of the CL register as a count.
+			// If -3, this signifies the use of the DX register as a ptr.
+
+			cntOperand	:int32;
+
+			// lineNumCnt is the number of line number entries
+			// at the end of this record:
+
+			lineNumCnt	:byte;
+
+
+			// x86 instructions can be up to 15 bytes long
+			// (this may need to be greater for 64-bit code).
+
+			instrCode	:byte[maxInstrSize_c];
+
+			align(4);
+
+
+			// The following is a variable-length array dynamically
+			// allocated with this record is created. The lineNumCnt
+			// field specifies the number of entries.
+
+			lineNumRecs	:lineNumRec_t[1];
+
+		endrecord;
+		
+
+
+
+
+const
+	//bm=instruction_strings
+	
+	instrStrs_c	:string[] :=
+	[
+			// Directives we need to output, that are
+			// not real machine instructions.
+
+			"start",	// Used to mark the start of the code list.
+			"pgm",		// first stmt of a PROGRAM's body.
+			"align",	// align code on a given byte boundary.
+			"proc",		// Beginning of a procedure's body.
+			"endproc",	// End of a procedure's body.
+			"setopt",	// Set the optimization level.
+			"label",	// Define a symbol at the current code point
+
+			// Group zero instructions: no operands:
+			
+			"aaa",
+			"aas",
+			"cbw",
+			"cdq",
+			"clc",
+			"cld",
+			"cli",
+			"cmc",
+			"cwd",
+			"cwde",
+			"daa",
+			"das",
+			"hlt",
+			"into",
+			"iret",
+			"iretd",
+			"lahf",
+			"leave",
+			"nop",
+			"popa",
+			"popad",
+			"popf",
+			"popfd",
+			"pusha",
+			"pushad",
+			"pushf",
+			"pushfd",
+			"sahf",
+			"stc",
+			"std",
+			"sti",
+			"ud2",
+			"wait",
+			"xlat",
+
+			// Two-byte implied operand instructions:
+			
+			"aad",
+			"aam",
+			"clts",
+			"cpuid",
+			"emms",
+			"invd",
+			"ldmxcsr",
+			"lfence",
+			"mfence",
+			"pause",
+			"rdmsr",
+			"rdpmc",
+			"rdtsc",
+			"rsm",
+			"sfence",
+			"stmxcsr",
+			"wbinvd",
+			"wrsmr",
+			
+			// Instructions taking a single constant operand:
+			
+			"int",
+			"ret",			
+
+			
+			// Group one instructions: single memory or register operand:
+			
+			"dec",
+			"inc",
+			"neg",
+			"not",
+
+			// Group two instructions: generic arithmetic/logical instructions
+			
+			"adc",
+			"add",
+			"and",
+			"cmp",
+			"or",
+			"sbb",
+			"sub",
+			"test",
+			"xor",
+			
+			// XADD, xchgcmp instructions:
+			
+			"cmpxchg",
+			"cmpxchg8b",
+			"xadd",
+
+			// LEA instruction:
+			//
+			// Syntax: LEA reg32, mem
+			
+			"lea",
+			
+			// LAR instruction:
+			//
+			// Syntax: LAR reg32, r/m32
+			
+			"lar",
+			
+			
+			// MOV instruction:
+			
+			"mov",
+			
+			
+			// XCHG instruction:
+			
+			"xchg",
+
+			// bswap instruction:
+			
+			"bswap",
+			
+			
+			// Pop Instruction:
+			
+			"pop",
+			
+			// Push Instructions:
+			
+			"push",
+			"pushd",
+			"pushw",
+			
+			
+			
+			// Load Segment Register instuctions:
+			
+			"lds",
+			"les",
+			"lfs",
+			"lgs",
+			"lss",
+			
+
+			// Shift/rotate instructions:
+			
+			"rcl",
+			"rcr",
+			"rol",
+			"ror",
+			"sal",
+			"sar",
+			"shl",
+			"shr",
+
+			"shld",
+			"shrd",
+
+			
+
+			// Unconditional control transfer instructions:
+			
+			"jmp",
+			"call",
+			
+			
+			// 8-bit conditional jump instructions:
+			//
+			//	Syntax:
+			//
+			//		xxx shortLbl
+			
+			"jcxz",
+			"jecxz",
+			"loop",
+			"loope",
+			"loopne",
+			"loopnz",
+			"loopz",
+
+			// Conditional jump instructions:
+			//
+			// Syntax:
+			//
+			//	Jcc nearLbl;
+			
+			"ja",
+			"jae",
+			"jb",
+			"jbe",
+			"jc",
+			"je",
+			"jf",
+			"jg",
+			"jge",
+			"jl",
+			"jle",
+			"jna",
+			"jnae",
+			"jnb",
+			"jnbe",
+			"jnc",
+			"jne",
+			"jng",
+			"jnge",
+			"jnl",
+			"jnle",
+			"jno",
+			"jnp",
+			"jns",
+			"jnz",
+			"jo",
+			"jp",
+			"jpe",
+			"jpo",
+			"js",
+			"jt",
+			"jz",
+			
+			
+
+			// I/O instructions:
+			
+			"in",
+			"out",
+
+			
+			
+			
+			
+			// Multiply/divide instructions:
+			
+			"div",
+			"idiv",
+			"imod",
+			"imul",
+			"intmul",
+			"mod",
+			"mul",			
+			
+			
+			// String instructions:
+			
+			"cmpsb",
+			"cmpsd",
+			"cmpss",
+			"cmpsw",
+			"insb",
+			"insd",
+			"insw",
+			"outsb",
+			"outsd",
+			"outsw",
+			"lodsb",
+			"lodsd",
+			"lodsw",
+			"movsb",
+			"movsd",
+			"movsw",
+			"scasb",
+			"scasd",
+			"scasw",
+			"stosb",
+			"stosd",
+			"stosw",
+			
+			// Conditional move instructions:
+			
+			"cmova",
+			"cmovae",
+			"cmovb",
+			"cmovbe",
+			"cmovc",
+			"cmove",
+			"cmovg",
+			"cmovge",
+			"cmovl",
+			"cmovle",
+			"cmovna",
+			"cmovnae",
+			"cmovnb",
+			"cmovnbe",
+			"cmovnc",
+			"cmovne",
+			"cmovng",
+			"cmovnge",
+			"cmovnl",
+			"cmovnle",
+			"cmovno",
+			"cmovnp",
+			"cmovns",
+			"cmovnz",
+			"cmovo",
+			"cmovp",
+			"cmovpe",
+			"cmovpo",
+			"cmovs",
+			"cmovz",
+			
+			// Conditional set instructions
+			//
+			// Scc( r/m8 )
+			
+			"seta",
+			"setae",
+			"setb",
+			"setbe",
+			"setc",
+			"sete",
+			"setg",
+			"setge",
+			"setl",
+			"setle",
+			"setna",
+			"setnae",
+			"setnb",
+			"setnbe",
+			"setnc",
+			"setne",
+			"setng",
+			"setnge",
+			"setnl",
+			"setnle",
+			"setno",
+			"setnp",
+			"setns",
+			"setnz",
+			"seto",
+			"setp",
+			"setpe",
+			"setpo",
+			"sets",
+			"setz",
+
+			
+			
+			// Bit test/set/clear instructions
+			
+			"bt",
+			"btc",
+			"btr",
+			"bts",
+			"bsf",
+			"bsr",
+			
+			// Enter instruction:
+			
+			"enter",
+			
+			
+			// Prefixes
+
+			"rep",
+			"repe",
+			"repne",
+			"repnz",
+			"repz",
+			
+			"lock",
+			
+			// Load/Store task registers:
+			//
+			// Syntax:
+			//		ltreg  (r/m16)
+			//		streg  (r/m16)
+			//		lldt   (r/m16)
+			//		lmsw   (r/m16)
+			//		smsw   (r/m16)
+			//		verr   (r/m16)
+			//		verw   (r/m16)
+			
+			"ltreg",
+			"streg",
+			"lldt",
+			"lmsw",
+			"smsw",
+			"verr",
+			"verw",
+
+			// lgdt/lidt instructions:
+			//
+			// syntax:
+			//
+			//	lgdt( mem16:32 );
+			//	lidt( mem16:32 );
+			
+			"lgdt",
+			"lidt",
+			
+
+			// ARPL Instruction:
+			//
+			//	Syntax:
+			//		arpl( r16", r/m16 )
+			
+			"arpl",
+			
+			// Bound/Lsl Instruction:
+			//
+			// Syntax:
+			//
+			//	xxx( r16", m16 );
+			//	xxx( r32", m32 );
+			
+			"bound",
+			"lsl",
+			
+			
+			
+			// invlpg/sgdt/sidt Instructions:
+			//
+			//	Syntax:
+			//
+			//		xxx( memory );
+			
+			"invlpg",
+			"sgdt",
+			"sidt",
+			
+			// Sldt instruction:
+			//
+			//	syntax:
+			//
+			//		sldt( r/m32 );
+			
+			"sldt",
+			
+			
+			// clflush/prefetch instructions:
+			//
+			//	syntax:
+			//
+			//		xxx( mem8 );
+			
+			"clflush",
+			"prefetch",
+			"prefetchnta",
+			"prefetcht0",
+			"prefetcht1",
+			"prefetcht2",
+			
+			
+			
+			
+			
+/************/
+			
+			
+			"addpd",
+			"addps",
+			"addss",
+			"andnpd",
+			"andnps",
+			"andpd",
+			"andps",
+			
+			
+			
+			
+			
+			
+			
+			"cmpeqpd",
+			"cmpeqps",
+			"cmpeqsd",
+			"cmpeqss",
+			"cmplepd",
+			"cmpleps",
+			"cmplesd",
+			"cmpless",
+			"cmpltpd",
+			"cmpltps",
+			"cmpltsd",
+			"cmpltss",
+			"cmpneqpd",
+			"cmpneqps",
+			"cmpneqsd",
+			"cmpneqss",
+			"cmpnlepd",
+			"cmpnleps",
+			"cmpnlesd",
+			"cmpnless",
+			"cmpnltpd",
+			"cmpnltps",
+			"cmpnltsd",
+			"cmpnltss",
+			"cmpordpd",
+			"cmpordps",
+			"cmpordsd",
+			"cmpordss",
+			"cmppd",
+			"cmpps",
+			"cmpunordpd",
+			"cmpunordps",
+			"cmpunordsd",
+			"comunordss",
+			
+			
+			"comisd",
+			"comiss",
+
+			"cvtdq2pd",
+			"cvtdq2pq",
+			"cvtdq2ps",
+			"cvtpd2dq",
+			"cvtpd2pi",
+			"cvtpd2ps",
+			"cvtpi2pd",
+			"cvtpi2ps",
+			"cvtpi2ss",
+			"cvtps2dq",
+			"cvtps2pd",
+			"cvtps2pi",
+			"cvtsd2si",
+			"cvtsd2ss",
+			"cvtsi2sd",
+			"cvtsi2ss",
+			"cvtss2sd",
+			"cvtss2si",
+			"cvttpd2dq",
+			"cvttpd2pi",
+			"cvttps2dq",
+			"cvttps2pi",
+			"cvttsd2si",
+			"cvttss2si",
+
+			"divpd",
+			"divps",
+			"divsd",
+			"divss",
+			
+			
+			// Floating point instructions:
+			
+			"f2xm1",
+			"fabs",
+			"fadd",
+			"faddp",
+			"fbld",
+			"fbstp",
+			"fchs",
+			"fclex",
+			"fcmova",
+			"fcmovae",
+			"fcmovb",
+			"fcmovbe",
+			"fcmove",
+			"fcmovna",
+			"fcmovnae",
+			"fcmovnb",
+			"fcmovnbe",
+			"fcmovne",
+			"fcmovnu",
+			"fcmovu",
+			"fcom",
+			"fcomi",
+			"fcomip",
+			"fcomp",
+			"fcompp",
+			"fcos",
+			"fdecstp",
+			"fdiv",
+			"fdivp",
+			"fdivr",
+			"fdivrp",
+			"ffree",
+			"fiadd",
+			"ficom",
+			"ficomp",
+			"fidiv",
+			"fidivr",
+			"fild",
+			"fimul",
+			"fincstp",
+			"finit",
+			"fist",
+			"fistp",
+			"fisub",
+			"fisubr",
+			"fld",
+			"fld1",
+			"fldcw",
+			"fldenv",
+			"fldl2e",
+			"fldl2t",
+			"fldlg2",
+			"fldln2",
+			"fldpi",
+			"fldz",
+			"fmul",
+			"fmulp",
+			"fnop",
+			"fpatan",
+			"fprem",
+			"fprem1",
+			"fptan",
+			"frndint",
+			"frstor",
+			"fsave",
+			"fscale",
+			"fsin",
+			"fsincos",
+			"fsqrt",
+			"fst",
+			"fstcw",
+			"fstenv",
+			"fstp",
+			"fstsw",
+			"fsub",
+			"fsubp",
+			"fsubr",
+			"fsubrp",
+			"ftst",
+			"fucom",
+			"fucomi",
+			"fucomip",
+			"fucomp",
+			"fucompp",
+			"fwait",
+			"fxam",
+			"fxch",
+			"fxrstor",
+			"fxsave",
+			"fxtract",
+			"fyl2x",
+			"fyl2xp1",
+			
+
+
+			
+			
+			"maskmovdqu",
+			"maskmovq",
+			"maxpd",
+			"maxps",
+			"maxsd",
+			"maxss",
+			"minpd",
+			"minps",
+			"minsd",
+			"minss",
+			"movapd",
+			"movaps",
+			"movd",
+			"movdq2q",
+			"movdqa",
+			"movdqu",
+			"movhlps",
+			"movhpd",
+			"movhps",
+			"movlhps",
+			"movlpd",
+			"movlps",
+			"movmskpd",
+			"movmskps",
+			"movntdq",
+			"movnti",
+			"movntpd",
+			"movntps",
+			"movntq",
+			"movq",
+			"movq2dq",
+			"movsdp",
+			"movss",
+			"movsx",
+			"movupd",
+			"movups",
+			"movzx",
+			"mulpd",
+			"mulps",
+			"mulsd",
+			"mulss",
+			"orpd",
+			"orps",
+			"packssdw",
+			"packsswb",
+			"packuswb",
+			"paddb",
+			"paddd",
+			"paddq",
+			"paddsb",
+			"paddsw",
+			"paddusb",
+			"paddusw",
+			"paddw",
+			"pand",
+			"pandn",
+			"pavgb",
+			"pavgw",
+			"pcmpeqb",
+			"pcmpeqd",
+			"pcmpeqw",
+			"pcmpgtb",
+			"pcmpgtd",
+			"pcmpgtw",
+			"pextrw",
+			"pinsrw",
+			"pmaddwd",
+			"pmaxsw",
+			"pmaxub",
+			"pminsw",
+			"pminub",
+			"pmovmskb",
+			"pmulhuw",
+			"pmulhw",
+			"pmullw",
+			"pmuludq",
+			"por",
+			"psadbw",
+			"pshufd",
+			"pshufw",
+			"pslld",
+			"pslldq",
+			"psllq",
+			"psllw",
+			"psrad",
+			"psraw",
+			"psrld",
+			"psrldq",
+			"psrlq",
+			"psrlw",
+			"psubb",
+			"psubd",
+			"psubq",
+			"psubsb",
+			"psubsw",
+			"psubusb",
+			"psubusw",
+			"psubw",
+			"punpckhbw",
+			"punpckhdq",
+			"punpckhqdq",
+			"punpckhwd",
+			"punpcklbw",
+			"punpckldq",
+			"punpcklqdq",
+			"punpcklwd",
+			"pxor",
+			
+			"rcpps",
+			"rcpss",
+			"rsqrtss",
+			
+			
+			"shufpd",
+			"shufps",
+			"sqrtpd",
+			"sqrtps",
+			"sqrtsd",
+			"sqrtss",
+
+			"subpd",
+			"subps",
+			"subsd",
+			"subss",
+			"sysenter",
+			"sysexit",
+
+			"ucomisd",
+			"ucomiss",
+			"unpchkpd",
+			"unpchkps",
+			"unpcklpd",
+			"unpcklps",
+			"xorpd",
+			"xorps"
+	];
+
+
+
+// instrTkns-	Symbolic values for the internal representation of the x86
+//				machine instructions that HLA uses during parsing.
+
+
+val
+	_i_ := 0;
+
+type
+	instrTkns_t:
+		enum
+		{
+			@text( "_" + instrStrs_c[0] )
+			#for( _i_ := 1 to (@elements( instrStrs_c ) - 1) )
+
+				,@text( "_" + instrStrs_c[_i_] )
+
+			#endfor
+		};
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// External variables the code generator modules use:
+
+static
+
+	lastInstr		:internalCodePtr_t;					@external;
+	lastVarInstr	:internalCodePtr_t;					@external;
+	instrList		:internalCodePtr_t;					@external;
+	instrStrs 		:string[ @elements( instrStrs_c )];	@external;
+
+
+// External procedures the code generator modules use:
+
+procedure createIntRec; @returns( "eax" ); @external;
+procedure dumpIntCode;	@external;
+procedure optionalEmptyParens; @external;
+procedure getLParen; @external;
+procedure getRParen; @external;
+procedure getComma;	@external;
+procedure getCntOperand; @external;
+
+procedure parseInstr( codeRec:internalCodePtr_t; prefixes:word ); @external;
+procedure getReg32( var operand:instrOperand_t in edx ); @external;
+

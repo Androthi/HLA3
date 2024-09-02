@@ -1,0 +1,1296 @@
+unit memUnit;
+#includeonce( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+?@nodisplay := true;
+?@noalignstack := true;
+
+const
+	immECX	:text := "(type immOperand_t [ecx])";
+
+
+
+readonly
+
+	// tkn32ToR32 - 
+	//	Converts "tkn_<reg32>" values "_<reg32>" values,
+	//	E.g., converts "tkn_eax" to "_EAX".
+
+	tkn32ToR32:
+		array.lookupTable
+		(
+			byte,
+			_none,
+			_EAX:	tkn_eax,
+			_EBX:	tkn_ebx,
+			_ECX:	tkn_ecx,
+			_EDX:	tkn_edx,
+			_EDI:	tkn_edi,
+			_ESI:	tkn_esi,
+			_ESP:	tkn_esp,
+			_EBP:	tkn_ebp
+		);
+
+	// The following macro translates the token value passed in the
+	// "tkn" parameter (must be a 32-bit register) into a register
+	// value using the tkn32ToR32 lookup table. It returns the value
+	// in EAX. Note that if the token value is not a legal 32-bit
+	// integer register, this function returns "_none" in eax.
+
+	#macro t32ToR32( tkn );
+
+		if( tkn in tkn32ToR32_minValue..tkn32ToR32_maxValue ) then
+
+			movzx( tkn32ToR32[ tkn - tkn32ToR32_minIndex ], eax );
+			
+		else
+		
+			mov( _none, eax );
+			
+		endif;
+		
+	#endmacro 
+
+
+
+	// tkn64ToR64 - 
+	//	Converts "tkn_<reg64>" values "_<reg64>" values,
+	//	E.g., converts "tkn_rax" to "_RAX".
+
+	tkn64ToR64:
+		array.lookupTable
+		(
+			byte,
+			_none,
+			_RAX:	tkn_rax,
+			_RBX:	tkn_rbx,
+			_RCX:	tkn_rcx,
+			_RDX:	tkn_rdx,
+			_RDI:	tkn_rdi,
+			_RSI:	tkn_rsi,
+			_RSP:	tkn_rsp,
+			_RBP:	tkn_rbp,
+			_RIP:	tkn_rip
+		);
+
+	// Like the previous macro, but this one works on 64-bit registers.
+
+	#macro t64ToR64( tkn );
+
+		if( tkn in tkn64ToR64_minValue..tkn64ToR64_maxValue ) then
+
+			movzx( tkn64ToR64[ tkn - tkn64ToR64_minIndex ], eax );
+			
+		else
+		
+			mov( _none, eax );
+			
+		endif;
+		
+	#endmacro 
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getDisp-
+//
+//	Called when HLA expects a constant/displacement value as part of an
+// addressing mode. Allows both numeric constants and expressions involving
+// relocatable objects (pointer constants).
+//
+//	inputs:
+//
+//		displacement-
+//			getDisp stores the resulting displacement value here
+//
+//		subtract-
+//			specifies whether we subtract the constant or add
+//			the constant to the value pointed at by displacement.
+
+//proc( "getDisp" );
+procedure getDisp( var displacement :immOperand_t; subtract:boolean );
+var 
+	dispAttr:attr_t;
+	 
+begin getDisp;
+
+	constExpr( dispAttr );
+	mov( displacement, ecx );
+	mov( dispAttr.pType, al );
+	if( isSmallNum( al )) then
+
+		mov( dispAttr.dword_vt, eax );
+		cwd();
+		add( eax, immECX.constant );
+		adc( edx, immECX.constant[4]);
+
+	#print( "TODO: Handle 64-bit displacement constants?" )
+	// elseif( al = qword ) then ???
+
+	elseif( al = Pointer_pt ) then
+
+		// Only pointer constants of the form "&relocAdrs1[n] - &relocAdrs2[n]"
+		// or "@pointer( constant )" (no relocatable addresses) are legal
+		// in address expressions.
+
+		mov( immECX.dispBaseAdrs, eax );
+		mov( immECX.dispMinusAdrs, edx );
+		if( (eax = NULL || edx == NULL) && (eax <> edx) ) then
+
+			HLAerror
+			(
+				"Illegal relocatable constant subexpression in address "
+				"expression"
+				nl
+			);
+			raise( ex.hlaerr );
+
+		endif;
+
+		// There must not be a pre-existing symbolic address
+		// constant that is part of this address:
+			
+		mov( dispAttr.p.dispBaseAdrs, eax );
+		if( immECX.dispBaseAdrs <> NULL && eax <> NULL ) then
+
+			HLAerror
+			(
+				"Address constant involving relocatable symbols "
+				"is too complex"
+				nl
+			);
+			raise( ex.hlaerr );
+
+		endif;
+		if( subtract ) then
+
+			mov( immECX.constant, eax );
+			sub( dispAttr.p.constant, eax );
+			mov( eax, immECX.constant );
+			mov( immECX.constant[4], eax );
+			sbb( dispAttr.p.constant[4], eax );
+			mov( eax, immECX.constant[4] );
+
+			// If we're subtracting this constant,
+			// we need to swap the dispBaseAdrs and
+			// dispMinusAdrs pointers on return:
+
+			mov( eax, immECX.dispMinusAdrs );
+			mov( dispAttr.p.dispMinusAdrs, eax );
+			mov( eax, immECX.dispBaseAdrs );
+
+		else
+
+			mov( immECX.constant, eax );
+			add( dispAttr.p.constant, eax );
+			mov( eax, immECX.constant );
+			mov( immECX.constant[4], eax );
+			adc( dispAttr.p.constant[4], eax );
+			mov( eax, immECX.constant[4] );
+
+			mov( eax, immECX.dispBaseAdrs );
+			mov( dispAttr.p.dispMinusAdrs, eax );
+			mov( eax, immECX.dispMinusAdrs ); 
+
+		endif;
+
+	else
+
+		HLAerror
+		( 
+			"Expected a small integer type as displacement" nl
+			"in the address expression" nl
+		);
+		raise( ex.hlaerr );
+
+	endif;
+
+end getDisp;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// parseIndex -
+//
+//	Process those memory objects that sit between "[" and "]".
+//
+// Grammar:
+//
+//	<index> -> <constExpr> | <index32> | <index64>
+//
+//	<index32> -> <base32> <optBaseIndexConstOrScale32>
+//
+//	<optBaseIndexConstOrScale32> ->
+//			'*' <scaleconst> <optBaseIndexConst>
+//		|	<optBaseIndexConst32>
+//
+//	<optBaseIndexConst32> ->
+//			'+' <baseIndexConst32>
+//		|	'-' <constExpr>
+//		|	<empty>
+//
+//	<baseIndexConst32> ->
+//			<index32>
+//		|	<constExpr>
+//
+//
+//
+//	<index64> -> <base64> <optBaseIndexConstOrScale64>
+//
+//	<optBaseIndexConstOrScale64> ->
+//			'*' <scaleconst> <optConst>
+//		|	<optBaseIndexConst64>
+//
+//	<optBaseIndexConst64> ->
+//			'+' <baseIndexConst64>
+//		|	'-'	<constExpr>
+//		|	<empty>
+//
+//	<baseIndexConst64> ->
+//			<index64>
+//		|	<constExpr>
+//
+//
+//
+//
+// Returns:
+//
+//	al:
+//		constOnly_c (0)		if constant-only expression,
+//		base32_c (1) 		if [reg32 {+displacement}]
+//		index32_c (2)		if [reg32*scale {+displacement}]
+//		baseindex32_c (3)	if [reg32+reg32*scale {+displacement}]
+//
+//		base64_c (4)		if [reg64 {+displacement}]
+//		index64_c (5)		if [reg64*scale {+displacement}]
+//		baseindex64_c (6)	if [reg64+reg64*scale {+displacement}]
+//
+//	ah:	
+//		scale value (1, 2, 4, or 8)
+//
+//	cl:	
+//		baseReg
+//
+//	ch:	
+//		indexReg
+//
+//	edx:	
+//		displacement
+
+
+
+//proc( "parseIndex" )
+procedure parseIndex( var displacement:immOperand_t );
+var
+	baseReg			:register_t;
+	indexReg		:register_t;
+	scale			:uns8;
+	align(4);
+	dispAttr		:attr_t;
+
+	procedure index; @noframe;
+
+
+
+		procedure index32; @noframe;
+
+
+			//	<baseIndexConst32> ->
+			//			<index32>
+			//		|	<constExpr>
+
+			procedure baseIndexConst32; @noframe;
+			begin baseIndexConst32;
+
+				lex(esi);
+				if( ebx = reg32_tc ) then
+
+					index32();
+
+				else
+
+					reuseLastTkn();
+					getDisp( val ebp::displacement, false );
+
+				endif;
+				ret();
+					
+			end baseIndexConst32;
+
+			//	<optBaseIndexConst32> ->
+			//			'+' <baseIndexConst32>
+			//		|	'-' <constExpr>
+			//		|	<empty>
+
+			procedure optBaseIndexConst32; @noframe;
+			begin optBaseIndexConst32;
+
+				if( eax = '+' ) then
+
+					baseIndexConst32();
+
+				elseif( eax = '-' ) then
+
+					getDisp( val ebp::displacement, true );
+
+				else
+
+					reuseLastTkn();
+
+				endif;
+				ret();
+
+			end optBaseIndexConst32;
+
+		begin index32;
+
+			//	<index32> -> <base32> <optBaseIndexConstOrScale32>
+
+			t32ToR32( eax );
+			if( al = _none ) then
+
+				HLAerror( "Expected a 32-bit register" nl );
+				mov( _none, al );
+
+			endif;
+			if( ebp::baseReg = _none ) then
+
+				mov( al, ebp::baseReg );
+
+			elseif( ebp::indexReg = _none ) then
+
+				mov( al, ebp::indexReg );
+
+			else
+
+				HLAerror
+				( 
+					"Memory expression already has a base and index register"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+
+			//	<optBaseIndexConstOrScale32> ->
+			//			'*' <scaleconst> <optBaseIndexConst>
+			//		|	<optBaseIndexConst>
+
+			lex( esi );
+			if( eax = '*' ) then
+				  
+				constExpr( ebp::dispAttr );
+				mov( ebp::dispAttr.dword_vt, eax );
+				if
+				( 
+						isSmallNum( ebp::dispAttr.pType )
+					&&	(
+								eax = 1
+							||	eax	= 2
+							||	eax = 4
+							||	eax = 8
+						)
+						
+				) then
+
+					if( ebp::scale <> 0 ) then
+
+						HLAerror
+						( 
+							"Attempted to use second scaled index register"
+							nl
+						);
+
+					endif;
+					mov( al, ebp::scale );
+					if( ebp::indexReg = _none ) then
+
+						mov( ebp::baseReg, al );
+						mov( al, ebp::indexReg );
+						mov( _none, ebp::baseReg );
+
+					endif;
+
+				else
+
+					HLAerror
+					( 
+						"Scaling constant must be 1, 2, 4, or 8" nl
+					);
+
+				endif;
+
+			else
+
+				optBaseIndexConst32();
+
+			endif;
+			ret();
+
+		end index32;
+
+
+
+
+		//	<index64> -> <base64> <optBaseIndexConstOrScale64>
+
+
+		procedure index64; @noframe;
+
+
+			//	<baseIndexConst64> ->
+			//			<index64>
+			//		|	<constExpr>
+
+			procedure baseIndexConst64; @noframe;
+			begin baseIndexConst64;
+
+				lex(esi);
+				if( ebx = reg64_tc ) then
+
+					index64();
+
+				else
+
+					reuseLastTkn();
+					getDisp( val ebp::displacement, false );
+
+				endif;
+				ret();
+					
+			end baseIndexConst64;
+
+
+			//	<optBaseIndexConst64> ->
+			//			'+' <baseIndexConst64>
+			//		|	'-'	<constExpr>
+			//		|	<empty>
+
+			procedure optBaseIndexConst64; @noframe;
+			begin optBaseIndexConst64;
+
+				if( eax = '+' ) then
+
+					baseIndexConst64();
+
+				elseif( eax = '-' ) then
+
+					getDisp( val ebp::displacement, true );
+
+				else
+
+					reuseLastTkn();
+
+				endif;
+				ret();
+
+			end optBaseIndexConst64;
+
+
+		begin index64;
+
+			//	<index64> -> <base64> <optBaseIndexConstOrScale64>
+
+			t64ToR64( eax );
+			if( al = _none ) then
+
+				HLAerror( "Expected a 64-bit register" nl );
+
+			endif;
+			if( ebp::baseReg = _none ) then
+
+				mov( al, ebp::baseReg );
+
+			elseif( ebp::indexReg = _none ) then
+
+				mov( al, ebp::indexReg );
+				if( al = _RIP ) then
+
+					HLAerror( "RIP cannot be used as an index register" nl );
+					mov( _EAX, ebp::indexReg );
+
+				endif;
+
+			else
+
+				HLAerror
+				( 
+					"Memory expression already has a base and index register"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+
+			//	<optBaseIndexConstOrScale64> ->
+			//			'*' <scaleconst> <optConst>
+			//		|	<optBaseIndexConst64>
+
+			lex( esi );
+			if( eax = '*' ) then
+				  
+				constExpr( ebp::dispAttr );
+				mov( ebp::dispAttr.dword_vt, eax );
+				if
+				( 
+						isSmallNum( ebp::dispAttr.pType )
+					&&	(
+								eax = 1
+							||	eax	= 2
+							||	eax = 4
+							||	eax = 8
+						)
+						
+				) then
+
+					if( ebp::scale <> 0 ) then
+
+						HLAerror
+						( 
+							"Attempted to use second scaled index register"
+							nl
+						);
+
+					endif;
+					mov( al, ebp::scale );
+					if( ebp::indexReg = _none ) then
+
+						mov( ebp::baseReg, al );
+						mov( al, ebp::indexReg );
+						mov( _none, ebp::baseReg );
+
+					endif;
+
+				else
+
+					HLAerror
+					( 
+						"Scaling constant must be 1, 2, 4, or 8" nl
+					);
+
+				endif;
+
+			else
+
+				optBaseIndexConst64();
+
+			endif;
+			ret();
+
+		end index64;
+
+
+
+	begin index;
+
+		lex(esi);
+		if( ebx = reg32_tc ) then
+
+			index32();
+
+		elseif( ebx = reg64_tc ) then
+
+			index64();
+
+		else // Better be a constant at this point.
+
+			reuseLastTkn();
+			getDisp( val ebp::displacement, false );
+
+		endif;
+		ret();
+
+	end index;
+
+
+
+	// computeAdrsMode-
+	//
+	//		Sets up the return register values for "index" as follows:
+	//
+	//	al:
+	//		constOnly_c (0) 	if constant-only expression,
+	//		base32_c (1) 		if [reg32 {+displacement}]
+	//		index32_c (2) 		if [reg32*scale {+displacement}]
+	//		baseindex32_c (3)	if [reg32+reg32*scale {+displacement}]
+	//
+	//		base64_c (4)		if [reg64 {+displacement}]
+	//		index64_c (5)		if [reg64*scale {+displacement}]
+	//		baseindex64_c (6)	if [reg64+reg64*scale {+displacement}]
+	//
+	//	ah:	
+	//		scale value (1, 2, 4, or 8)
+	//
+	//	cl:	
+	//		baseReg
+	//
+	//	ch:	
+	//		indexReg
+	//
+	//	edx:	
+	//		displacement
+
+
+	procedure computeAdrsMode; @noframe;
+	begin computeAdrsMode;
+
+		mov( constOnly_c, al );		// Assume constant-only expression
+		mov( ebp::scale, ah );
+		mov( ebp::baseReg, cl );
+		mov( ebp::indexReg, ch );
+		if( ch <> _none ) then
+
+			if( cl <> _none ) then
+
+				// if [reg32+reg32*scale {+displacement}]
+
+				mov( baseindex32_c, al ); 
+
+			else
+
+				// if [reg32*scale {+displacement}]
+
+				mov( index32_c, al );
+
+			endif;
+
+			// If scale value is zero, set it to default of 1:
+
+			if( ah = 0 ) then
+
+				inc( ah );
+
+			endif;
+
+		elseif( cl <> _none ) then
+
+			mov( base32_c, al );  // if [reg {+displacement}]
+
+		endif;
+
+		// Adjust value in AL if we have a 64-bit addressing mode.
+
+		if( cl not in _EAX.._ESP ) then
+
+			add( @uns32(base64_c) - @uns32(base32_c), al );
+			
+		endif; 
+		ret();
+
+	end computeAdrsMode;
+
+
+begin parseIndex;
+
+	mov( _none, baseReg );
+	mov( _none, indexReg );
+	mov( 0, scale );
+
+	mov( displacement, ecx );
+	mov( 0, immECX.constant );
+	mov( 0, immECX.constant[4] );
+	mov( NULL, immECX.dispBaseAdrs );
+	mov( NULL, immECX.dispMinusAdrs );
+
+	index();
+
+	// At the end of an index, we need a "]"
+
+	lex( esi );
+	if( eax <> ']' ) then
+
+		HLAerror
+		(
+			"Expected a ']', encountered "
+		);
+		dumpQLexeme();
+		raise( ex.hlaerr );
+		
+	endif;
+
+//	// Allow multiple instances of "[...]" as a memory operand:
+//
+//	lex( esi );
+//	while( eax = '[' ) do
+//
+//		index();
+//		lex( esi );
+//
+//	endwhile;
+//	reuseLastTkn();
+
+	// Get the addressing mode info into al, ah, cl, and ch
+	// (note: "displacement" was passed back in parameter already):
+
+	computeAdrsMode();
+end parseIndex;
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+//
+// getMemoryObject/recursiveGetMemoryObject-
+//
+// Used to process variable objects. Note that the result could be a
+// constant if this is a CLASS object (or one of the fields is a class
+// object).
+//
+//	Note: this procedure gets called to handle CLASS type names as
+// well as variable objects. So this code must *not* assume that the
+// base name is a variable of some sort.
+//
+// Inputs:
+//
+//	returnedAttr-
+//		Pointer to an ATTR variable where this routine will store
+//		the resulting memory attribute (or constant value if this
+//		turns out to be a constant reference).
+//
+//	baseSym-
+//		This is a pointer to the symbol table entry for the memory
+//		object we've just seen (resulting in the call to this procedure).
+//		NOTE: do not assume this is an actual memory variable. getMemoryObject
+//		also gets called with a TYPE identifier passed in this parameter
+//		to process class constants.
+//
+//	fullSym-
+//		Pointer to a string that contains the fully qualified name up to
+//		"theSym" specified above. For records, unions, classes, and namespaces,
+//		this string may contain the dotted names up to (and including) baseSym.
+//		On return, this routine should create a new string consisting of
+//		fullSym concatenated with ".name", where "name" represents the name(s)
+//		this routine processes. This routine must deallocate the old string
+//		and allocate storage for the new string. It is the caller's
+//		responsibility to free this storage, if necessary.
+//
+// Returns:
+//
+//	Constant/address value in clsValues.
+//	Field type in theType.
+
+//proc( "recursiveGetMemoryObject" )
+procedure recursiveGetMemoryObject
+( 
+	var returnedAttr	:attr_t; 
+	var	baseSym			:symNode_t;
+	var	fullSym			:string
+);
+var
+	fieldSym		:symNodePtr_t;
+	displacement	:immOperand_t;
+
+begin recursiveGetMemoryObject;
+
+	mov( 0, displacement.constant );
+	mov( 0, displacement.constant[4] );
+	mov( NULL, displacement.dispBaseAdrs );
+	mov( NULL, displacement.dispMinusAdrs );
+
+	// Okay, we've seen a variable (or type) name already.
+	// "theSym" points at its symbol table entry.
+	// Now see if an index or dotted path follows that name.
+	lex( esi );
+	if( eax = '.' ) then
+
+		// We've just seen a "." token, this means that the
+		// previous symbol had better be a record, union, class, or
+		// namespace object.  We will allow (and ignore) array objects
+		// here as long as their base type is a record, union, or class
+		// object.
+
+		mov( baseSym, eax );
+		getBaseIsoType( eax );
+		mov( symEAX.pType, dl );
+		while( dl = Array_pt ) do
+
+			mov( symEAX.baseType, eax );
+			canAccess( [eax] );
+			mov( symEAX.pType, dl );
+
+		endwhile;
+		if
+		(
+				dl <> Record_pt
+			&&	dl <> Union_pt
+			&&	dl <> Class_pt
+			&&	dl <> Namespace_pt
+		) then
+
+			mov( baseSym, eax );
+			mov( fullSym, ebx );
+			HLAerror
+			( 
+				"Unexpected '.' after ID ",
+				(type string [ebx]),
+				'.',
+				symEAX.trueName,
+				nl 
+			);
+			raise( ex.hlaerr );
+		endif;
+
+		// Okay, we've got a namespace, class, record, or union symbol.
+		// Okay, grab the next token following the "." and 
+		// continue processing:
+
+		lex( esi );
+		if( ebx <> ID_tc ) then
+
+			mov( baseSym, eax );
+			HLAerror
+			( 
+				"Expected a field name after ",
+				symEAX.trueName,
+				"." nl
+			);
+			reuseLastTkn();
+			raise( ex.hlaerr );
+
+		endif;
+
+		// Look up the symbol in the object's symbol table:
+
+		mov( baseSym, ebx );
+		if( symEBX.symClass <> Type_ct ) then
+
+			mov( symEBX.symType, ebx );
+
+		endif;
+		lookupLocalIn
+		( 
+			tokenECX.trueName, 
+			tokenECX.lcName,
+			tokenECX.hashValue, 
+			symEBX.localHash 
+		);
+
+		// Okay, an identifier follows the ".", but is it a field
+		// of the namespace, class, record, or union?
+
+		if( eax = NULL ) then
+
+			mov( baseSym, ebx );
+			HLAerror
+			( 
+				tokenECX.trueName, 
+				" is not a field of ",
+				symEBX.trueName,
+				nl
+			);
+			raise( ex.hlaerr );
+		endif;
+		mov( eax, fieldSym );	// Save pointer to sym tbl entry for field name
+
+		// Okay, the fieldname was valid, so generate a new
+		// fullSym string to return:
+
+		mov( fullSym, ebx );
+		str.length( [ebx] );
+		mov( eax, edx );
+		str.length( tokenECX.trueName );
+		add( edx, eax );
+		inc( eax );			// Extra room for period.
+		str.alloc( eax );	// Room for new string
+		str.cpy( [ebx], eax );
+
+		// Add the period between the previous name and the new field:
+
+		mov( '.', (type char [eax+edx]));
+		inc( (type str.strRec [eax]).length );
+		mov( 0, (type char [eax+edx+1]));
+
+		// Append the new field name to the end of the string:
+
+		str.cat( tokenECX.trueName, eax );
+		
+		// Free storage associated with the original string:
+
+		str.free( [ebx] );
+
+		// Set the string to the new string:
+
+		mov( eax, [ebx] ); 
+
+		// Okay, recursively process any fields that follow.
+		// Because we just processed a union or record field,
+		// we need to index into the fieldValues_vt array based 
+		// on the index of the selected field in the record/union:
+
+		lex( esi );		// See if we've got a "."
+		if( eax = '.' ) then
+
+			parseDotName( fieldSym, fullSym );
+			mov( eax, fieldSym );
+
+		else
+
+			reuseLastTkn();
+
+		endif;
+
+		// Retrieve the pointer to the new field:
+
+		mov( fieldSym, eax );
+
+		// The new (trailing) field can be either a variable or a constant.
+		// If it's a variable, continue marching through the
+		// fields as usual. If it's a constant, then we're going
+		// to return a constant object (no matter what), so in that
+		// case call processConstID to handle the remainder of
+		// the trip.
+
+		// Okay, recursively process anything that follows.
+		// Because we just processed a field,
+		// we need to index into the fieldValues_vt array based 
+		// on the index of the selected field in the record/union:
+
+		if( symEAX.symClass = Constant_ct ) then
+			processConstID( symEAX.va, symEAX, returnedAttr, fullSym );
+
+		else
+
+			// If it's a variable, recursively call this routine in order
+			// to process whatever follows:.
+
+			recursiveGetMemoryObject
+			( 
+				returnedAttr, 
+				[eax], 
+				fullSym 
+			);
+
+		endif;
+
+	elseif( eax = '[' ) then // Memory index.
+
+		// We'll just process any array indexes, ignoring the type
+		// of the current symbol (hey, it's an assembly language thing).
+		//
+		//	Addressing mode constant values in al after ParseIndex call:"
+		//
+		//		0:	constOnly_c,
+		//		1:	base32_c,
+		//		2:	index32_c,
+		//		3:	baseindex32_c,
+		//
+		//		4:	base64_c,
+		//		5:	index64_c,
+		//		6:	baseindex64_c
+
+		parseIndex( displacement );
+
+		mov( returnedAttr, ebx );
+		cmp( al, base32_c );
+		jb ConstOnlyExpr;	// [constant] if al = 0
+		je RegPlusDispExpr;	// [reg32 {+/- constant}] if al = 1
+		cmp( al, baseindex32_c );
+		jb RegScalePlusDispExpr; // [reg32*scale {+/- constant}] if al = 2
+		je RegPlusRegScalePlusDispExpr;
+
+		cmp( al, index64_c );
+		jb RegPlusDispExpr64;
+		je RegScalePlusDispExpr64;
+		cmp( al, baseindex64_c );
+		je RegPlusRegScalePlusDispExpr64;
+
+			// If AL contains a value greater than baseindex64_c.
+			// This is an unsupported addressing mode.
+
+			HLAerror( "HLA does not support this addressing mode" nl );
+			raise( ex.hlaerr );
+
+
+
+
+		RegPlusRegScalePlusDispExpr64:
+
+			// Must be [reg64+reg64*scale {+displacement}] at this point.
+
+			mov( ah, attrEBX.m.scale );
+			if( attrEBX.m.baseReg <> _none ) then
+
+				HLAerror( "Memory expression has two base registers" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( cl, attrEBX.m.baseReg );
+
+			if( attrEBX.m.indexReg <> _none ) then
+
+				HLAerror( "Memory expression has two index registers" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( ch, attrEBX.m.baseReg );
+			jmp ConstOnlyExpr;
+
+
+
+		RegScalePlusDispExpr64:
+			if( attrEBX.m.indexReg <> _none ) then
+
+				HLAerror( "Memory expression has two index registers" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( ah, attrEBX.m.scale );
+			mov( ch, attrEBX.m.indexReg );
+			jmp ConstOnlyExpr;
+
+
+		RegPlusDispExpr64:
+			if( attrEBX.m.baseReg = _none ) then
+
+				mov( cl, attrEBX.m.baseReg );
+
+			elseif( attrEBX.m.indexReg = _none ) then
+
+				mov( cl, attrEBX.m.indexReg );
+				mov( 1, attrEBX.m.scale );
+
+			else
+
+				HLAerror
+				( 
+					"Too many registers involved in memory expression"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+			jmp ConstOnlyExpr;
+
+
+
+
+
+		// Deal with 32-bit addressing modes down here:
+
+		RegPlusRegScalePlusDispExpr:
+
+			// Must be [reg32+reg32*scale {+displacement}] at this point.
+
+			mov( ah, attrEBX.m.scale );
+			if( attrEBX.m.baseReg <> _none ) then
+
+				HLAerror( "Memory expression has two base registers" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( cl, attrEBX.m.baseReg );
+
+			if( attrEBX.m.indexReg <> _none ) then
+
+				HLAerror( "Memory expression has two index registers" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( ch, attrEBX.m.baseReg );
+			jmp ConstOnlyExpr;
+
+
+
+
+		RegScalePlusDispExpr:
+			if( attrEBX.m.indexReg <> _none ) then
+
+				HLAerror( "Memory expression has two index registers" nl );
+				raise( ex.hlaerr );
+
+			endif;
+			mov( ah, attrEBX.m.scale );
+			mov( ch, attrEBX.m.indexReg );
+			jmp ConstOnlyExpr;
+
+		RegPlusDispExpr:
+			if( attrEBX.m.baseReg = _none ) then
+
+				mov( cl, attrEBX.m.baseReg );
+
+			elseif( attrEBX.m.indexReg = _none ) then
+
+				mov( cl, attrEBX.m.indexReg );
+				mov( 1, attrEBX.m.scale );
+
+			else
+
+				HLAerror
+				( 
+					"Too many registers involved in memory expression"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+
+
+		ConstOnlyExpr:
+			mov( displacement.constant, eax );
+			add( eax, attrEBX.m.constant );
+			mov( displacement.constant[4], eax );
+			adc( eax, attrEBX.m.constant[4] );
+
+			mov( displacement.dispBaseAdrs, eax );
+			mov( displacement.dispMinusAdrs, edx );
+			or( eax, edx );
+			if( @nz ) then
+
+				if
+				( 
+						attrEBX.m.dispBaseAdrs <> NULL
+					||	attrEBX.m.dispMinusAdrs <> NULL
+				) then
+
+					HLAerror
+					(
+						"Illegal relocatable constant subexpression in "
+						"address expression"
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				mov( displacement.dispMinusAdrs, edx );
+				mov( eax, attrEBX.m.dispBaseAdrs );
+				mov( edx, attrEBX.m.dispMinusAdrs );
+
+			endif;
+
+
+
+
+		// Recursively call this code to process whatever follows the
+		// index operator:
+
+		parseMore:
+
+			// ??? Should we generate a string for the addressing mode here?
+
+			recursiveGetMemoryObject
+			( 
+				[ebx], 
+				baseSym,
+				fullSym 
+			);
+
+
+		
+	else // No "." or "[" following the ID, so just return the ID's attributes
+
+		reuseLastTkn();
+		mov( baseSym, ebx );
+		mov( symEBX.symClass, al );
+		if( al = Constant_ct || al = Value_ct ) then
+
+			// If it is a constant object, return the constant value.
+			processConstID( symEAX.va, symEAX, returnedAttr, fullSym );
+
+		else
+		
+			mov( returnedAttr, ecx );
+			mov( al, attrECX.symClass );
+			if( al = Var_ct || al = Parm_ct ) then
+
+				// We've got a variable object that is referenced off of
+				// EBP (in a local stack frame). Set up the return fields
+				// accordingly:
+
+				if( attrECX.m.baseReg = _none ) then
+
+					mov( _EBP, attrECX.m.baseReg );
+
+				elseif( attrECX.m.indexReg = _none ) then
+
+					mov( attrECX.m.baseReg, al );
+					mov( al, attrECX.m.indexReg );
+					mov( _EBP, attrECX.m.baseReg );
+					mov( 1, attrECX.m.scale );
+
+				else
+
+					HLAerror
+					( 
+						"Too many registers involved in memory expression"
+						nl
+					);
+					raise( ex.hlaerr );
+
+				endif;
+				mov( symEBX.offset, eax );
+				cwd();
+				add( eax, attrECX.m.constant );
+				adc( edx, attrECX.m.constant[4] );
+				mov( NULL, attrECX.m.staticSym );
+		
+			elseif( al = Static_ct ) then
+
+				mov( ebx, attrECX.m.staticSym );
+
+			else
+
+				HLAerror
+				(
+					"Expected a variable or constant expression in operand"
+					nl
+				);
+				raise( ex.hlaerr );
+
+			endif;
+			mov( 0, attrECX.numElements );
+			mov( symEBX.symType, eax );
+			mov( eax, attrECX.symType );
+			mov( symEBX.pType, al );
+			mov( al, attrECX.pType );
+
+		endif;
+	endif;
+
+	// If we've got base and/or index registers, make sure they're
+	// both 32 bits or 64 bits.
+
+	mov( attrECX.m.baseReg, al );
+	mov( attrECX.m.indexReg, ah );
+	if( _extIsRegAdrs( al )) then
+
+		if( ah <> _none && !_extIsRegAdrs( ah )) then
+
+			HLAerror
+			( 
+				"Cannot mix 32-bit and 64-bit registers in addressing mode"
+				nl
+			);
+			raise( ex.hlaerr );
+
+		endif;
+
+	elseif( al <> _none && _extIsRegAdrs( ah )) then
+
+		HLAerror
+		( 
+			"Cannot mix 32-bit and 64-bit registers in addressing mode"
+			nl
+		);
+		raise( ex.hlaerr );
+
+	endif;
+end recursiveGetMemoryObject; 
+
+
+procedure getMemoryObject
+( 
+	var returnedAttr	:attr_t; 
+	var	baseSym			:symNode_t;
+	var	fullSym			:string
+);
+var
+	displacement	:immOperand_t;
+
+begin getMemoryObject;
+
+	pushABCD;
+	recursiveGetMemoryObject( returnedAttr, baseSym, fullSym );
+	popABCD;	
+
+end getMemoryObject;
+end memUnit;

@@ -1,0 +1,25 @@
+
+const
+	version := 0.1;
+	build	:= 11;
+	
+/*
+								Update Log
+
+
+	version 0.1
+
+changed jge to jae to fix sign issue in coerce.hla->makeCompatible->coerceInt for unsigned types.
+	
+hll.hhf causes keyword conflicts - disabled use
+code uses switch from hll.hhf. may need to resolve name issues
+
+
+proc keyword generates compiler errors.. commented them all out
+
+
+
+
+
+*/
+	

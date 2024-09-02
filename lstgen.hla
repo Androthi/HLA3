@@ -1,0 +1,13 @@
+unit lstGenUnit;
+#include( "stdlib.hhf" )
+#includeonce( "hlacompiler.hhf" )
+
+procedure lstGen; @nodisplay; @noalignstack;
+begin lstGen;
+
+		  
+
+end lstGen;
+
+end lstGenUnit;
+
